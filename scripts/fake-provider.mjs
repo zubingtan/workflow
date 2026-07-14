@@ -60,7 +60,14 @@ function promptText(payload) {
   if (!Array.isArray(payload?.messages)) return "";
   return payload.messages
     .filter((message) => message?.role === "user")
-    .map((message) => typeof message.content === "string" ? message.content : "")
+    .map((message) => {
+      if (typeof message.content === "string") return message.content;
+      if (!Array.isArray(message.content)) return "";
+      return message.content
+        .filter((part) => part?.type === "text" && typeof part.text === "string")
+        .map((part) => part.text)
+        .join("");
+    })
     .join("\n");
 }
 
