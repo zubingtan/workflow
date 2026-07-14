@@ -1,6 +1,7 @@
 import {
   WorkflowValidationError,
 } from "../../../../lib/workflows/compiler";
+import { ProviderBindingConfigurationError } from "../../../../lib/workflows/provider-bindings";
 import { importWorkflowDefinition } from "../../../../lib/workflows/repository";
 
 export const dynamic = "force-dynamic";
@@ -12,6 +13,10 @@ function validationResponse(error: WorkflowValidationError) {
     path: error.path,
     nodeId: error.nodeId,
   }, { status: 400 });
+}
+
+function serverError(code: string) {
+  return Response.json({ code, message: "The server could not process the request" }, { status: 500 });
 }
 
 export async function POST(request: Request) {
@@ -26,6 +31,9 @@ export async function POST(request: Request) {
     return Response.json(await importWorkflowDefinition(value), { status: 201 });
   } catch (error) {
     if (error instanceof WorkflowValidationError) return validationResponse(error);
-    throw error;
+    if (error instanceof ProviderBindingConfigurationError) {
+      return serverError("server_configuration_error");
+    }
+    return serverError("internal_error");
   }
 }
