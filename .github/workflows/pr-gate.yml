@@ -114,3 +114,54 @@ jobs:
           node-version: 22
       - name: Run two-worker Compose acceptance
         run: test/runtime/async-happy-path.system.sh
+
+  terminal-failure-persistence:
+    name: terminal failure persistence
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-bookworm
+        env:
+          POSTGRES_DB: workflow
+          POSTGRES_USER: workflow
+          POSTGRES_PASSWORD: workflow
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U workflow -d workflow"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 30
+    env:
+      DATABASE_URL: postgres://workflow:workflow@127.0.0.1:5432/workflow
+      PROVIDER_BINDINGS_FILE: ${{ github.workspace }}/config/provider-bindings.example.json
+      FAKE_PROVIDER_API_KEY: PR5_CI_SECRET_DO_NOT_ESCAPE
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+      - name: Use Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.13.0 --activate
+      - name: Install exact dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Run focused Provider failure contracts
+        run: pnpm test:failure:unit
+      - name: Run PostgreSQL terminal failure integration
+        if: always()
+        run: pnpm test:failure:pg
+
+  failure-crash-restart-system:
+    name: failure crash restart system
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+      - name: Use Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Run terminal failure and restart acceptance
+        run: test/failure/failure-crash-restart.system.sh

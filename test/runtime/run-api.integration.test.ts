@@ -197,7 +197,7 @@ databaseSuite("M0-T05 asynchronous Run API", () => {
     expect(response.headers.get("cache-control")).toContain("no-store");
     expect(Object.keys(body).sort()).toEqual(["run"]);
     expect(Object.keys(body.run).sort()).toEqual([
-      "completedAt", "createdAt", "id", "input", "nodes", "startedAt", "status",
+      "completedAt", "createdAt", "error", "id", "input", "nodes", "startedAt", "status",
       "workflow", "workflowDefinitionVersion",
     ]);
     expect(Object.keys(body.run.workflow).sort()).toEqual(["id", "name"]);
@@ -206,6 +206,7 @@ databaseSuite("M0-T05 asynchronous Run API", () => {
     expect(body.run).toMatchObject({
       id: runId,
       status: "queued",
+      error: null,
       createdAt: expect.any(String),
       startedAt: null,
       completedAt: null,
@@ -218,8 +219,8 @@ databaseSuite("M0-T05 asynchronous Run API", () => {
       input: { prompt },
     });
     const nodeKeys = [
-      "agentDefinitionVersion", "attempt", "id", "nodeId", "output",
-      "providerBindingRef", "status", "type",
+      "agentDefinitionVersion", "attempt", "error", "id", "nodeId", "output",
+      "providerBindingRef", "skipReason", "status", "type",
     ];
     expect(body.run.nodes.every((node: Record<string, unknown>) =>
       JSON.stringify(Object.keys(node).sort()) === JSON.stringify(nodeKeys))).toBe(true);
@@ -227,10 +228,12 @@ databaseSuite("M0-T05 asynchronous Run API", () => {
     expect(body.run.nodes).toEqual([
       expect.objectContaining({
         id: expect.any(String), nodeId: "prompt", type: "input.prompt", status: "queued",
-        agentDefinitionVersion: null, providerBindingRef: null, output: null, attempt: null,
+        error: null, skipReason: null, agentDefinitionVersion: null,
+        providerBindingRef: null, output: null, attempt: null,
       }),
       expect.objectContaining({
         id: expect.any(String), nodeId: "analyze", type: "process.agent", status: "pending",
+        error: null, skipReason: null,
         agentDefinitionVersion: {
           id: "seed-agent-v1", version: 1, hash: expect.stringMatching(/^[0-9a-f]{64}$/),
         },
@@ -238,7 +241,8 @@ databaseSuite("M0-T05 asynchronous Run API", () => {
       }),
       expect.objectContaining({
         id: expect.any(String), nodeId: "result", type: "output.markdown", status: "pending",
-        agentDefinitionVersion: null, providerBindingRef: null, output: null, attempt: null,
+        error: null, skipReason: null, agentDefinitionVersion: null,
+        providerBindingRef: null, output: null, attempt: null,
       }),
     ]);
   });
@@ -264,6 +268,7 @@ databaseSuite("M0-T05 asynchronous Run API", () => {
       runs: [{
         id: runId,
         status: "queued",
+        error: null,
         createdAt: expect.any(String),
         startedAt: null,
         completedAt: null,
