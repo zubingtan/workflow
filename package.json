@@ -2,11 +2,30 @@
   "name": "oncall-workflow-platform",
   "version": "0.0.0",
   "private": true,
+  "packageManager": "pnpm@11.13.0",
   "engines": {
     "node": "22.x"
   },
   "scripts": {
+    "build": "tsc --noEmit && next build --experimental-build-mode compile && next build --experimental-build-mode generate",
+    "dev": "next dev",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "worker": "node scripts/worker.mjs",
+    "fake-provider": "node scripts/fake-provider.mjs",
     "test": "node --test test/governance/*.test.mjs test/bootstrap/*.test.mjs",
     "test:governance": "node --test test/governance/pr1-governance.test.mjs"
+  },
+  "dependencies": {
+    "next": "16.2.10",
+    "postgres": "3.4.9",
+    "react": "19.2.7",
+    "react-dom": "19.2.7"
+  },
+  "devDependencies": {
+    "@types/node": "26.1.1",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "typescript": "7.0.2"
   }
 }
