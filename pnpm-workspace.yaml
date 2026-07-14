@@ -1,2 +1,4 @@
 allowBuilds:
+  '@google/genai': false
+  protobufjs: false
   sharp@0.34.5: true
