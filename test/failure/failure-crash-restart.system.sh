@@ -12,6 +12,7 @@ export WORKER_LEASE_MS=400
 export WORKER_FAULT_HOOK=""
 app_url="http://127.0.0.1:${app_port}"
 compose=(docker compose --project-name "$project" --env-file .env.example -f compose.yaml)
+LAST_RUN_ID=""
 
 cleanup() {
   status=$?
@@ -189,7 +190,7 @@ failure_case() {
   assert_failed_api "$run_id" "$code" "$message"
   assert_failure_db "$run_id" "$code"
   assert_equal "$(provider_calls "$correlation")" 1
-  printf '%s' "$run_id"
+  LAST_RUN_ID=$run_id
 }
 
 "${compose[@]}" build
@@ -202,9 +203,12 @@ wait_healthy app
 start_worker
 wait_healthy worker
 
-auth_id=$(failure_case pr5-auth auth_failure provider_auth_failed "Provider authentication failed")
-timeout_id=$(failure_case pr5-timeout timeout provider_timeout "Provider request timed out")
-empty_id=$(failure_case pr5-empty empty_output provider_empty_output "Provider returned empty output")
+failure_case pr5-auth auth_failure provider_auth_failed "Provider authentication failed"
+auth_id=$LAST_RUN_ID
+failure_case pr5-timeout timeout provider_timeout "Provider request timed out"
+timeout_id=$LAST_RUN_ID
+failure_case pr5-empty empty_output provider_empty_output "Provider returned empty output"
+empty_id=$LAST_RUN_ID
 
 capture_worker_logs worker-provider-failures.log
 stop_worker
