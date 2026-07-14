@@ -44,6 +44,7 @@ For behavior changes, write a deterministic failing test first, then the minimum
 
 The main agent is orchestration-only: it reads requirements, decomposes work, delegates bounded tasks, resolves conflicts, waits for results, and decides the next step. The main agent must not edit or write product code or tests, run acceptance, or perform Git and GitHub release operations.
 
+- Sol is reserved for main orchestration. Every subagent must use only `gpt-5.6-luna` or `gpt-5.6-terra`; all product-code and test-writing roles use Terra.
 - At most one write-capable subagent may work at a time. Read-only scouts and reviewers may run concurrently within `.codex/config.toml` limits.
 - Child agents must not spawn further child agents; `agents.max_depth = 1` enforces direct-child delegation.
 - Each subagent stays within the ownership defined in its `.codex/agents/*.toml` file.
@@ -52,11 +53,12 @@ The main agent is orchestration-only: it reads requirements, decomposes work, de
 
 For each functional PR:
 
-1. `test-author` writes and records deterministic failing tests.
-2. The owning implementation agent makes those tests pass without changing their intent.
-3. `verifier-reviewer` independently runs focused and full checks and reviews scope.
-4. `release-manager` updates requirement-to-test-to-evidence traceability and manages the PR.
-5. Merge only after required checks pass; base the next PR on the latest `main`.
+1. Choose exactly one test author for each functional PR according to the required test type; the two roles must not write the same test scope. `test-author` owns unit, integration, and system RED work. `e2e-verifier` owns Playwright RED work, E2E evidence, and failure diagnosis.
+2. The selected test author writes and records deterministic failing tests.
+3. The owning implementation agent makes those tests pass without changing their intent.
+4. `verifier-reviewer` independently runs focused and full checks and reviews scope.
+5. `release-manager` updates requirement-to-test-to-evidence traceability and manages the PR.
+6. Merge only after required checks pass; base the next PR on the latest `main`.
 
 Do not mask a defect by rerunning CI. Fix merged defects through a new PR.
 
