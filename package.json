@@ -17,7 +17,9 @@
     "test:governance": "node --test test/governance/pr1-governance.test.mjs",
     "test:definition": "vitest run --config vitest.config.ts",
     "test:runtime-contract": "node --test test/runtime/runtime-contract.test.mjs",
-    "test:runtime": "vitest run --config vitest.runtime.config.ts"
+    "test:runtime": "vitest run --config vitest.runtime.config.ts",
+    "test:failure:unit": "vitest run --config vitest.failure.config.ts test/failure/provider-failure.contract.test.ts",
+    "test:failure:pg": "vitest run --config vitest.failure.config.ts test/failure/terminal-failure.integration.test.ts"
   },
   "dependencies": {
     "@mariozechner/pi-agent-core": "0.73.1",

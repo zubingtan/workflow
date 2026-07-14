@@ -2,11 +2,11 @@
 
 - **Version:** v0.4-M0
 - **Status:** Accepted implementation contract
-- **Applies to:** PR3 definition versioning and PR4 asynchronous happy path
+- **Applies to:** PR3 definition versioning, PR4 asynchronous happy path, and PR5 terminal failures
 
 ## 1. Authority and scope
 
-This specification freezes the smallest executable contract needed by PR3 and PR4. When documents disagree, use the precedence in [M0 Implementation Plan — Authority and Conflict Resolution](./implementation-plan.md#authority-and-conflict-resolution): current explicit user decisions, Roadmap, Automated Acceptance, accepted ADRs, Design Doc, PRD and Testing UX, Documentation Governance, then supporting documents.
+This specification freezes the smallest executable contract needed by PR3 through PR5. When documents disagree, use the precedence in [M0 Implementation Plan — Authority and Conflict Resolution](./implementation-plan.md#authority-and-conflict-resolution): current explicit user decisions, Roadmap, Automated Acceptance, accepted ADRs, Design Doc, PRD and Testing UX, Documentation Governance, then supporting documents.
 
 The source requirements are:
 
@@ -18,7 +18,7 @@ The source requirements are:
 
 The Roadmap places complete Agent Definition Version governance and the full Event/Attempt reliability model in M1. The higher-priority current decisions bring forward only the minimal immutable Agent Version reference, one Attempt per executed node, and the basic append-only events required to explain an M0 Run. Retry, event streaming, replay, and broader Agent governance remain outside PR4.
 
-PR3 covers Definition schema, validation, canonicalization, immutable versions, and Workflow import/list/detail APIs. PR4 adds only the asynchronous successful path: Run creation and polling, an internal PostgreSQL queue lease, worker execution through Pi and the Fake Provider, basic persisted events, and PostgreSQL Markdown output. PR5 owns failures and crash handling; PR6 owns UI implementation.
+PR3 covers Definition schema, validation, canonicalization, immutable versions, and Workflow import/list/detail APIs. PR4 adds the asynchronous successful path. PR5 adds only terminal Provider failures, worker-loss classification without automatic model replay, restart persistence, and secret redaction. PR6 owns UI implementation.
 
 ## 2. Workflow Definition schema
 
@@ -325,7 +325,7 @@ Run request validation uses the same `validation_error` envelope with `nodeId: n
 }
 ```
 
-The fixed messages are `Workflow not found`, `Workflow definition version not found`, and `Run not found` for their respective resources. Provider failures and other runtime error envelopes are deferred to PR5.
+The fixed messages are `Workflow not found`, `Workflow definition version not found`, and `Run not found` for their respective resources. Provider and worker terminal errors are defined in Sections 14 and 15.
 
 ## 8. PR4 runtime records and references
 
@@ -360,14 +360,14 @@ The worker persists the final Output Node value in PostgreSQL as:
 
 The Output Node is the canonical public Markdown result. The local artifact sink is not used for this output.
 
-## 9. Happy-path states and projection
+## 9. M0 states and projection
 
-PR4 uses only these successful-path states:
+PR4 uses the successful states below; PR5 adds the listed terminal failure states:
 
-- Run: `queued`, `running`, `succeeded`.
-- Node Run: `pending`, `queued`, `running`, `succeeded`.
-- Node Attempt: `running`, `succeeded`.
-- Agent Execution: `running`, `succeeded`.
+- Run: `queued`, `running`, `succeeded`, `failed`.
+- Node Run: `pending`, `queued`, `running`, `succeeded`, `failed`, `skipped`.
+- Node Attempt: `running`, `succeeded`, `failed`.
+- Agent Execution: `running`, `succeeded`, `failed`.
 
 Creation produces a `queued` Run, a `queued` Input Node, and `pending` Process and Output Nodes. The worker advances the nodes in fixed order:
 
@@ -378,7 +378,7 @@ output.markdown: pending -> queued -> running -> succeeded
 run:             queued -> running -> succeeded
 ```
 
-Each projection change and its matching event commit in the same database transaction. The external Provider request is outside the database transaction: start facts commit before dispatch, and success facts commit only after a result is received and persisted. PR5 defines what happens when either side of that boundary fails.
+Each projection change and its matching event commit in the same database transaction. The external Provider request is outside the database transaction: start facts commit before dispatch, and success facts commit only after a result is received and persisted. Sections 14 and 15 define failures at that boundary.
 
 ## 10. Queue and worker boundary
 
@@ -390,7 +390,7 @@ The internal queue job uses only `available`, `leased`, and `completed` in the P
 - Concurrent workers cannot successfully claim the same available job.
 - Successful finalization changes the leased job to `completed` in the same transaction that succeeds the Run.
 - Queue jobs, lease owners, and lease timestamps are never exposed by the product API.
-- Lease expiry, stale recovery, crash classification, and unknown external outcomes are deferred to PR5.
+- PR5 sweeps an expired `leased` job to a terminal failed Run; it never returns that job to `available` and never creates another Attempt.
 
 The API handler creates database facts only. It does not call a model, the Fake Provider, or Pi and does not wait for the worker. Only the worker calls the Pi Runtime Adapter; only that adapter calls the configured Fake Provider in normal M0 acceptance. Public IDs and responses never contain Pi session identifiers.
 
@@ -453,6 +453,7 @@ After the creation transaction commits, the API immediately returns exactly `202
   "run": {
     "id": "run-id",
     "status": "succeeded",
+    "error": null,
     "createdAt": "2026-07-15T00:00:00.000Z",
     "startedAt": "2026-07-15T00:00:01.000Z",
     "completedAt": "2026-07-15T00:00:02.000Z",
@@ -474,6 +475,8 @@ After the creation transaction commits, the API immediately returns exactly `202
         "nodeId": "prompt",
         "type": "input.prompt",
         "status": "succeeded",
+        "error": null,
+        "skipReason": null,
         "agentDefinitionVersion": null,
         "providerBindingRef": null,
         "output": null,
@@ -481,6 +484,7 @@ After the creation transaction commits, the API immediately returns exactly `202
           "id": "input-attempt-id",
           "number": 1,
           "status": "succeeded",
+          "error": null,
           "startedAt": "2026-07-15T00:00:01.000Z",
           "completedAt": "2026-07-15T00:00:01.100Z",
           "providerSnapshot": null,
@@ -492,6 +496,8 @@ After the creation transaction commits, the API immediately returns exactly `202
         "nodeId": "analyze",
         "type": "process.agent",
         "status": "succeeded",
+        "error": null,
+        "skipReason": null,
         "agentDefinitionVersion": {
           "id": "seed-agent-v1",
           "version": 1,
@@ -503,6 +509,7 @@ After the creation transaction commits, the API immediately returns exactly `202
           "id": "process-attempt-id",
           "number": 1,
           "status": "succeeded",
+          "error": null,
           "startedAt": "2026-07-15T00:00:01.100Z",
           "completedAt": "2026-07-15T00:00:01.900Z",
           "providerSnapshot": {
@@ -516,6 +523,7 @@ After the creation transaction commits, the API immediately returns exactly `202
           "agentExecution": {
             "id": "agent-execution-id",
             "status": "succeeded",
+            "error": null,
             "startedAt": "2026-07-15T00:00:01.200Z",
             "completedAt": "2026-07-15T00:00:01.800Z",
             "agentDefinitionVersion": {
@@ -539,6 +547,8 @@ After the creation transaction commits, the API immediately returns exactly `202
         "nodeId": "result",
         "type": "output.markdown",
         "status": "succeeded",
+        "error": null,
+        "skipReason": null,
         "agentDefinitionVersion": null,
         "providerBindingRef": null,
         "output": {
@@ -548,6 +558,7 @@ After the creation transaction commits, the API immediately returns exactly `202
           "id": "output-attempt-id",
           "number": 1,
           "status": "succeeded",
+          "error": null,
           "startedAt": "2026-07-15T00:00:01.900Z",
           "completedAt": "2026-07-15T00:00:02.000Z",
           "providerSnapshot": null,
@@ -575,6 +586,7 @@ Before a node starts, its `attempt` and `output` are `null`. `startedAt` is `nul
     {
       "id": "run-id",
       "status": "succeeded",
+      "error": null,
       "createdAt": "2026-07-15T00:00:00.000Z",
       "startedAt": "2026-07-15T00:00:01.000Z",
       "completedAt": "2026-07-15T00:00:02.000Z",
@@ -595,15 +607,93 @@ History includes Runs from every Definition Version of that Workflow and is orde
 
 ## 13. Polling semantics
 
-Run Detail and Run History are uncached database projections. Responses use `Cache-Control: no-store`. A client observes progress by polling `GET /api/runs/:id`; each response returns immediately with the latest committed state. PR4 provides no long polling, streaming response, or SSE.
+Run Detail and Run History are uncached database projections. Responses use `Cache-Control: no-store`. A client observes progress by polling `GET /api/runs/:id`; each response returns immediately with the latest committed state. M0 provides no long polling, streaming response, or SSE.
 
-## 14. Deferred runtime behavior
+## 14. PR5 terminal error contract
 
-PR5 defines provider authentication failure, timeout, empty output, worker loss, outcome unknown, downstream skip, restart persistence proof, and redaction sweeps. PR4 does not invent fallback, retry, lease recovery, or failure transitions for those cases.
+PR5 uses exactly these persisted runtime error codes:
 
-Retry, Cancel, Replay, SSE, multiple Attempts, waiting, Human Interaction, Tool execution, and product-level Event browsing remain outside M0. Later contracts must not mutate historical Definition, Run reference, Attempt, Agent Execution, provider snapshot, Event, prompt, or Markdown facts.
+| Code | Condition | Safe message |
+|---|---|---|
+| `provider_auth_failed` | Provider returns an authentication failure | `Provider authentication failed` |
+| `provider_timeout` | The configured Provider deadline expires | `Provider request timed out` |
+| `provider_empty_output` | A successful response has no text or only whitespace | `Provider returned empty output` |
+| `worker_lost` | An expired lease proves no Provider dispatch started | `Worker was lost before provider dispatch` |
+| `outcome_unknown` | Provider dispatch started but no durable result exists | `Provider outcome is unknown` |
 
-## 15. Acceptance mapping
+The Run, failed Process Node, Process Attempt, and Agent Execution project the same redacted error object:
+
+```json
+{
+  "code": "provider_timeout",
+  "message": "Provider request timed out",
+  "nodeId": "analyze"
+}
+```
+
+No error field contains raw Provider response bodies, headers, URLs, credentials, stack traces, or Pi values. History returns the same Run-level error summary. Successful records keep `error: null`.
+
+For every code above, the already successful Input remains unchanged. The one Process Attempt and its one Agent Execution transition from `running` to `failed`; the Process Node becomes `failed`; the Output Node becomes `skipped` with `error: null`, `skipReason: "upstream_failed"`, `attempt: null`, and `output: null`; then the Run becomes `failed`. No Output Attempt is created.
+
+The failure tail after the common events 1–6 in Section 11 is exactly:
+
+7. `agent.execution.failed`
+8. `node.attempt.failed` for Process
+9. `node.run.skipped` for Output
+10. `workflow.run.failed`
+
+Failure events 7, 8, and 10 store the error code; event 9 stores `skipReason: "upstream_failed"`. The matching projection and event commit together. No failure creates a second Attempt, requeues the job, or repeats a Provider request. Authentication, timeout, and empty-output scenarios each make exactly one Provider request; timeout never causes a second call after its deadline.
+
+## 15. Worker-loss classification and sweep
+
+Before dispatch, the Process Agent Execution durably records `provider_request_started_at`. This marker means a request may have reached the Provider; it is deliberately conservative. A Provider result becomes durable only when its result and `provider_result_persisted_at` commit together.
+
+An expired-lease sweep is atomic and idempotent:
+
+- `provider_request_started_at IS NULL` becomes `worker_lost`.
+- `provider_request_started_at IS NOT NULL` and no durable result becomes `outcome_unknown`.
+- A durable result may be finalized from PostgreSQL without another Provider call.
+- The sweep applies the failure projection and events from Section 14, changes the queue job to terminal `completed`, and never changes it back to `available`.
+- Repeating the sweep makes no state change, appends no event, and performs no Provider request.
+
+M0 never retries or replays a model request after worker loss. `worker_lost` is used only when durable evidence proves dispatch did not start; ambiguity is classified as `outcome_unknown`.
+
+## 16. Deterministic failure controls
+
+The Fake Provider exposes test-only modes `success`, `auth_failure`, `timeout`, and `empty_output`. The worker exposes test-only fault hooks `before_model_request` and `after_model_request_before_persist`. These controls are acceptance configuration, not product API fields.
+
+- `auth_failure` increments the per-test Provider request counter once and produces `provider_auth_failed`.
+- `timeout` increments it once, exceeds the deterministic deadline, and produces `provider_timeout`.
+- `empty_output` increments it once, returns empty or whitespace text, and produces `provider_empty_output`.
+- `before_model_request` terminates the worker before `provider_request_started_at`; the counter remains zero and the sweep produces `worker_lost`.
+- `after_model_request_before_persist` terminates after the Provider counter reaches one and before a durable result; the sweep produces `outcome_unknown`.
+
+Counters are scoped by acceptance correlation and are diagnostic-only. They prove zero replay and are not exposed in Workflow, Run, Node, or Event APIs.
+
+## 17. Restart persistence
+
+PostgreSQL is the only product-state source. After all app, worker, PostgreSQL, and Fake Provider containers stop and restart with the same database volume:
+
+- Workflow and Agent Version references, original prompt, Run and Node states, Attempts, Agent Execution, events, provider snapshot, errors, skip reason, and Markdown remain queryable.
+- Run History reopens the same Run and `GET /api/runs/:id` returns the same terminal projection.
+- A terminal Run does not enqueue work or change the Provider request counter.
+- An expired in-flight lease is swept once under Section 15 and never causes a duplicate call.
+
+No in-memory worker or Pi session state is required to explain a terminal Run.
+
+## 18. Redaction and schema deltas
+
+PR5 adds nullable error code/message columns to Run, Node, Attempt, and Agent Execution records; a nullable Node `skip_reason`; Agent Execution `provider_request_started_at` and `provider_result_persisted_at`; and nullable Event `error_code` and `skip_reason`. Error codes are limited to Section 14, and `skip_reason` is limited to `upstream_failed` in M0.
+
+Persisted and projected Provider data uses the Section 8 allowlist only: Binding alias, effective Provider, effective Model, and explicitly non-secret parameters. Product tables, APIs, events, logs, and acceptance evidence must omit credential values and names, Base URLs, `apiKeyEnv`, Pi session/internal data, request headers, and raw Provider request or response bodies. Safe error messages come only from the table in Section 14; external messages are never passed through.
+
+If diagnostic text must retain surrounding content, every configured credential value is replaced with `[REDACTED]` before persistence or logging. Acceptance injects a unique secret sentinel and scans serialized API responses, product-table exports, event exports, app/worker/Fake Provider logs, and PR5 evidence; any sentinel match fails M0-T11. PR6 extends the same rule to DOM/browser evidence. PR7 creates the final redacted Support Bundle; PR5 does not create that bundle.
+
+## 19. Deferred runtime behavior
+
+Retry, Cancel, Replay, SSE, multiple Attempts, waiting, Human Interaction, Tool execution, and product-level Event browsing remain outside M0. Later contracts must not mutate historical Definition, Run reference, Attempt, Agent Execution, provider snapshot, Event, prompt, Markdown, error, or skip facts. PR6 UI behavior and PR7 Support Bundle creation remain deferred.
+
+## 20. Acceptance mapping
 
 PR3 provides the non-UI evidence for:
 
@@ -611,5 +701,14 @@ PR3 provides the non-UI evidence for:
 - **M0-T04:** each invalid fixture returns the fixed node- or field-level error and leaves Workflow and Version row counts unchanged.
 
 PR4 provides the M0-T05 evidence that Run creation returns `202` before execution, the worker runs Input, Agent, and Output in order through the Fake Provider, one Attempt is retained per node, ordered events and immutable version/provider facts are persisted, and PostgreSQL Markdown is available through Run Detail.
+
+PR5 provides:
+
+- **M0-T06:** authentication failure produces `provider_auth_failed`, Process failed, Output skipped, Run failed, and one Provider call.
+- **M0-T07:** deterministic timeout produces `provider_timeout`, a terminal Run, and exactly one Provider call.
+- **M0-T07E:** empty or whitespace output produces `provider_empty_output` and no Markdown Output.
+- **M0-T08:** before-dispatch loss becomes `worker_lost`; after-dispatch/no-result loss becomes `outcome_unknown`; neither path requeues or repeats a model call.
+- **M0-T09:** a full restart preserves terminal history, nodes, attempts, events, snapshots, errors, version references, and Markdown without duplicate calls.
+- **M0-T11:** the sentinel scan passes across API, database, events, logs, and PR5 evidence.
 
 The UI portion of M0-T04 and browser coverage remain pending PR6. Requirement-to-test-to-evidence traceability follows [`docs/source/v0.4/09-MILESTONE-AUTOMATED-ACCEPTANCE.md`, `Requirement Traceability`](../../source/v0.4/09-MILESTONE-AUTOMATED-ACCEPTANCE.md).

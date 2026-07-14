@@ -159,6 +159,9 @@ while (Date.now() < deadline) {
   await new Promise((resolve) => setTimeout(resolve, 250));
 }
 if (body?.run?.status !== "succeeded") throw new Error(`Run did not succeed before deadline: ${JSON.stringify(body)}`);
+if (body.run.error !== null || body.run.nodes.some((node) => node.error !== null || node.skipReason !== null)) {
+  throw new Error("successful projection must expose null failure fields");
+}
 if (body.run.nodes.map((node) => `${node.type}:${node.status}`).join(",") !==
   "input.prompt:succeeded,process.agent:succeeded,output.markdown:succeeded") {
   throw new Error(`unexpected final nodes: ${JSON.stringify(body.run.nodes)}`);
@@ -166,8 +169,14 @@ if (body.run.nodes.map((node) => `${node.type}:${node.status}`).join(",") !==
 if (body.run.nodes.some((node) => node.attempt?.number !== 1 || node.attempt?.status !== "succeeded")) {
   throw new Error(`expected one succeeded Attempt per node: ${JSON.stringify(body.run.nodes)}`);
 }
+if (body.run.nodes.some((node) => node.attempt?.error !== null)) {
+  throw new Error("successful Attempts must expose error null");
+}
 const processNode = body.run.nodes[1];
 const outputNode = body.run.nodes[2];
+if (processNode.attempt.agentExecution?.error !== null) {
+  throw new Error("successful Agent Execution must expose error null");
+}
 const snapshot = {
   bindingAlias: "fake-default",
   effectiveProvider: "openai-compatible",
