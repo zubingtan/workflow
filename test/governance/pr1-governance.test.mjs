@@ -13,8 +13,8 @@ const repositoryRoot = path.resolve(
 
 const approvedAgents = {
   "backend-runtime": {
-    model: "gpt-5.6-sol",
-    effort: "high",
+    model: "gpt-5.6-terra",
+    effort: "ultra",
   },
   "docs-contract": {
     model: "gpt-5.6-luna",
@@ -37,12 +37,12 @@ const approvedAgents = {
     effort: "max",
   },
   "test-author": {
-    model: "gpt-5.6-sol",
-    effort: "high",
+    model: "gpt-5.6-terra",
+    effort: "ultra",
   },
   "verifier-reviewer": {
-    model: "gpt-5.6-sol",
-    effort: "high",
+    model: "gpt-5.6-terra",
+    effort: "ultra",
   },
 };
 
@@ -202,10 +202,14 @@ test("agent policy contains no MDC files or unapproved model declarations", () =
   const approvedModels = new Set([
     "gpt-5.6-luna",
     "gpt-5.6-terra",
-    "gpt-5.6-sol",
   ]);
   for (const fileName of readdirSync(agentDirectory).filter((name) => name.endsWith(".toml"))) {
     const content = readFileSync(path.join(agentDirectory, fileName), "utf8");
+    assert.doesNotMatch(
+      content,
+      /gpt-5\.6-sol/,
+      `${fileName} must not assign the orchestration-only Sol model to a subagent`,
+    );
     const declaredModel = tomlString(content, "model");
     assert.equal(
       approvedModels.has(declaredModel),
@@ -232,6 +236,26 @@ test("root AGENTS.md limits the main agent to orchestration and enforces one wri
     content,
     /(at most|no more than|only)\s+(one|1)\s+(write-capable|writing|write|writer)[\s\S]{0,120}(subagent|agent|at a time|concurrent)/i,
     "AGENTS.md must permit at most one write-capable subagent at a time",
+  );
+  assert.match(
+    content,
+    /Sol is reserved for main orchestration[\s\S]{0,180}(Luna|gpt-5\.6-luna)[\s\S]{0,80}(Terra|gpt-5\.6-terra)/i,
+    "AGENTS.md must reserve Sol for main orchestration and limit subagents to Luna or Terra",
+  );
+  assert.match(
+    content,
+    /test-author[\s\S]{0,120}unit[\s\S]{0,40}integration[\s\S]{0,40}system[\s\S]{0,40}RED/i,
+    "AGENTS.md must assign unit, integration, and system RED work to test-author",
+  );
+  assert.match(
+    content,
+    /e2e-verifier[\s\S]{0,120}Playwright RED[\s\S]{0,80}E2E evidence[\s\S]{0,80}(diagnosis|diagnoses)/i,
+    "AGENTS.md must assign Playwright RED, E2E evidence, and diagnosis to e2e-verifier",
+  );
+  assert.match(
+    content,
+    /exactly one test author[\s\S]{0,100}functional PR[\s\S]{0,180}(must not|never)[\s\S]{0,100}same test scope/i,
+    "AGENTS.md must select one test author per functional PR and prohibit overlapping ownership",
   );
 });
 
