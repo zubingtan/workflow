@@ -251,35 +251,60 @@ databaseSuite("M0-T03/T04 API and PostgreSQL versioning", () => {
     await expectNoPersistedDefinition(name);
   });
 
-  test("invalid server binding configuration returns redacted 5xx and persists nothing", async () => {
-    const unreadable = path.join(bindingsDirectory, "directory-not-file");
-    await mkdir(unreadable);
-    const malformed = path.join(bindingsDirectory, "malformed.json");
-    await writeFile(malformed, '{"leak":"CONFIG_SECRET_DO_NOT_LEAK"');
-    const baseBinding = {
-      provider: "openai-compatible",
-      baseUrl: "https://sensitive-provider.internal/v1",
-      apiKeyEnv: "FAKE_PROVIDER_API_KEY",
-      model: "fake-m0",
-      parameters: { temperature: 0 },
-    };
-    const configurations = [
-      ["missing file", path.join(bindingsDirectory, "missing.json")],
-      ["unreadable file", unreadable],
-      ["malformed JSON", malformed],
-      ["null alias", { bindings: { "fake-default": null } }],
-      ["invalid field", { bindings: { "fake-default": { ...baseBinding, baseUrl: 42 } } }],
-      ["null field", { bindings: { "fake-default": { ...baseBinding, model: null } } }],
-      ["missing field", { bindings: { "fake-default": { ...baseBinding, provider: undefined } } }],
-    ] as const;
+  const baseBinding = {
+    provider: "openai-compatible",
+    baseUrl: "https://sensitive-provider.internal/v1",
+    apiKeyEnv: "FAKE_PROVIDER_API_KEY",
+    model: "fake-m0",
+    parameters: { temperature: 0 },
+  };
+  const bindingConfigurationCases: Array<[
+    string,
+    (directory: string) => Promise<string>,
+  ]> = [
+    ["missing file", async (directory) => path.join(directory, `missing-${randomUUID()}.json`)],
+    ["unreadable file", async (directory) => {
+      const file = path.join(directory, `directory-not-file-${randomUUID()}`);
+      await mkdir(file);
+      return file;
+    }],
+    ["malformed JSON", async (directory) => {
+      const file = path.join(directory, `malformed-${randomUUID()}.json`);
+      await writeFile(file, '{"leak":"CONFIG_SECRET_DO_NOT_LEAK"');
+      return file;
+    }],
+    ["null alias", async (directory) => {
+      const file = path.join(directory, `null-alias-${randomUUID()}.json`);
+      await writeFile(file, JSON.stringify({ bindings: { "fake-default": null } }));
+      return file;
+    }],
+    ["invalid field", async (directory) => {
+      const file = path.join(directory, `invalid-field-${randomUUID()}.json`);
+      await writeFile(file, JSON.stringify({
+        bindings: { "fake-default": { ...baseBinding, baseUrl: 42 } },
+      }));
+      return file;
+    }],
+    ["null field", async (directory) => {
+      const file = path.join(directory, `null-field-${randomUUID()}.json`);
+      await writeFile(file, JSON.stringify({
+        bindings: { "fake-default": { ...baseBinding, model: null } },
+      }));
+      return file;
+    }],
+    ["missing field", async (directory) => {
+      const file = path.join(directory, `missing-field-${randomUUID()}.json`);
+      await writeFile(file, JSON.stringify({
+        bindings: { "fake-default": { ...baseBinding, provider: undefined } },
+      }));
+      return file;
+    }],
+  ];
 
-    for (const [label, configuration] of configurations) {
-      const file = typeof configuration === "string"
-        ? configuration
-        : path.join(bindingsDirectory, `${label.replaceAll(" ", "-")}.json`);
-      if (typeof configuration !== "string") {
-        await writeFile(file, JSON.stringify(configuration));
-      }
+  test.each(bindingConfigurationCases)(
+    "invalid server binding configuration: %s returns redacted 5xx and persists nothing",
+    async (label, createFixture) => {
+      const file = await createFixture(bindingsDirectory);
       const name = `config-error-${randomUUID()}`;
       const response = await withBindingsFile(file, () =>
         importWorkflow(validDefinition(name)));
@@ -297,6 +322,6 @@ databaseSuite("M0-T03/T04 API and PostgreSQL versioning", () => {
       expect(body, label).not.toContain("SyntaxError");
       expect(body, label).not.toContain("Unexpected end of JSON input");
       await expectNoPersistedDefinition(name);
-    }
-  });
+    },
+  );
 });
