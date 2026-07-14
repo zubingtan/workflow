@@ -38,8 +38,12 @@ wait_healthy fake-provider
 "${compose[@]}" exec -T postgres sh -eu -c '
   workflow_count="$(psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -Atc "SELECT COUNT(*) FROM workflows")"
   agent_definition_count="$(psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -Atc "SELECT COUNT(*) FROM agent_definitions")"
+  workflow_version_count="$(psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -Atc "SELECT COUNT(*) FROM workflow_definition_versions")"
+  agent_version_count="$(psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -Atc "SELECT COUNT(*) FROM agent_definition_versions")"
   test "$workflow_count" -ge 1
   test "$agent_definition_count" -ge 1
+  test "$workflow_version_count" -ge 1
+  test "$agent_version_count" -ge 1
 '
 
 "${compose[@]}" up -d app worker

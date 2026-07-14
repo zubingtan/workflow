@@ -14,7 +14,8 @@
     "worker": "node scripts/worker.mjs",
     "fake-provider": "node scripts/fake-provider.mjs",
     "test": "node --test test/governance/*.test.mjs test/bootstrap/*.test.mjs",
-    "test:governance": "node --test test/governance/pr1-governance.test.mjs"
+    "test:governance": "node --test test/governance/pr1-governance.test.mjs",
+    "test:definition": "vitest run --config vitest.config.ts"
   },
   "dependencies": {
     "next": "16.2.10",
@@ -26,6 +27,7 @@
     "@types/node": "22.20.1",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
-    "typescript": "7.0.2"
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
   }
 }
