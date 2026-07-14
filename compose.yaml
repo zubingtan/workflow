@@ -9,7 +9,7 @@ services:
       PROVIDER_BINDINGS_FILE: ${PROVIDER_BINDINGS_FILE}
       FAKE_PROVIDER_API_KEY: ${FAKE_PROVIDER_API_KEY}
     ports:
-      - "${APP_PORT:-3000}:3000"
+      - "127.0.0.1:${APP_PORT:-3000}:3000"
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -68,8 +68,6 @@ services:
     command: ["node", "scripts/fake-provider.mjs"]
     environment:
       FAKE_PROVIDER_API_KEY: ${FAKE_PROVIDER_API_KEY}
-    ports:
-      - "4010:4010"
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4010/health/live').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 2s
