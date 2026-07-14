@@ -15,7 +15,9 @@
     "fake-provider": "node scripts/fake-provider.mjs",
     "test": "node --test test/governance/*.test.mjs test/bootstrap/*.test.mjs",
     "test:governance": "node --test test/governance/pr1-governance.test.mjs",
-    "test:definition": "vitest run --config vitest.config.ts"
+    "test:definition": "vitest run --config vitest.config.ts",
+    "test:runtime-contract": "node --test test/runtime/runtime-contract.test.mjs",
+    "test:runtime": "vitest run --config vitest.runtime.config.ts"
   },
   "dependencies": {
     "next": "16.2.10",
