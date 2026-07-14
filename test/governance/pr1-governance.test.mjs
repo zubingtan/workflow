@@ -317,3 +317,21 @@ test("make verify-m0 is an explicit REWORK placeholder", () => {
   assert.notEqual(result.status, 0, "verify-m0 must remain nonzero until M0 acceptance exists");
   assert.match(output, /REWORK/i, "verify-m0 must identify its placeholder status as REWORK");
 });
+
+test("active PR gate uses current checkout and setup-node actions", () => {
+  const workflow = requireFile(".github/workflows/pr-gate.yml");
+  const actions = [...workflow.matchAll(/^\s*uses:\s*actions\/(checkout|setup-node)@([^\s#]+)\s*$/gm)]
+    .map((match) => ({ name: match[1], version: match[2] }));
+
+  assert.deepEqual(
+    {
+      missing: ["checkout", "setup-node"].filter(
+        (name) => !actions.some((action) => action.name === name),
+      ),
+      outdated: actions
+        .filter((action) => action.version !== "v7")
+        .map((action) => `${action.name}@${action.version}`),
+    },
+    { missing: [], outdated: [] },
+  );
+});
