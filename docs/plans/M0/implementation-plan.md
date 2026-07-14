@@ -43,6 +43,10 @@ The thirteen files under `docs/source/v0.4` are an immutable source snapshot. Pr
 
 Every functional PR preserves RED-before-GREEN evidence, receives independent verification, and merges before the next PR starts from the latest `main`.
 
+## Toolchain Compatibility
+
+TypeScript 7.0.2 no longer ships the legacy `typescript/lib/typescript.js` compiler API file that Next.js 16.2.10 checks during a standard build. Until a stable Next.js release supports that package layout, the build runs `tsc --noEmit` first and then uses Next.js two-phase `compile` and `generate` build modes. No shim, prerelease dependency, or TypeScript downgrade is used.
+
 ## Deferred
 
 Builder, Feishu, Logic/Loop, Human Interaction, Tool Gateway, Memory, product-level Subagent support, arbitrary code, multi-user/RBAC, Temporal, SSE, Retry/Cancel, Replay/Compare, and product Artifact browsing are outside M0.
