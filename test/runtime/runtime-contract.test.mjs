@@ -62,7 +62,10 @@ test("PR4 pins the approved Pi 0.73.1 runtime dependency", async () => {
   assert.equal(packageJson.dependencies?.[piPackage], "0.73.1");
 
   const lockfile = await readFile(path.join(root, "pnpm-lock.yaml"), "utf8");
-  assert.match(lockfile, /@mariozechner\/pi-agent-core:\s*\n\s+specifier: 0\.73\.1\s*\n\s+version: 0\.73\.1/);
+  assert.match(
+    lockfile,
+    /(?:["']@mariozechner\/pi-agent-core["']|@mariozechner\/pi-agent-core):[ \t]*\r?\n[ \t]+specifier: 0\.73\.1[ \t]*\r?\n[ \t]+version: 0\.73\.1(?:\([^()\r\n]+\))*[ \t]*(?=\r?\n|$)/,
+  );
 });
 
 test("only one dedicated adapter imports Pi and the worker reaches that adapter", async () => {
