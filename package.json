@@ -1,0 +1,12 @@
+{
+  "name": "oncall-workflow-platform",
+  "version": "0.0.0",
+  "private": true,
+  "engines": {
+    "node": "22.x"
+  },
+  "scripts": {
+    "test": "node --test test/governance/pr1-governance.test.mjs",
+    "test:governance": "node --test test/governance/pr1-governance.test.mjs"
+  }
+}
