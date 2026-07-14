@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS workflow_runs (
   completed_at timestamptz,
   CHECK (jsonb_typeof(input) = 'object'),
   CHECK (input ? 'prompt'),
-  CHECK (jsonb_object_length(input) = 1),
+  CHECK (input = jsonb_build_object('prompt', input->'prompt')),
   CHECK (jsonb_typeof(input->'prompt') = 'string'),
   CHECK (input->>'prompt' <> ''),
   CHECK ((status = 'queued' AND started_at IS NULL AND completed_at IS NULL)
