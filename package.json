@@ -6,7 +6,7 @@
     "node": "22.x"
   },
   "scripts": {
-    "test": "node --test test/governance/pr1-governance.test.mjs",
+    "test": "node --test test/governance/*.test.mjs test/bootstrap/*.test.mjs",
     "test:governance": "node --test test/governance/pr1-governance.test.mjs"
   }
 }

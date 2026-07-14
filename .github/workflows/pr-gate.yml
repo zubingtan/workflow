@@ -7,8 +7,8 @@ permissions:
   contents: read
 
 jobs:
-  governance:
-    name: governance
+  contracts:
+    name: governance and bootstrap contracts
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -19,3 +19,12 @@ jobs:
           node-version: 22
       - name: Run governance contract tests
         run: npm test
+
+  bootstrap-system:
+    name: bootstrap system
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Run clean Compose bootstrap
+        run: test/bootstrap/system-bootstrap.sh
