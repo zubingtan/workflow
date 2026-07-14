@@ -1,0 +1,91 @@
+{
+  "document_set": "Oncall Workflow Platform v0.4",
+  "validated_at": "2026-07-14T14:46:34.052445+00:00",
+  "root": "/mnt/data/oncall-workflow-platform-v0.4",
+  "summary": {
+    "passed": 13,
+    "failed": 0,
+    "total": 13
+  },
+  "checks": [
+    {
+      "name": "core_files_exist",
+      "passed": true,
+      "details": {
+        "missing": []
+      }
+    },
+    {
+      "name": "all_core_documents_are_v0_4",
+      "passed": true,
+      "details": {
+        "not_v0_4": []
+      }
+    },
+    {
+      "name": "relative_markdown_links_resolve",
+      "passed": true,
+      "details": {
+        "broken": []
+      }
+    },
+    {
+      "name": "code_fences_balanced",
+      "passed": true,
+      "details": {
+        "unbalanced": []
+      }
+    },
+    {
+      "name": "milestone_verification_commands_complete",
+      "passed": true,
+      "details": {
+        "missing": []
+      }
+    },
+    {
+      "name": "context_engineering_boundary_consistent",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "name": "durable_execution_decision_consistent",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "name": "no_combined_adr_status",
+      "passed": true,
+      "details": {
+        "violations": []
+      }
+    },
+    {
+      "name": "m0_minimum_nodes_explicit",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "name": "memory_rollout_is_staged",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "name": "deerflow_adoption_boundary_explicit",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "name": "m3_business_value_not_falsely_claimed_fully_automated",
+      "passed": true,
+      "details": ""
+    },
+    {
+      "name": "no_stale_v0_3_mentions_in_core",
+      "passed": true,
+      "details": {
+        "mentions": []
+      }
+    }
+  ]
+}
