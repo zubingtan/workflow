@@ -1,6 +1,39 @@
 import { Agent } from "@mariozechner/pi-agent-core";
+import { streamSimple } from "@mariozechner/pi-ai";
 
-export async function runPiAgent({ prompt, provider, baseUrl, apiKey, model: modelId, parameters }) {
+const providerFailures = {
+  provider_auth_failed: "Provider authentication failed",
+  provider_timeout: "Provider request timed out",
+  provider_empty_output: "Provider returned empty output",
+};
+
+export class ProviderRuntimeError extends Error {
+  constructor(code) {
+    super(providerFailures[code]);
+    this.name = "ProviderRuntimeError";
+    this.code = code;
+  }
+}
+
+function providerError(message) {
+  if (/(^|\D)(401|403)(\D|$)/.test(message)) {
+    return new ProviderRuntimeError("provider_auth_failed");
+  }
+  if (/timed out/i.test(message)) {
+    return new ProviderRuntimeError("provider_timeout");
+  }
+  return new Error("Provider request failed");
+}
+
+export async function runPiAgent({
+  prompt,
+  provider,
+  baseUrl,
+  apiKey,
+  model: modelId,
+  parameters,
+  timeoutMs = 30_000,
+}) {
   const model = {
     id: modelId,
     name: modelId,
@@ -22,6 +55,11 @@ export async function runPiAgent({ prompt, provider, baseUrl, apiKey, model: mod
       messages: [],
     },
     getApiKey: () => apiKey,
+    streamFn: (streamModel, context, options) => streamSimple(streamModel, context, {
+      ...options,
+      timeoutMs,
+      maxRetries: 0,
+    }),
     onPayload: (payload) => {
       if (payload === null || typeof payload !== "object" || Array.isArray(payload)) return payload;
       if (typeof parameters.temperature !== "number") return payload;
@@ -33,10 +71,14 @@ export async function runPiAgent({ prompt, provider, baseUrl, apiKey, model: mod
   const message = agent.state.messages.findLast((candidate) => candidate.role === "assistant");
   if (!message || message.role !== "assistant") throw new Error("Pi did not return an assistant message");
   if (message.stopReason === "error" || message.stopReason === "aborted") {
-    throw new Error("Pi model call did not complete");
+    throw providerError(message.errorMessage ?? "");
   }
-  return message.content
+  const output = message.content
     .filter((content) => content.type === "text")
     .map((content) => content.text)
     .join("");
+  if (output.trim().length === 0) {
+    throw new ProviderRuntimeError("provider_empty_output");
+  }
+  return output;
 }

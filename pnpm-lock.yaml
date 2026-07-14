@@ -11,6 +11,9 @@ importers:
       '@mariozechner/pi-agent-core':
         specifier: 0.73.1
         version: 0.73.1(ws@8.21.0)(zod@4.4.3)
+      '@mariozechner/pi-ai':
+        specifier: 0.73.1
+        version: 0.73.1(ws@8.21.0)(zod@4.4.3)
       next:
         specifier: 16.2.10
         version: 16.2.10(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
