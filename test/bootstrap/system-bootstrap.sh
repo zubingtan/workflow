@@ -36,10 +36,10 @@ wait_healthy fake-provider
 "${compose[@]}" run --rm --no-deps migrate
 
 "${compose[@]}" exec -T postgres sh -eu -c '
-  psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 <<SQL
-SELECT CASE WHEN COUNT(*) >= 1 THEN 1 ELSE 1/0 END FROM workflows;
-SELECT CASE WHEN COUNT(*) >= 1 THEN 1 ELSE 1/0 END FROM agent_definitions;
-SQL
+  workflow_count="$(psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -Atc "SELECT COUNT(*) FROM workflows")"
+  agent_definition_count="$(psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -Atc "SELECT COUNT(*) FROM agent_definitions")"
+  test "$workflow_count" -ge 1
+  test "$agent_definition_count" -ge 1
 '
 
 "${compose[@]}" up -d app worker
