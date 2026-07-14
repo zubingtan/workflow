@@ -7,7 +7,7 @@
     "node": "22.x"
   },
   "scripts": {
-    "build": "tsc --noEmit && next build --experimental-build-mode compile && next build --experimental-build-mode generate",
+    "build": "next build --experimental-build-mode compile && tsc --noEmit && next build --experimental-build-mode generate",
     "dev": "next dev",
     "start": "next start",
     "typecheck": "tsc --noEmit",
