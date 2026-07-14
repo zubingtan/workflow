@@ -1,5 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 import type postgres from "postgres";
 import {
   applyMigrations,
@@ -18,15 +21,50 @@ const databaseSuite = process.env.DATABASE_URL ? describe : describe.skip;
 
 databaseSuite("M0-T03/T04 API and PostgreSQL versioning", () => {
   let sql: ReturnType<typeof postgres>;
+  let bindingsDirectory: string;
 
   beforeAll(async () => {
     process.env.PROVIDER_BINDINGS_FILE ??= `${process.cwd()}/config/provider-bindings.example.json`;
     process.env.FAKE_PROVIDER_API_KEY = "PR3_TEST_SECRET_DO_NOT_LEAK";
+    bindingsDirectory = await mkdtemp(path.join(tmpdir(), "workflow-pr3-bindings-"));
     sql = connectDatabase();
     await applyMigrations(sql);
   });
 
-  afterAll(async () => sql?.end({ timeout: 1 }));
+  afterAll(async () => {
+    await sql?.end({ timeout: 1 });
+    await rm(bindingsDirectory, { force: true, recursive: true });
+  });
+
+  async function withBindingsFile<T>(
+    file: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const previous = process.env.PROVIDER_BINDINGS_FILE;
+    process.env.PROVIDER_BINDINGS_FILE = file;
+    vi.resetModules();
+    try {
+      return await operation();
+    } finally {
+      if (previous === undefined) delete process.env.PROVIDER_BINDINGS_FILE;
+      else process.env.PROVIDER_BINDINGS_FILE = previous;
+      vi.resetModules();
+    }
+  }
+
+  async function expectNoPersistedDefinition(name: string) {
+    const [counts] = await sql`
+      SELECT
+        (SELECT count(*)::int FROM workflows WHERE name = ${name}) AS workflows,
+        (
+          SELECT count(*)::int
+          FROM workflow_definition_versions version
+          JOIN workflows workflow ON workflow.id = version.workflow_id
+          WHERE workflow.name = ${name}
+        ) AS versions
+    `;
+    expect(counts).toEqual({ workflows: 0, versions: 0 });
+  }
 
   test("POST import persists canonical JSON/SHA-256 and versions repeated content", async () => {
     const definition = validDefinition(`import-${randomUUID()}`);
@@ -181,5 +219,84 @@ databaseSuite("M0-T03/T04 API and PostgreSQL versioning", () => {
       "PR3_TEST_SECRET_DO_NOT_LEAK", "http://fake-provider:4010/v1", "FAKE_PROVIDER_API_KEY",
       '"baseUrl"', '"apiKey"', '"apiKeyEnv"',
     ]) expect(serialized).not.toContain(forbidden);
+  });
+
+  test("a valid bindings file with an absent alias remains a field validation error", async () => {
+    const file = path.join(bindingsDirectory, "valid-missing-alias.json");
+    await writeFile(file, JSON.stringify({
+      bindings: {
+        configured: {
+          provider: "openai-compatible",
+          baseUrl: "https://sensitive-provider.internal/v1",
+          apiKeyEnv: "FAKE_PROVIDER_API_KEY",
+          model: "fake-m0",
+          parameters: { temperature: 0 },
+        },
+      },
+    }));
+    const name = `missing-alias-${randomUUID()}`;
+    const response = await withBindingsFile(file, () => importWorkflow(mutate((definition) => {
+      definition.spec.nodes[1].config.providerBindingRef = "missing-binding";
+    }, name)));
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body).toMatchObject({
+      code: "validation_error",
+      path: "spec.nodes[1].config.providerBindingRef",
+      nodeId: "analyze",
+    });
+    expect(JSON.stringify(body)).not.toContain("sensitive-provider.internal");
+    expect(JSON.stringify(body)).not.toContain(bindingsDirectory);
+    await expectNoPersistedDefinition(name);
+  });
+
+  test("invalid server binding configuration returns redacted 5xx and persists nothing", async () => {
+    const unreadable = path.join(bindingsDirectory, "directory-not-file");
+    await mkdir(unreadable);
+    const malformed = path.join(bindingsDirectory, "malformed.json");
+    await writeFile(malformed, '{"leak":"CONFIG_SECRET_DO_NOT_LEAK"');
+    const baseBinding = {
+      provider: "openai-compatible",
+      baseUrl: "https://sensitive-provider.internal/v1",
+      apiKeyEnv: "FAKE_PROVIDER_API_KEY",
+      model: "fake-m0",
+      parameters: { temperature: 0 },
+    };
+    const configurations = [
+      ["missing file", path.join(bindingsDirectory, "missing.json")],
+      ["unreadable file", unreadable],
+      ["malformed JSON", malformed],
+      ["null alias", { bindings: { "fake-default": null } }],
+      ["invalid field", { bindings: { "fake-default": { ...baseBinding, baseUrl: 42 } } }],
+      ["null field", { bindings: { "fake-default": { ...baseBinding, model: null } } }],
+      ["missing field", { bindings: { "fake-default": { ...baseBinding, provider: undefined } } }],
+    ] as const;
+
+    for (const [label, configuration] of configurations) {
+      const file = typeof configuration === "string"
+        ? configuration
+        : path.join(bindingsDirectory, `${label.replaceAll(" ", "-")}.json`);
+      if (typeof configuration !== "string") {
+        await writeFile(file, JSON.stringify(configuration));
+      }
+      const name = `config-error-${randomUUID()}`;
+      const response = await withBindingsFile(file, () =>
+        importWorkflow(validDefinition(name)));
+      const body = await response.text();
+
+      expect(response.status, label).toBeGreaterThanOrEqual(500);
+      expect(response.status, label).toBeLessThan(600);
+      expect(body, label).not.toContain("validation_error");
+      expect(body, label).not.toContain(bindingsDirectory);
+      expect(body, label).not.toContain("CONFIG_SECRET_DO_NOT_LEAK");
+      expect(body, label).not.toContain("PR3_TEST_SECRET_DO_NOT_LEAK");
+      expect(body, label).not.toContain("sensitive-provider.internal");
+      expect(body, label).not.toContain("ENOENT");
+      expect(body, label).not.toContain("EISDIR");
+      expect(body, label).not.toContain("SyntaxError");
+      expect(body, label).not.toContain("Unexpected end of JSON input");
+      await expectNoPersistedDefinition(name);
+    }
   });
 });
