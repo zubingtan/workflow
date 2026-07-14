@@ -5,23 +5,25 @@ import postgres from "postgres";
 import { runPiAgent } from "./pi-runtime-adapter.mjs";
 
 const port = Number(process.env.WORKER_HEALTH_PORT ?? 4011);
+const providerTimeoutMs = Number(process.env.WORKER_PROVIDER_TIMEOUT_MS ?? 30_000);
+const leaseMs = Number(process.env.WORKER_LEASE_MS ?? 300_000);
+const faultHook = process.env.WORKER_FAULT_HOOK ?? "";
+const sweepOnly = process.argv.includes("--sweep-expired-leases");
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL is required");
+
+const terminalErrors = {
+  provider_auth_failed: "Provider authentication failed",
+  provider_timeout: "Provider request timed out",
+  provider_empty_output: "Provider returned empty output",
+  worker_lost: "Worker was lost before provider dispatch",
+  outcome_unknown: "Provider outcome is unknown",
+};
 
 const sql = postgres(databaseUrl, { max: 2 });
 const owner = `worker-${randomUUID()}`;
 let running = true;
-
-const healthServer = createServer((request, response) => {
-  if (request.method === "GET" && request.url === "/health/live") {
-    response.writeHead(200, { "content-type": "application/json" });
-    response.end(JSON.stringify({ status: "live" }));
-    return;
-  }
-  response.writeHead(404).end();
-}).listen(port, "0.0.0.0", () => {
-  console.log(`worker health listening on ${port}`);
-});
+let healthServer = null;
 
 function wait(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -41,7 +43,7 @@ async function claimJob() {
     SET
       status = 'leased',
       lease_owner = ${owner},
-      lease_expires_at = now() + interval '5 minutes'
+      lease_expires_at = now() + (${leaseMs} * interval '1 millisecond')
     FROM candidate
     WHERE job.id = candidate.id
     RETURNING job.id, job.workflow_run_id
@@ -54,7 +56,13 @@ async function addEvent(
   runId,
   sequence,
   type,
-  { nodeRunId = null, attemptId = null, agentExecutionId = null } = {},
+  {
+    nodeRunId = null,
+    attemptId = null,
+    agentExecutionId = null,
+    errorCode = null,
+    skipReason = null,
+  } = {},
 ) {
   await transaction`
     INSERT INTO execution_events (
@@ -64,7 +72,9 @@ async function addEvent(
       type,
       node_run_id,
       attempt_id,
-      agent_execution_id
+      agent_execution_id,
+      error_code,
+      skip_reason
     ) VALUES (
       ${`event-${randomUUID()}`},
       ${runId},
@@ -72,7 +82,9 @@ async function addEvent(
       ${type},
       ${nodeRunId},
       ${attemptId},
-      ${agentExecutionId}
+      ${agentExecutionId},
+      ${errorCode},
+      ${skipReason}
     )
   `;
 }
@@ -101,6 +113,67 @@ async function resolveBinding(alias) {
       parameters,
     },
   };
+}
+
+async function terminalizeFailure(transaction, facts, code, persistProviderResult) {
+  const message = terminalErrors[code];
+  await transaction`
+    UPDATE agent_executions
+    SET
+      status = 'failed',
+      error_code = ${code},
+      error_message = ${message},
+      completed_at = now(),
+      provider_result_persisted_at = CASE
+        WHEN ${persistProviderResult} THEN now()
+        ELSE provider_result_persisted_at
+      END
+    WHERE id = ${facts.agentExecutionId} AND status = 'running'
+  `;
+  await addEvent(transaction, facts.runId, 7, "agent.execution.failed", {
+    nodeRunId: facts.processNodeId,
+    attemptId: facts.processAttemptId,
+    agentExecutionId: facts.agentExecutionId,
+    errorCode: code,
+  });
+  await transaction`
+    UPDATE node_run_attempts
+    SET status = 'failed', error_code = ${code}, error_message = ${message}, completed_at = now()
+    WHERE id = ${facts.processAttemptId} AND status = 'running'
+  `;
+  await transaction`
+    UPDATE node_runs
+    SET status = 'failed', error_code = ${code}, error_message = ${message}, completed_at = now()
+    WHERE id = ${facts.processNodeId} AND status = 'running'
+  `;
+  await addEvent(transaction, facts.runId, 8, "node.attempt.failed", {
+    nodeRunId: facts.processNodeId,
+    attemptId: facts.processAttemptId,
+    errorCode: code,
+  });
+  await transaction`
+    UPDATE node_runs
+    SET status = 'skipped', skip_reason = 'upstream_failed', completed_at = now()
+    WHERE id = ${facts.outputNodeId} AND status = 'pending'
+  `;
+  await addEvent(transaction, facts.runId, 9, "node.run.skipped", {
+    nodeRunId: facts.outputNodeId,
+    skipReason: "upstream_failed",
+  });
+  await transaction`
+    UPDATE workflow_runs
+    SET status = 'failed', error_code = ${code}, error_message = ${message}, completed_at = now()
+    WHERE id = ${facts.runId} AND status = 'running'
+  `;
+  const completed = await transaction`
+    UPDATE queue_jobs SET status = 'completed', completed_at = now()
+    WHERE id = ${facts.jobId} AND status = 'leased'
+    RETURNING id
+  `;
+  if (completed.length !== 1) throw new Error("Queue lease was not retained");
+  await addEvent(transaction, facts.runId, 10, "workflow.run.failed", {
+    errorCode: code,
+  });
 }
 
 async function executeJob(job) {
@@ -210,18 +283,54 @@ async function executeJob(job) {
     });
   });
 
-  const markdown = await runPiAgent({
-    prompt: run.prompt,
-    provider: binding.provider,
-    baseUrl: binding.baseUrl,
-    apiKey: binding.apiKey,
-    model: binding.model,
-    parameters: binding.parameters,
-  });
+  const failureFacts = {
+    runId: job.workflow_run_id,
+    jobId: job.id,
+    processNodeId: processNode.id,
+    outputNodeId: outputNode.id,
+    processAttemptId,
+    agentExecutionId,
+  };
 
+  if (faultHook === "before_model_request") process.exit(86);
+  await sql`
+    UPDATE agent_executions SET provider_request_started_at = now()
+    WHERE id = ${agentExecutionId} AND status = 'running'
+  `;
+
+  let markdown;
+  let providerFailure = null;
+  try {
+    markdown = await runPiAgent({
+      prompt: run.prompt,
+      provider: binding.provider,
+      baseUrl: binding.baseUrl,
+      apiKey: binding.apiKey,
+      model: binding.model,
+      parameters: binding.parameters,
+      timeoutMs: providerTimeoutMs,
+    });
+  } catch (error) {
+    if (error && Object.hasOwn(terminalErrors, error.code)) providerFailure = error.code;
+    else throw error;
+  }
+
+  if (faultHook === "after_model_request_before_persist") process.exit(86);
+  if (providerFailure !== null) {
+    await sql.begin((transaction) => terminalizeFailure(
+      transaction,
+      failureFacts,
+      providerFailure,
+      true,
+    ));
+    return;
+  }
+
+  const outputAttemptId = `attempt-${randomUUID()}`;
   await sql.begin(async (transaction) => {
     await transaction`
-      UPDATE agent_executions SET status = 'succeeded', completed_at = now()
+      UPDATE agent_executions
+      SET status = 'succeeded', completed_at = now(), provider_result_persisted_at = now()
       WHERE id = ${agentExecutionId}
     `;
     await addEvent(transaction, job.workflow_run_id, 7, "agent.execution.succeeded", {
@@ -237,17 +346,10 @@ async function executeJob(job) {
       UPDATE node_runs SET status = 'succeeded', completed_at = now()
       WHERE id = ${processNode.id}
     `;
-    await transaction`
-      UPDATE node_runs SET status = 'queued' WHERE id = ${outputNode.id}
-    `;
     await addEvent(transaction, job.workflow_run_id, 8, "node.attempt.succeeded", {
       nodeRunId: processNode.id,
       attemptId: processAttemptId,
     });
-  });
-
-  const outputAttemptId = `attempt-${randomUUID()}`;
-  await sql.begin(async (transaction) => {
     await transaction`
       UPDATE node_runs SET status = 'running', started_at = now()
       WHERE id = ${outputNode.id}
@@ -260,9 +362,6 @@ async function executeJob(job) {
       nodeRunId: outputNode.id,
       attemptId: outputAttemptId,
     });
-  });
-
-  await sql.begin(async (transaction) => {
     await transaction`
       UPDATE node_run_attempts SET status = 'succeeded', completed_at = now()
       WHERE id = ${outputAttemptId}
@@ -293,9 +392,63 @@ async function executeJob(job) {
   });
 }
 
+async function sweepExpiredLease() {
+  return sql.begin(async (transaction) => {
+    const [facts] = await transaction`
+      SELECT
+        job.id AS job_id,
+        job.workflow_run_id AS run_id,
+        process_node.id AS process_node_id,
+        output_node.id AS output_node_id,
+        attempt.id AS process_attempt_id,
+        execution.id AS agent_execution_id,
+        execution.provider_request_started_at
+      FROM queue_jobs AS job
+      JOIN workflow_runs AS run ON run.id = job.workflow_run_id
+      JOIN node_runs AS process_node
+        ON process_node.workflow_run_id = run.id
+        AND process_node.node_type = 'process.agent'
+      JOIN node_run_attempts AS attempt ON attempt.node_run_id = process_node.id
+      JOIN agent_executions AS execution ON execution.node_run_attempt_id = attempt.id
+      JOIN node_runs AS output_node
+        ON output_node.workflow_run_id = run.id
+        AND output_node.node_type = 'output.markdown'
+      WHERE job.status = 'leased'
+        AND job.lease_expires_at <= now()
+        AND run.status = 'running'
+        AND process_node.status = 'running'
+        AND attempt.status = 'running'
+        AND execution.status = 'running'
+        AND execution.provider_result_persisted_at IS NULL
+        AND output_node.status = 'pending'
+      ORDER BY job.lease_expires_at, job.id
+      FOR UPDATE OF job SKIP LOCKED
+      LIMIT 1
+    `;
+    if (!facts) return false;
+    const code = facts.provider_request_started_at === null ? "worker_lost" : "outcome_unknown";
+    await terminalizeFailure(transaction, {
+      runId: facts.run_id,
+      jobId: facts.job_id,
+      processNodeId: facts.process_node_id,
+      outputNodeId: facts.output_node_id,
+      processAttemptId: facts.process_attempt_id,
+      agentExecutionId: facts.agent_execution_id,
+    }, code, false);
+    return true;
+  });
+}
+
+async function sweepExpiredLeases() {
+  while (await sweepExpiredLease()) {
+    // Drain every expired lease available to this one-shot sweeper.
+  }
+}
+
 async function workLoop() {
   while (running) {
     try {
+      await sweepExpiredLeases();
       const job = await claimJob();
       if (job) await executeJob(job);
       else await wait(100);
@@ -309,10 +462,31 @@ async function workLoop() {
 async function stop() {
   if (!running) return;
   running = false;
-  healthServer.close();
+  healthServer?.close();
   await sql.end({ timeout: 1 });
 }
 
-process.once("SIGTERM", stop);
-process.once("SIGINT", stop);
-void workLoop();
+if (sweepOnly) {
+  try {
+    await sweepExpiredLeases();
+  } catch {
+    console.error("expired lease sweep failed");
+    process.exitCode = 1;
+  } finally {
+    await sql.end({ timeout: 1 });
+  }
+} else {
+  healthServer = createServer((request, response) => {
+    if (request.method === "GET" && request.url === "/health/live") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ status: "live" }));
+      return;
+    }
+    response.writeHead(404).end();
+  }).listen(port, "0.0.0.0", () => {
+    console.log(`worker health listening on ${port}`);
+  });
+  process.once("SIGTERM", stop);
+  process.once("SIGINT", stop);
+  void workLoop();
+}

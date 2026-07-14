@@ -136,6 +136,11 @@ function providerSnapshot(value: JsonObject | null) {
   };
 }
 
+function runtimeError(code: string | null, message: string | null, nodeId: string) {
+  if (code === null || message === null) return null;
+  return { code, message, nodeId };
+}
+
 export async function getWorkflowRun(id: string) {
   const sql = getDatabase();
   return sql.begin("ISOLATION LEVEL REPEATABLE READ READ ONLY", async (transaction) => {
@@ -147,6 +152,8 @@ export async function getWorkflowRun(id: string) {
         run.created_at,
         run.started_at,
         run.completed_at,
+        run.error_code,
+        run.error_message,
         workflow.id AS workflow_id,
         workflow.name AS workflow_name,
         version.id AS version_id,
@@ -168,6 +175,9 @@ export async function getWorkflowRun(id: string) {
         node.status,
         node.provider_binding_ref,
         node.output,
+        node.error_code AS node_error_code,
+        node.error_message AS node_error_message,
+        node.skip_reason,
         agent_version.id AS agent_version_id,
         agent_version.version AS agent_version_number,
         agent_version.hash AS agent_version_hash,
@@ -177,11 +187,15 @@ export async function getWorkflowRun(id: string) {
         attempt.started_at AS attempt_started_at,
         attempt.completed_at AS attempt_completed_at,
         attempt.provider_snapshot AS attempt_provider_snapshot,
+        attempt.error_code AS attempt_error_code,
+        attempt.error_message AS attempt_error_message,
         execution.id AS execution_id,
         execution.status AS execution_status,
         execution.started_at AS execution_started_at,
         execution.completed_at AS execution_completed_at,
         execution.provider_snapshot AS execution_provider_snapshot,
+        execution.error_code AS execution_error_code,
+        execution.error_message AS execution_error_message,
         execution_agent.id AS execution_agent_id,
         execution_agent.version AS execution_agent_version,
         execution_agent.hash AS execution_agent_hash
@@ -197,10 +211,54 @@ export async function getWorkflowRun(id: string) {
       ORDER BY node.execution_order
     `;
 
+    const projectedNodes = nodes.map((node) => ({
+      id: node.id,
+      nodeId: node.node_id,
+      type: node.node_type,
+      status: node.status,
+      error: runtimeError(node.node_error_code, node.node_error_message, node.node_id),
+      skipReason: node.skip_reason,
+      agentDefinitionVersion: node.agent_version_id === null ? null : {
+        id: node.agent_version_id,
+        version: node.agent_version_number,
+        hash: node.agent_version_hash,
+      },
+      providerBindingRef: node.provider_binding_ref,
+      output: node.output,
+      attempt: node.attempt_id === null ? null : {
+        id: node.attempt_id,
+        number: node.attempt_number,
+        status: node.attempt_status,
+        error: runtimeError(node.attempt_error_code, node.attempt_error_message, node.node_id),
+        startedAt: date(node.attempt_started_at),
+        completedAt: date(node.attempt_completed_at),
+        providerSnapshot: providerSnapshot(node.attempt_provider_snapshot),
+        agentExecution: node.execution_id === null ? null : {
+          id: node.execution_id,
+          status: node.execution_status,
+          error: runtimeError(
+            node.execution_error_code,
+            node.execution_error_message,
+            node.node_id,
+          ),
+          startedAt: date(node.execution_started_at),
+          completedAt: date(node.execution_completed_at),
+          agentDefinitionVersion: {
+            id: node.execution_agent_id,
+            version: node.execution_agent_version,
+            hash: node.execution_agent_hash,
+          },
+          providerSnapshot: providerSnapshot(node.execution_provider_snapshot),
+        },
+      },
+    }));
+    const processNode = nodes.find((node) => node.node_type === "process.agent");
+
     return {
       run: {
         id: run.id,
         status: run.status,
+        error: runtimeError(run.error_code, run.error_message, processNode?.node_id ?? "analyze"),
         createdAt: date(run.created_at),
         startedAt: date(run.started_at),
         completedAt: date(run.completed_at),
@@ -211,39 +269,7 @@ export async function getWorkflowRun(id: string) {
           hash: run.hash,
         },
         input: run.input,
-        nodes: nodes.map((node) => ({
-          id: node.id,
-          nodeId: node.node_id,
-          type: node.node_type,
-          status: node.status,
-          agentDefinitionVersion: node.agent_version_id === null ? null : {
-            id: node.agent_version_id,
-            version: node.agent_version_number,
-            hash: node.agent_version_hash,
-          },
-          providerBindingRef: node.provider_binding_ref,
-          output: node.output,
-          attempt: node.attempt_id === null ? null : {
-            id: node.attempt_id,
-            number: node.attempt_number,
-            status: node.attempt_status,
-            startedAt: date(node.attempt_started_at),
-            completedAt: date(node.attempt_completed_at),
-            providerSnapshot: providerSnapshot(node.attempt_provider_snapshot),
-            agentExecution: node.execution_id === null ? null : {
-              id: node.execution_id,
-              status: node.execution_status,
-              startedAt: date(node.execution_started_at),
-              completedAt: date(node.execution_completed_at),
-              agentDefinitionVersion: {
-                id: node.execution_agent_id,
-                version: node.execution_agent_version,
-                hash: node.execution_agent_hash,
-              },
-              providerSnapshot: providerSnapshot(node.execution_provider_snapshot),
-            },
-          },
-        })),
+        nodes: projectedNodes,
       },
     };
   });
@@ -265,6 +291,13 @@ export async function listWorkflowRuns(workflowId: string) {
         run.created_at,
         run.started_at,
         run.completed_at,
+        run.error_code,
+        run.error_message,
+        (
+          SELECT node.node_id
+          FROM node_runs AS node
+          WHERE node.workflow_run_id = run.id AND node.node_type = 'process.agent'
+        ) AS error_node_id,
         version.id AS version_id,
         version.version,
         version.hash
@@ -280,6 +313,7 @@ export async function listWorkflowRuns(workflowId: string) {
       runs: runs.map((run) => ({
         id: run.id,
         status: run.status,
+        error: runtimeError(run.error_code, run.error_message, run.error_node_id ?? "analyze"),
         createdAt: date(run.created_at),
         startedAt: date(run.started_at),
         completedAt: date(run.completed_at),
