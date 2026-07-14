@@ -25,10 +25,62 @@ function serviceBlock(compose, name) {
   return yamlBlock(yamlBlock(compose, "services"), name, 2);
 }
 
-test("M0-T01 pins pnpm 11.13.0 and Node 22", () => {
+function dockerignoreExcludes(content, relativePath) {
+  let excluded = false;
+  for (const rawLine of content.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const negated = line.startsWith("!");
+    let pattern = (negated ? line.slice(1) : line).replace(/^\//, "");
+    if (pattern.endsWith("/")) pattern += "**";
+
+    let expression = "";
+    for (let index = 0; index < pattern.length; index += 1) {
+      if (pattern.slice(index, index + 3) === "**/") {
+        expression += "(?:.*/)?";
+        index += 2;
+      } else if (pattern.slice(index, index + 2) === "**") {
+        expression += ".*";
+        index += 1;
+      } else if (pattern[index] === "*") {
+        expression += "[^/]*";
+      } else if (pattern[index] === "?") {
+        expression += "[^/]";
+      } else {
+        expression += pattern[index].replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
+      }
+    }
+
+    const matcher = new RegExp(`^${expression}$`);
+    const matches = pattern.includes("/")
+      ? matcher.test(relativePath)
+      : relativePath.split("/").some((segment) => matcher.test(segment));
+    if (matches) excluded = !negated;
+  }
+  return excluded;
+}
+
+test("M0-T01 pins pnpm and Node runtime-compatible types exactly", () => {
   const packageJson = JSON.parse(requiredFile("package.json"));
   assert.equal(packageJson.packageManager, "pnpm@11.13.0");
   assert.equal(packageJson.engines?.node, "22.x");
+  assert.equal(packageJson.devDependencies?.["@types/node"], "22.20.1");
+});
+
+test("M0-T01 keeps local environment state and build metadata out of images", () => {
+  const dockerignore = requiredFile(".dockerignore");
+  const actual = Object.fromEntries(
+    [".env", ".env.local", ".env.test.local", "build.tsbuildinfo", "src/build.tsbuildinfo", ".env.example"]
+      .map((relativePath) => [relativePath, dockerignoreExcludes(dockerignore, relativePath)]),
+  );
+  assert.deepEqual(actual, {
+    ".env": true,
+    ".env.local": true,
+    ".env.test.local": true,
+    "build.tsbuildinfo": true,
+    "src/build.tsbuildinfo": true,
+    ".env.example": false,
+  });
 });
 
 test("M0-T01 Compose declares the complete healthy bootstrap topology", () => {
@@ -42,6 +94,28 @@ test("M0-T01 Compose declares the complete healthy bootstrap topology", () => {
   assert.match(blocks.postgres, /pg_isready/, "postgres healthcheck must use pg_isready");
   assert.match(blocks.app, /\/api\/health\/ready/, "app healthcheck must use readiness");
   assert.match(blocks["fake-provider"], /\/health\/live/, "fake provider needs liveness");
+
+  const appPorts = yamlBlock(blocks.app, "ports", 4);
+  const shortBindings = appPorts
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("-"));
+  const mappingHostIps = [...appPorts.matchAll(/^\s+host_ip:\s*["']?([^\s"']+)/gm)]
+    .map((match) => match[1]);
+  const appPortsAreLoopbackOnly = mappingHostIps.length > 0
+    ? mappingHostIps.length === shortBindings.length
+      && mappingHostIps.every((hostIp) => hostIp === "127.0.0.1")
+    : shortBindings.length > 0 && shortBindings.every((binding) => /127\.0\.0\.1:/.test(binding));
+  assert.deepEqual(
+    {
+      appPortsAreLoopbackOnly,
+      fakeProviderPublishesHostPorts: /^\s+ports:\s*$/m.test(blocks["fake-provider"]),
+    },
+    {
+      appPortsAreLoopbackOnly: true,
+      fakeProviderPublishesHostPorts: false,
+    },
+  );
 
   const appImage = blocks.app.match(/^\s+image:\s*["']?([^\s"']+)/m)?.[1];
   const workerImage = blocks.worker.match(/^\s+image:\s*["']?([^\s"']+)/m)?.[1];
