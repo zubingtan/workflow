@@ -50,7 +50,14 @@ services:
 
   migrate:
     image: postgres:18-bookworm
-    command: ["psql", "--set", "ON_ERROR_STOP=1", "--file", "/migrations/001_bootstrap.sql"]
+    command:
+      - /bin/sh
+      - -eu
+      - -c
+      - |
+        for migration in /migrations/*.sql; do
+          psql --set ON_ERROR_STOP=1 --file "$$migration"
+        done
     environment:
       PGHOST: postgres
       PGDATABASE: ${POSTGRES_DB}

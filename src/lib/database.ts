@@ -2,7 +2,7 @@ import postgres from "postgres";
 
 let client: ReturnType<typeof postgres> | undefined;
 
-function database() {
+export function getDatabase() {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
     throw new Error("DATABASE_URL is not configured");
@@ -12,5 +12,5 @@ function database() {
 }
 
 export async function queryDatabaseReadiness() {
-  await database()`SELECT 1`;
+  await getDatabase()`SELECT 1`;
 }
