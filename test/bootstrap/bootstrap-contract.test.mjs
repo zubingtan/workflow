@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
@@ -217,5 +219,58 @@ test("system harness failure diagnostics never interpolate provider values or se
   ]) {
     const harness = requiredFile(relative);
     assert.doesNotMatch(harness, /(?:echo|throw new Error)[^\n]*(?:custom_provider_key|CUSTOM_PROVIDER_KEY|SECRET)/u);
+  }
+});
+
+test("every real Compose test harness isolates the worker env file explicitly", () => {
+  const bootstrap = requiredFile("test/bootstrap/system-bootstrap.sh");
+  const createIndex = bootstrap.indexOf("fixture_dir=$(mktemp -d)");
+  const exportIndex = bootstrap.indexOf("export WORKFLOW_ENV_FILE=");
+  const composeIndex = bootstrap.indexOf("compose=(docker compose");
+  assert.ok(createIndex !== -1 && createIndex < exportIndex && exportIndex < composeIndex);
+  assert.doesNotMatch(bootstrap, /^cleanup \|\| true$/m, "initial cleanup must not delete the worker env fixture");
+  assert.match(requiredFile("test/runtime/async-happy-path.system.sh"), /^WORKFLOW_ENV_FILE=\$fixture_dir\/worker\.env$/m);
+  assert.match(requiredFile("test/failure/failure-crash-restart.system.sh"), /^WORKFLOW_ENV_FILE=\$fixture_dir\/worker\.env$/m);
+  assert.match(requiredFile("test/e2e/fixtures/compose-stack.ts"), /WORKFLOW_ENV_FILE:\s*workerEnvFile/);
+  for (const relative of [
+    "test/runtime/async-happy-path.system.sh",
+    "test/failure/failure-crash-restart.system.sh",
+  ]) {
+    assert.doesNotMatch(requiredFile(relative), /^\s+env_file:\s*$/m, `${relative} duplicates worker env_file`);
+  }
+
+  const directory = mkdtempSync(path.join(tmpdir(), "workflow-bootstrap-env-order-"));
+  try {
+    const bin = path.join(directory, "bin");
+    const log = path.join(directory, "docker-calls.log");
+    mkdirSync(bin);
+    const docker = path.join(bin, "docker");
+    writeFileSync(docker, `#!/bin/sh
+if [ -z "\${WORKFLOW_ENV_FILE:-}" ] || [ ! -f "$WORKFLOW_ENV_FILE" ]; then
+  printf 'unsafe\\n' >>"$DOCKER_CALL_LOG"
+  exit 91
+fi
+printf 'safe|%s\\n' "$WORKFLOW_ENV_FILE" >>"$DOCKER_CALL_LOG"
+exit 42
+`);
+    chmodSync(docker, 0o755);
+    const result = spawnSync("bash", ["test/bootstrap/system-bootstrap.sh"], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 10_000,
+      env: {
+        HOME: process.env.HOME ?? tmpdir(),
+        PATH: `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin`,
+        DOCKER_CALL_LOG: log,
+        COMPOSE_PROJECT_NAME: `bootstrap-env-order-${process.pid}`,
+      },
+    });
+    assert.notEqual(result.status, 0, "ordering probe must stop before running a real stack");
+    const calls = readFileSync(log, "utf8").trimEnd().split("\n");
+    assert.ok(calls.length >= 2, "probe must cover initial cleanup and failure trap");
+    assert.ok(calls.every((line) => line.startsWith("safe|")), "a Docker call ran before the safe worker env existed");
+    assert.equal(existsSync(calls[0].slice("safe|".length)), false, "failure trap did not remove the worker env fixture");
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
   }
 });

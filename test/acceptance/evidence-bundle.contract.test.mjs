@@ -21,11 +21,24 @@ const ids = [
 const serviceNames = ["app", "worker", "postgres", "migrate", "fake-provider"];
 
 function capturedContainers() {
+  const applicationImage = `sha256:${"6".repeat(64)}`;
+  const postgresImage = `sha256:${"7".repeat(64)}`;
   return {
     services: Object.fromEntries(serviceNames.map((name, index) => [name, {
       containerId: String(index + 1).repeat(64),
-      imageId: `sha256:${(index + 6).toString(16).repeat(64)}`,
+      imageId: ["postgres", "migrate"].includes(name) ? postgresImage : applicationImage,
     }])),
+  };
+}
+
+function capturedDigests() {
+  const services = capturedContainers().services;
+  return {
+    app: services.app.imageId,
+    worker: services.worker.imageId,
+    postgres: services.postgres.imageId,
+    migrate: services.migrate.imageId,
+    fakeProvider: services["fake-provider"].imageId,
   };
 }
 
@@ -102,11 +115,7 @@ function fixture() {
     databaseMigrationVersion: "004_terminal_failures.sql",
     piAgentVersion: "0.73.1",
     blockingTests: { passed: 13, total: 13 },
-    containerDigests: {
-      app: `sha256:${"1".repeat(64)}`,
-      postgres: `sha256:${"2".repeat(64)}`,
-      fakeProvider: `sha256:${"3".repeat(64)}`,
-    },
+    containerDigests: capturedDigests(),
   });
   writeFileSync(path.join(directory, "requirement-matrix.csv"), [
     "Requirement,Test,Evidence,Result,Blocking",
@@ -161,7 +170,7 @@ test("complete 13/13 PASS and GO evidence validates with a closed manifest", () 
     assert.equal(report.workflowSchemaVersion, "oncall.workflow/v1alpha1");
     assert.equal(report.databaseMigrationVersion, "004_terminal_failures.sql");
     assert.equal(report.piAgentVersion, "0.73.1");
-    assert.deepEqual(Object.keys(report.containerDigests).sort(), ["app", "fakeProvider", "postgres"]);
+    assert.deepEqual(report.containerDigests, capturedDigests());
     const environment = JSON.parse(readFileSync(path.join(directory, "environment.json"), "utf8"));
     assert.deepEqual(environment.runner, { os: "ubuntu-24.04", imageVersion: "20260714.1" });
     const diagnostics = JSON.parse(readFileSync(path.join(directory, "support-bundle/diagnostics.json"), "utf8"));
@@ -169,6 +178,30 @@ test("complete 13/13 PASS and GO evidence validates with a closed manifest", () 
     assert.equal(validate(directory, "ABSENT_SECRET").status, 0);
   } finally {
     rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("PASS evidence rejects legacy digest sets and format-valid forged image digests", () => {
+  const cases = [
+    ["forged digest", (report) => { report.containerDigests.app = `sha256:${"f".repeat(64)}`; }],
+    ["legacy three-digest report", (report) => {
+      delete report.containerDigests.worker;
+      delete report.containerDigests.migrate;
+    }],
+  ];
+  for (const [label, mutate] of cases) {
+    const directory = fixture();
+    try {
+      assert.equal(validate(directory, "ABSENT_DIGEST_SECRET").status, 0, `${label}: valid baseline failed`);
+      const reportPath = path.join(directory, "report.json");
+      const report = JSON.parse(readFileSync(reportPath, "utf8"));
+      mutate(report);
+      writeJson(reportPath, report);
+      seal(directory);
+      assert.notEqual(validate(directory, "ABSENT_DIGEST_SECRET").status, 0, `${label}: validator accepted invalid PASS evidence`);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   }
 });
 
@@ -182,7 +215,12 @@ test("acceptance validation failure after sealing ends REWORK and retains a vali
   mkdirSync(bin, { recursive: true });
   mkdirSync(screenshotDirectory, { recursive: true });
   writeFileSync(screenshot, "acceptance screenshot\n");
-  writeExecutable(path.join(bin, "docker"), `#!/bin/sh\nprintf 'sha256:%064d\\n' 1\n`);
+  writeExecutable(path.join(bin, "docker"), `#!/bin/sh
+case "$*" in
+  *postgres*) printf 'sha256:%064d\\n' 7 ;;
+  *) printf 'sha256:%064d\\n' 6 ;;
+esac
+`);
 
   const supportWrapper = path.join(workspace, "support-wrapper.mjs");
   writeFileSync(supportWrapper, `
@@ -192,6 +230,7 @@ import path from "node:path";
 const evidence = process.argv[process.argv.indexOf("--evidence-dir") + 1];
 const ids = ${JSON.stringify(ids)};
 for (const id of ids) writeFileSync(path.join(evidence, "test-results", id + ".json"), JSON.stringify({ id, result: "PASS" }) + "\\n");
+writeFileSync(path.join(evidence, "test-results/bootstrap-compose.json"), ${JSON.stringify(JSON.stringify(capturedContainers()))} + "\\n");
 mkdirSync(path.join(evidence, "event-exports"), { recursive: true });
 mkdirSync(path.join(evidence, "logs"), { recursive: true });
 writeFileSync(path.join(evidence, "event-exports/events.json"), "[]\\n");
@@ -233,6 +272,8 @@ process.exit(result.status ?? 1);
       env: {
         ...process.env,
         ACCEPTANCE_GIT_SHA: "a".repeat(40),
+        ACCEPTANCE_RUNNER_OS: "ubuntu-24.04",
+        ACCEPTANCE_RUNNER_IMAGE_VERSION: "20260714.1",
         APP_PORT: "9",
         FAKE_PROVIDER_API_KEY: sentinel,
         PATH: `${bin}:${process.env.PATH}`,
@@ -282,7 +323,10 @@ test("support bundle blocks unavailable image inspection and records all real se
   writeExecutable(path.join(failingBin, "docker"), "#!/bin/sh\nexit 42\n");
   writeExecutable(path.join(passingBin, "docker"), `#!/bin/sh
 if [ "$1 $2" = "image inspect" ]; then
-  printf 'sha256:%064d\\n' 7
+  case "$*" in
+    *postgres*) printf 'sha256:%064d\\n' 7 ;;
+    *) printf 'sha256:%064d\\n' 6 ;;
+  esac
   exit 0
 fi
 exit 42
@@ -326,10 +370,7 @@ exit 42
     assert.equal(passedReport.result, "PASS");
     assert.equal(passedReport.decision, "GO");
     assert.deepEqual(passedEnvironment.runner, { os: "ubuntu-24.04", imageVersion: "20260714.1" });
-    assert.deepEqual(
-      Object.keys(passedReport.containerDigests).sort(),
-      ["app", "fakeProvider", "migrate", "postgres", "worker"],
-    );
+    assert.deepEqual(passedReport.containerDigests, capturedDigests());
     for (const digest of Object.values(passedReport.containerDigests)) assert.match(digest, /^sha256:[a-f0-9]{64}$/u);
     assert.deepEqual(passedDiagnostics.containers, preCleanupCapture.services);
     assert.deepEqual(passedEnvironmentSummary.containers, preCleanupCapture.services);

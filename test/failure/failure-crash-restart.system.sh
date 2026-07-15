@@ -9,13 +9,17 @@ fixture_dir=$(mktemp -d)
 caller_evidence="${EVIDENCE_DIR:-}"
 export APP_PORT="$app_port"
 custom_provider_key="PR5_CUSTOM_$(node -e 'process.stdout.write(crypto.randomUUID())')"
+binding_raw_sentinel="PR5_BINDING_RAW_$(node -e 'process.stdout.write(crypto.randomUUID())')"
 export WORKER_PROVIDER_TIMEOUT_MS=200
 export WORKER_LEASE_MS=400
 export WORKER_FAULT_HOOK=""
 app_url="http://127.0.0.1:${app_port}"
+write_valid_binding() {
 cat >"$fixture_dir/provider-bindings.json" <<'JSON'
 {"bindings":{"fake-default":{"provider":"openai-compatible","baseUrl":"http://fake-provider:4010/v1","apiKeyEnv":"CUSTOM_PROVIDER_KEY","model":"fake-m0","parameters":{"temperature":0}}}}
 JSON
+}
+write_valid_binding
 printf 'CUSTOM_PROVIDER_KEY=%s\n' "$custom_provider_key" >"$fixture_dir/worker.env"
 cat >"$fixture_dir/compose.env" <<EOF
 POSTGRES_DB=workflow
@@ -28,6 +32,7 @@ APP_PORT=$app_port
 WORKER_PROVIDER_TIMEOUT_MS=200
 WORKER_LEASE_MS=400
 WORKER_FAULT_HOOK=
+WORKFLOW_ENV_FILE=$fixture_dir/worker.env
 EOF
 cat >"$fixture_dir/compose.override.yaml" <<EOF
 services:
@@ -35,8 +40,6 @@ services:
     environment:
       FAKE_PROVIDER_API_KEY: null
   worker:
-    env_file:
-      - $fixture_dir/worker.env
     environment:
       FAKE_PROVIDER_API_KEY: null
     volumes:
@@ -130,7 +133,7 @@ NODE
 }
 
 assert_failed_api() {
-  RUN_ID="$1" CODE="$2" MESSAGE="$3" SECRET="$custom_provider_key" APP_URL="$app_url" EVIDENCE="$evidence/api.jsonl" node --input-type=module <<'NODE'
+  RUN_ID="$1" CODE="$2" MESSAGE="$3" SECRET="$custom_provider_key" RAW_CONFIG="$binding_raw_sentinel" APP_URL="$app_url" EVIDENCE="$evidence/api.jsonl" node --input-type=module <<'NODE'
 import { appendFile } from "node:fs/promises";
 const fail = (condition) => { if (!condition) throw new Error("failed Run projection mismatch"); };
 const response = await fetch(`${process.env.APP_URL}/api/runs/${process.env.RUN_ID}`, { cache: "no-store" });
@@ -149,7 +152,7 @@ const history = await historyResponse.json();
 const item = history.runs?.find((run) => run.id === process.env.RUN_ID);
 fail(JSON.stringify(item?.error) === JSON.stringify(expected));
 const serialized = JSON.stringify([body, item]);
-for (const forbidden of [process.env.SECRET, "http://fake-provider:4010/v1", "FAKE_PROVIDER_API_KEY", "RAW_PROVIDER_DETAIL_MUST_NOT_ESCAPE", "PiSession", "sessionId", "session_id"]) {
+for (const forbidden of [process.env.SECRET, process.env.RAW_CONFIG, "http://fake-provider:4010/v1", "FAKE_PROVIDER_API_KEY", "RAW_PROVIDER_DETAIL_MUST_NOT_ESCAPE", "PiSession", "sessionId", "session_id"]) {
   if (forbidden && serialized.includes(forbidden)) throw new Error("API redaction failed");
 }
 await appendFile(process.env.EVIDENCE, `${serialized}\n`);
@@ -241,6 +244,19 @@ failure_case() {
   LAST_RUN_ID=$run_id
 }
 
+configuration_failure_case() {
+  local correlation=$1
+  control_provider "$correlation" success
+  start_worker
+  wait_healthy worker
+  local run_id
+  run_id=$(create_run "$correlation")
+  wait_status "$run_id" failed 10000
+  assert_failed_api "$run_id" provider_auth_failed "Provider authentication failed"
+  assert_failure_db "$run_id" provider_auth_failed
+  assert_equal "$(provider_calls "$correlation")" 0
+}
+
 "${compose[@]}" build
 "${compose[@]}" up -d postgres fake-provider
 wait_healthy postgres
@@ -261,6 +277,14 @@ assert_failed_api "$missing_key_id" provider_auth_failed "Provider authenticatio
 assert_failure_db "$missing_key_id" provider_auth_failed
 assert_equal "$(provider_calls pr5-missing-key)" 0
 printf 'CUSTOM_PROVIDER_KEY=%s\n' "$custom_provider_key" >"$fixture_dir/worker.env"
+start_worker
+wait_healthy worker
+
+printf '{"raw":"%s",' "$binding_raw_sentinel" >"$fixture_dir/provider-bindings.json"
+configuration_failure_case pr5-invalid-binding-json
+printf '{"bindings":{"different-alias":{"raw":"%s"}}}\n' "$binding_raw_sentinel" >"$fixture_dir/provider-bindings.json"
+configuration_failure_case pr5-missing-binding-alias
+write_valid_binding
 start_worker
 wait_healthy worker
 
@@ -352,7 +376,7 @@ done
 query "SELECT row_to_json(value)::text FROM (SELECT * FROM execution_events ORDER BY workflow_run_id, sequence) value" >"$evidence/events.jsonl"
 scan_failed=0
 for file in "$evidence"/*; do
-  for forbidden in "$custom_provider_key" "http://fake-provider:4010/v1" "CUSTOM_PROVIDER_KEY" "apiKeyEnv" "FAKE_PROVIDER_API_KEY" "RAW_PROVIDER_DETAIL_MUST_NOT_ESCAPE" "PiSession" "sessionId" "session_id"; do
+  for forbidden in "$custom_provider_key" "$binding_raw_sentinel" "http://fake-provider:4010/v1" "CUSTOM_PROVIDER_KEY" "apiKeyEnv" "FAKE_PROVIDER_API_KEY" "RAW_PROVIDER_DETAIL_MUST_NOT_ESCAPE" "PiSession" "sessionId" "session_id"; do
     if grep -Fq "$forbidden" "$file"; then scan_failed=1; fi
   done
 done

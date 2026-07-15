@@ -25,6 +25,7 @@ APP_PORT=$app_port
 WORKER_PROVIDER_TIMEOUT_MS=30000
 WORKER_LEASE_MS=300000
 WORKER_FAULT_HOOK=
+WORKFLOW_ENV_FILE=$fixture_dir/worker.env
 EOF
 cat >"$fixture_dir/compose.override.yaml" <<EOF
 services:
@@ -32,8 +33,6 @@ services:
     environment:
       FAKE_PROVIDER_API_KEY: null
   worker:
-    env_file:
-      - $fixture_dir/worker.env
     environment:
       FAKE_PROVIDER_API_KEY: null
     volumes:
