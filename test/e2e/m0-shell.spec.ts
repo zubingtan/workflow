@@ -96,6 +96,7 @@ test("A — imports, runs, reopens history, and runs again on the real stack", a
   const invalid = structuredClone(value);
   invalid.spec.nodes[1].config.providerBindingRef = "missing-binding";
   await page.goto(stack.appUrl);
+  evidence.expectHttpError({ method: "POST", path: "/api/workflows/import", status: 400 });
   const rejected = await importWorkflow(page, invalid);
   expect(rejected.status()).toBe(400);
   expect(await rejected.json()).toMatchObject({

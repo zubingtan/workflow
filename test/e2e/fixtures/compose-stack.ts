@@ -189,6 +189,7 @@ async function createStack(
 
 type BrowserEvidence = {
   assertClean(): Promise<void>;
+  expectHttpError(error: { method: string; path: string; status: number }): void;
 };
 
 type Fixtures = {
@@ -219,10 +220,21 @@ export const test = base.extend<Fixtures>({
   },
   evidence: async ({ page, stack }, use, testInfo) => {
     const consoleLines: string[] = [];
+    const consoleErrors: Array<{ kind: "console" | "pageerror"; text: string; url: string }> = [];
+    const expectedHttpErrors: Array<{ method: string; path: string; status: number }> = [];
     const network: Array<{ method: string; status: number; url: string; body: string }> = [];
     const pending: Promise<void>[] = [];
-    page.on("console", (message) => consoleLines.push(`${message.type()}: ${message.text()}`));
-    page.on("pageerror", (error) => consoleLines.push(`pageerror: ${error.message}`));
+    page.on("console", (message) => {
+      const url = message.location().url;
+      consoleLines.push(`${message.type()}: ${message.text()}${url ? ` [${url}]` : ""}`);
+      if (message.type() === "error") {
+        consoleErrors.push({ kind: "console", text: message.text(), url });
+      }
+    });
+    page.on("pageerror", (error) => {
+      consoleLines.push(`pageerror: ${error.message}`);
+      consoleErrors.push({ kind: "pageerror", text: error.message, url: "" });
+    });
     page.on("response", (response) => {
       if (!response.url().startsWith(stack.appUrl)) return;
       pending.push((async () => {
@@ -240,10 +252,40 @@ export const test = base.extend<Fixtures>({
       async assertClean() {
         await Promise.allSettled(pending);
         const dom = await page.locator("body").innerText().catch(() => "");
-        const raw = JSON.stringify({ consoleLines, network, dom });
+        const raw = JSON.stringify({ consoleLines, consoleErrors, network, dom });
         expect(raw.includes(stack.secret), "browser evidence contained the test secret").toBe(false);
-        const hasConsoleError = consoleLines.some((line) => /^(error|pageerror):/u.test(line));
-        expect(hasConsoleError, "browser console contained an error").toBe(false);
+        const allowedConsoleErrors = new Set<number>();
+        for (const expected of expectedHttpErrors) {
+          const responses = network.filter((entry) =>
+            entry.method === expected.method &&
+            entry.status === expected.status &&
+            new URL(entry.url).pathname === expected.path);
+          expect(
+            responses.length === 1,
+            "expected HTTP error was not observed exactly once",
+          ).toBe(true);
+          if (responses.length !== 1) continue;
+          const response = responses[0];
+          const matchingConsoleErrors = consoleErrors.flatMap((entry, index) =>
+            entry.kind === "console" &&
+            entry.url === response.url &&
+            entry.text.startsWith(
+              `Failed to load resource: the server responded with a status of ${expected.status}`,
+            ) ? [index] : []);
+          expect(
+            matchingConsoleErrors.length <= 1,
+            "expected HTTP error produced duplicate console errors",
+          ).toBe(true);
+          if (matchingConsoleErrors.length === 1) {
+            allowedConsoleErrors.add(matchingConsoleErrors[0]);
+          }
+        }
+        const hasUnexpectedConsoleError = consoleErrors.some((_, index) =>
+          !allowedConsoleErrors.has(index));
+        expect(hasUnexpectedConsoleError, "browser console contained an unexpected error").toBe(false);
+      },
+      expectHttpError(error) {
+        expectedHttpErrors.push(error);
       },
     };
     await use(evidence);
