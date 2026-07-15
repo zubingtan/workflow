@@ -42,6 +42,7 @@ export type ComposeStack = {
   logs(): Promise<string>;
   providerCalls(correlationId: string): Promise<number>;
   restartAll(): Promise<void>;
+  setAppConfiguredModel(model: string): Promise<void>;
   startWorker(options?: { faultHook?: string; providerTimeoutMs?: number }): Promise<void>;
   stopWorker(): Promise<void>;
   sweepExpiredLeases(): Promise<void>;
@@ -133,6 +134,13 @@ async function createStack(
       await compose(["run", "--rm", "migrate"]);
       await compose(["up", "-d", "app", "worker"]);
       await Promise.all([waitHealthy("app"), waitHealthy("worker")]);
+    },
+    async setAppConfiguredModel(model) {
+      if (!/^[a-z0-9.-]+$/u.test(model)) throw new Error("Unexpected configured model");
+      await compose([
+        "exec", "-T", "-e", `MODEL=${model}`, "app", "node", "--input-type=module", "-e",
+        `import{readFile,writeFile}from"node:fs/promises";const path=process.env.PROVIDER_BINDINGS_FILE;const value=JSON.parse(await readFile(path,"utf8"));value.bindings["fake-default"].model=process.env.MODEL;await writeFile(path,JSON.stringify(value));`,
+      ]);
     },
     async startWorker(options = {}) {
       env.WORKER_FAULT_HOOK = options.faultHook ?? "";
