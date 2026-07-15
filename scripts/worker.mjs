@@ -95,8 +95,11 @@ async function resolveBinding(alias) {
   const document = JSON.parse(await readFile(bindingFile, "utf8"));
   const binding = document.bindings?.[alias];
   if (!binding) throw new Error("Provider binding is unavailable");
-  const apiKey = process.env[binding.apiKeyEnv];
-  if (!apiKey) throw new Error("Provider credential is unavailable");
+  if (![binding.provider, binding.baseUrl, binding.apiKeyEnv, binding.model]
+    .every((value) => typeof value === "string" && value.length > 0)) {
+    throw new Error("Provider binding is unavailable");
+  }
+  const apiKey = process.env[binding.apiKeyEnv] || null;
   const parameters = typeof binding.parameters?.temperature === "number"
     ? { temperature: binding.parameters.temperature }
     : {};
@@ -238,7 +241,18 @@ async function executeJob(job) {
     });
   });
 
-  const binding = await resolveBinding(processNode.provider_binding_ref);
+  let binding = null;
+  try {
+    binding = await resolveBinding(processNode.provider_binding_ref);
+  } catch {
+    // Configuration details are intentionally collapsed into the safe terminal auth failure below.
+  }
+  const providerSnapshot = binding?.snapshot ?? {
+    bindingAlias: "unavailable",
+    effectiveProvider: "unavailable",
+    effectiveModel: "unavailable",
+    parameters: {},
+  };
   const processAttemptId = `attempt-${randomUUID()}`;
   await sql.begin(async (transaction) => {
     await transaction`
@@ -250,7 +264,7 @@ async function executeJob(job) {
         id, node_run_id, number, status, provider_snapshot
       ) VALUES (
         ${processAttemptId}, ${processNode.id}, 1, 'running',
-        ${transaction.json(binding.snapshot)}
+        ${transaction.json(providerSnapshot)}
       )
     `;
     await addEvent(transaction, job.workflow_run_id, 5, "node.attempt.started", {
@@ -273,7 +287,7 @@ async function executeJob(job) {
         ${processAttemptId},
         ${processNode.agent_definition_version_id},
         'running',
-        ${transaction.json(binding.snapshot)}
+        ${transaction.json(providerSnapshot)}
       )
     `;
     await addEvent(transaction, job.workflow_run_id, 6, "agent.execution.started", {
@@ -291,6 +305,16 @@ async function executeJob(job) {
     processAttemptId,
     agentExecutionId,
   };
+
+  if (binding?.apiKey == null) {
+    await sql.begin((transaction) => terminalizeFailure(
+      transaction,
+      failureFacts,
+      "provider_auth_failed",
+      false,
+    ));
+    return;
+  }
 
   if (faultHook === "before_model_request") process.exit(86);
   await sql`

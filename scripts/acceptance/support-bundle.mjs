@@ -13,11 +13,26 @@ mkdirSync(support, { recursive: true });
 const diagnosticsPath = path.join(support, "diagnostics.json");
 if (existsSync(diagnosticsPath)) throw new Error("Support bundle output already exists");
 
-function imageDigest(image) {
-  const inspected = spawnSync("docker", ["image", "inspect", "--format", "{{.Id}}", image], { encoding: "utf8" });
+const serviceNames = ["app", "worker", "postgres", "migrate", "fake-provider"];
+
+function capturedContainers() {
+  const file = path.join(bundle, "test-results", "bootstrap-compose.json");
+  if (!existsSync(file)) throw new Error("Container identity capture is unavailable");
+  const services = readJson(file).services;
+  for (const name of serviceNames) {
+    const record = services?.[name];
+    if (!/^[a-f0-9]{64}$/u.test(record?.containerId)
+      || !/^sha256:[a-f0-9]{64}$/u.test(record?.imageId)) {
+      throw new Error("Container identity capture is invalid");
+    }
+  }
+  return services;
+}
+
+function assertImageInspectable(imageId) {
+  const inspected = spawnSync("docker", ["image", "inspect", "--format", "{{.Id}}", imageId], { encoding: "utf8" });
   const value = inspected.status === 0 ? inspected.stdout.trim() : "";
   if (!/^sha256:[a-f0-9]{64}$/u.test(value)) throw new Error("Required container image digest is unavailable");
-  return value;
 }
 
 const reportPath = path.join(bundle, "report.json");
@@ -26,14 +41,17 @@ if (existsSync(reportPath)) {
   writeJson(reportPath, { ...pendingReport, result: "REWORK", decision: "REWORK", containerDigests: {} });
 }
 
+let containers;
 let containerDigests;
 try {
+  containers = capturedContainers();
+  for (const name of serviceNames) assertImageInspectable(containers[name].imageId);
   containerDigests = {
-    app: imageDigest("workflow-m0:local"),
-    worker: imageDigest("workflow-m0:local"),
-    postgres: imageDigest("postgres:18-bookworm"),
-    migrate: imageDigest("postgres:18-bookworm"),
-    fakeProvider: imageDigest("workflow-m0:local"),
+    app: containers.app.imageId,
+    worker: containers.worker.imageId,
+    postgres: containers.postgres.imageId,
+    migrate: containers.migrate.imageId,
+    fakeProvider: containers["fake-provider"].imageId,
   };
 } catch {
   writeJson(diagnosticsPath, {
@@ -58,6 +76,7 @@ writeJson(diagnosticsPath, {
   services: ["app", "worker", "postgres", "migrate", "fake-provider"],
   healthEndpoints: ["/api/health/live", "/api/health/ready"],
   migrationFiles: ["001_bootstrap.sql", "002_definition_versions.sql", "003_async_runtime.sql", "004_terminal_failures.sql"],
+  containers,
   containerDigests,
   readiness,
   redaction: "configured credential values and provider transport details are excluded",
@@ -105,6 +124,8 @@ if (existsSync(reportPath)) {
     os: environment.os,
     architecture: environment.architecture,
     node: environment.node,
+    runner: environment.runner,
+    containers,
   });
   writeJson(path.join(support, "acceptance-summary.json"), {
     milestone: report.milestone,

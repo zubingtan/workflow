@@ -70,14 +70,43 @@ try {
       report.blockingTests.passed < 0 || report.blockingTests.passed > 13) fail("invalid blocking test totals");
   if (expectedResult === "PASS" && report.blockingTests.passed !== 13) fail("report does not prove 13/13");
   const digestKeys = Object.keys(report.containerDigests).sort();
-  const acceptedDigestSets = [
-    ["app", "fakeProvider", "postgres"],
-    ["app", "fakeProvider", "migrate", "postgres", "worker"],
-  ];
-  const digestSetAccepted = acceptedDigestSets.some((keys) => JSON.stringify(keys) === JSON.stringify(digestKeys));
-  if (!digestSetAccepted && !(expectedResult === "REWORK" && digestKeys.length === 0)) fail("container digest set mismatch");
+  const requiredDigestKeys = ["app", "fakeProvider", "migrate", "postgres", "worker"];
+  const hasRequiredDigests = JSON.stringify(digestKeys) === JSON.stringify(requiredDigestKeys);
+  if (!hasRequiredDigests && !(expectedResult === "REWORK" && digestKeys.length === 0)) {
+    fail("container digest set mismatch");
+  }
   if (Object.values(report.containerDigests).some((value) => !/^sha256:[a-f0-9]{64}$/u.test(value))) fail("invalid container digest");
-  if (readJson(path.join(bundle, "environment.json")).gitSha !== report.gitSha) fail("environment Git SHA mismatch");
+  const environment = readJson(path.join(bundle, "environment.json"));
+  if (environment.gitSha !== report.gitSha) fail("environment Git SHA mismatch");
+  if (typeof environment.runner?.os !== "string" || environment.runner.os.length === 0
+    || typeof environment.runner?.imageVersion !== "string" || environment.runner.imageVersion.length === 0) {
+    fail("invalid runner identity");
+  }
+  if (expectedResult === "PASS") {
+    const serviceNames = ["app", "worker", "postgres", "migrate", "fake-provider"];
+    const containers = readJson(path.join(bundle, "test-results", "bootstrap-compose.json")).services;
+    for (const name of serviceNames) {
+      const record = containers?.[name];
+      if (!/^[a-f0-9]{64}$/u.test(record?.containerId)
+        || !/^sha256:[a-f0-9]{64}$/u.test(record?.imageId)) fail("invalid container identity capture");
+    }
+    const diagnostics = readJson(path.join(bundle, "support-bundle", "diagnostics.json"));
+    const environmentSummary = readJson(path.join(bundle, "support-bundle", "environment-summary.json"));
+    if (JSON.stringify(diagnostics.containers) !== JSON.stringify(containers)
+      || JSON.stringify(environmentSummary.containers) !== JSON.stringify(containers)) {
+      fail("support bundle container identities mismatch");
+    }
+    const capturedDigests = {
+      app: containers.app.imageId,
+      worker: containers.worker.imageId,
+      postgres: containers.postgres.imageId,
+      migrate: containers.migrate.imageId,
+      fakeProvider: containers["fake-provider"].imageId,
+    };
+    if (requiredDigestKeys.some((key) => report.containerDigests[key] !== capturedDigests[key])) {
+      fail("container digests do not match captured image identities");
+    }
+  }
   const versions = readJson(path.join(bundle, "versions.json"));
   if (versions.document !== report.documentVersion || versions.schema !== report.workflowSchemaVersion ||
       versions.migration !== report.databaseMigrationVersion || versions.pi !== report.piAgentVersion) {

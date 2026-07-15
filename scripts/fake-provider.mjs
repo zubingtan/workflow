@@ -4,6 +4,7 @@ import { createServer } from "node:http";
 const port = Number(process.env.FAKE_PROVIDER_PORT ?? 4010);
 const controls = new Map();
 let calls = 0;
+let authorizationMatched = false;
 
 function json(response, status, body) {
   response.writeHead(status, { "content-type": "application/json" });
@@ -89,6 +90,10 @@ async function handleCompletion(request, response) {
   }
 
   calls += 1;
+  const expectedApiKey = process.env.FAKE_PROVIDER_EXPECTED_API_KEY;
+  if (expectedApiKey) {
+    authorizationMatched = request.headers.authorization === `Bearer ${expectedApiKey}`;
+  }
   const control = matchingControl(payload);
   if (control) control.calls += 1;
   const mode = control?.mode ?? "success";
@@ -119,11 +124,15 @@ createServer(async (request, response) => {
   }
   if (url.pathname === "/test/stats" && request.method === "GET") {
     const correlationId = url.searchParams.get("correlationId");
-    json(response, 200, { calls: correlationId === null ? calls : controls.get(correlationId)?.calls ?? 0 });
+    json(response, 200, {
+      calls: correlationId === null ? calls : controls.get(correlationId)?.calls ?? 0,
+      authorizationMatched,
+    });
     return;
   }
   if (url.pathname === "/test/stats" && request.method === "DELETE") {
     calls = 0;
+    authorizationMatched = false;
     for (const control of controls.values()) control.calls = 0;
     json(response, 200, { calls });
     return;

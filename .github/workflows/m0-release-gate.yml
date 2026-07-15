@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   validate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       git_sha: ${{ steps.candidate.outputs.git_sha }}
     steps:
@@ -25,7 +25,8 @@ jobs:
             exit 1
           fi
       - name: Check out repository
-        uses: actions/checkout@v7
+        # actions/checkout v7.0.0
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           fetch-depth: 0
       - name: Validate candidate is current main
@@ -66,14 +67,16 @@ jobs:
 
   aggregate:
     needs: [run1, run2, run3]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Check out verified commit
-        uses: actions/checkout@v7
+        # actions/checkout v7.0.0
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           ref: ${{ inputs.git_sha }}
       - name: Download all three evidence bundles
-        uses: actions/download-artifact@v7
+        # actions/download-artifact v7.0.0
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
         with:
           pattern: m0-evidence-${{ inputs.git_sha }}-run*
           path: aggregate/runs
@@ -89,7 +92,8 @@ jobs:
           find aggregate/runs -type f -print | LC_ALL=C sort > aggregate/MANIFEST
           while IFS= read -r file; do sha256sum "$file"; done < aggregate/MANIFEST > aggregate/SHA256SUMS
       - name: Upload aggregate evidence
-        uses: actions/upload-artifact@v7
+        # actions/upload-artifact v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: m0-three-run-evidence-${{ inputs.git_sha }}
           path: aggregate

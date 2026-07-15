@@ -48,6 +48,10 @@ writeJson(path.join(bundle, "environment.json"), {
   os: `${os.platform()} ${os.release()}`,
   architecture: os.arch(),
   node: process.version,
+  runner: {
+    os: process.env.ACCEPTANCE_RUNNER_OS ?? os.platform(),
+    imageVersion: process.env.ACCEPTANCE_RUNNER_IMAGE_VERSION ?? process.env.ImageVersion ?? "local",
+  },
   testConfigurationHash: sha256Text([
     readFileSync(path.join(root, "compose.yaml"), "utf8"),
     readFileSync(path.join(root, "playwright.config.ts"), "utf8"),

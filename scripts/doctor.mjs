@@ -23,9 +23,27 @@ function probe(command, args, check, label, action) {
   }
 }
 
+function supportedComposeVersion(value) {
+  const match = /(?:^|\s)v?(\d+)\.(\d+)\.(\d+)(?:\D|$)/u.exec(value);
+  if (!match) return false;
+  const version = match.slice(1).map(Number);
+  const minimum = [2, 24, 0];
+  for (let index = 0; index < minimum.length; index += 1) {
+    if (version[index] > minimum[index]) return true;
+    if (version[index] < minimum[index]) return false;
+  }
+  return true;
+}
+
 probe("node", ["--version"], (value) => /^v22\./.test(value), "Node.js 22", "install Node.js 22");
 probe("pnpm", ["--version"], (value) => value === "11.13.0", "pnpm 11.13.0", "install pnpm 11.13.0");
-probe("docker", ["compose", "version"], (value) => /Docker Compose version/i.test(value), "Docker Compose", "install Docker with Compose v2");
+probe(
+  "docker",
+  ["compose", "version"],
+  supportedComposeVersion,
+  "Docker Compose 2.24.0+",
+  "install Docker Compose 2.24.0 or newer",
+);
 
 if (process.env.DATABASE_URL) {
   pass("DATABASE_URL configured");
