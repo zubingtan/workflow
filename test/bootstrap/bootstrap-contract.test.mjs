@@ -157,12 +157,15 @@ test("M0-T01 provides environment and non-secret provider-binding examples", () 
   assert.doesNotMatch(raw, /"(?:apiKey|secret|token)"\s*:/i, "binding stores env names, never credentials");
 });
 
-test("M0-T01/T02 expose the required Make targets while verify-m0 stays REWORK", () => {
+test("M0-T01/T02 expose the required Make targets with a real verify-m0 gate", () => {
   const makefile = requiredFile("Makefile");
   for (const target of ["setup", "doctor", "up", "down", "logs", "smoke-test", "verify-m0"]) {
     assert.match(makefile, new RegExp(`^${target}:`, "m"), `missing make target: ${target}`);
   }
-  assert.match(makefile, /verify-m0:[\s\S]*REWORK/i);
+  assert.doesNotMatch(
+    makefile,
+    /verify-m0:[\s\S]{0,200}(?:placeholder|full M0 acceptance is not implemented)/i,
+  );
 });
 
 test("M0-T01 includes an executable clean-Compose system harness", () => {

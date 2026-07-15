@@ -62,9 +62,9 @@ test("smoke-test targets an already-running stack and verify-m0 invokes every la
   const verify = dryMake("verify-m0", makeEnv);
   assert.equal(verify.status, 0, verify.stderr);
   assert.doesNotMatch(verify.stdout, /placeholder|full M0 acceptance is not implemented/i);
-  for (const layer of layers) {
-    assert.equal(verify.stdout.split(layer).length - 1, 1, `${layer} must run exactly once`);
-  }
+  const configuredLayers = [...verify.stdout.matchAll(/^\s*--test\s+"([^"\r\n]+)"\s+\\\s*$/gm)]
+    .map((match) => match[1]);
+  assert.deepEqual(configuredLayers, layers, "every layer must be configured exactly once");
   for (const command of [
     "scripts/acceptance/generate-evidence.mjs",
     "scripts/acceptance/support-bundle.mjs",
