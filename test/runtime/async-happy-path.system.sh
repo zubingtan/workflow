@@ -8,12 +8,19 @@ app_port=$((31000 + ($$ % 1000)))
 export APP_PORT="$app_port"
 compose=(docker compose --project-name "$project" --env-file .env.example -f compose.yaml)
 app_url="http://127.0.0.1:${app_port}"
+evidence_dir="${EVIDENCE_DIR:-}"
+if [[ -n "$evidence_dir" ]]; then
+  mkdir -p "$evidence_dir/logs" "$evidence_dir/event-exports" "$evidence_dir/test-results"
+fi
 
 cleanup() {
   status=$?
   if (( status != 0 )); then
     "${compose[@]}" ps || true
     "${compose[@]}" logs --no-color || true
+    if [[ -n "$evidence_dir" ]]; then
+      "${compose[@]}" logs --no-color >"$evidence_dir/logs/async-happy-path.log" 2>&1 || true
+    fi
   fi
   "${compose[@]}" down --volumes --remove-orphans >/dev/null 2>&1 || true
   exit "$status"
@@ -304,6 +311,12 @@ fi
 if query "DELETE FROM execution_events WHERE workflow_run_id = '$run_b_id'" >/dev/null 2>&1; then
   echo "execution events accepted DELETE" >&2
   exit 1
+fi
+
+if [[ -n "$evidence_dir" ]]; then
+  printf '%s\n' "$events" >"$evidence_dir/event-exports/async-happy-events.json"
+  "${compose[@]}" logs --no-color app worker fake-provider >"$evidence_dir/logs/async-happy-path.log"
+  printf '{"runId":"%s","result":"PASS"}\n' "$run_b_id" >"$evidence_dir/test-results/async-happy-path.json"
 fi
 
 echo "M0-T05 async happy path passed for $run_b_id"

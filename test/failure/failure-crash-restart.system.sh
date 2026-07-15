@@ -5,6 +5,7 @@ cd "$(dirname "$0")/../.."
 project="workflow-pr5-${GITHUB_RUN_ID:-local}-$$"
 app_port=$((32000 + ($$ % 1000)))
 evidence=$(mktemp -d)
+caller_evidence="${EVIDENCE_DIR:-}"
 export APP_PORT="$app_port"
 export FAKE_PROVIDER_API_KEY="PR5_SECRET_$(node -e 'process.stdout.write(crypto.randomUUID())')"
 export WORKER_PROVIDER_TIMEOUT_MS=200
@@ -17,6 +18,18 @@ LAST_RUN_ID=""
 cleanup() {
   status=$?
   "${compose[@]}" down --volumes --remove-orphans >/dev/null 2>&1 || true
+  if [[ -n "$caller_evidence" ]]; then
+    mkdir -p "$caller_evidence/logs" "$caller_evidence/event-exports" "$caller_evidence/test-results/failure-system"
+    for file in "$evidence"/*.log; do
+      [[ -f "$file" ]] && cp "$file" "$caller_evidence/logs/failure-$(basename "$file")"
+    done
+    [[ -f "$evidence/database.jsonl" ]] && cp "$evidence/database.jsonl" "$caller_evidence/test-results/failure-system/database.jsonl"
+    [[ -f "$evidence/api.jsonl" ]] && cp "$evidence/api.jsonl" "$caller_evidence/test-results/failure-system/api.jsonl"
+    [[ -f "$evidence/events.jsonl" ]] && cp "$evidence/events.jsonl" "$caller_evidence/event-exports/failure-events.jsonl"
+    for file in "$evidence"/*.json "$evidence"/*.txt; do
+      [[ -f "$file" ]] && cp "$file" "$caller_evidence/test-results/failure-system/$(basename "$file")"
+    done
+  fi
   rm -rf "$evidence"
   exit "$status"
 }
@@ -288,6 +301,7 @@ assert_equal "$(query "SELECT count(*) FROM execution_events WHERE workflow_run_
 for table in workflow_runs node_runs node_run_attempts agent_executions execution_events; do
   query "SELECT row_to_json(value)::text FROM (SELECT * FROM $table) value" >>"$evidence/database.jsonl"
 done
+query "SELECT row_to_json(value)::text FROM (SELECT * FROM execution_events ORDER BY workflow_run_id, sequence) value" >"$evidence/events.jsonl"
 scan_failed=0
 for file in "$evidence"/*; do
   for forbidden in "$FAKE_PROVIDER_API_KEY" "http://fake-provider:4010/v1" "FAKE_PROVIDER_API_KEY" "RAW_PROVIDER_DETAIL_MUST_NOT_ESCAPE" "PiSession" "sessionId" "session_id"; do
