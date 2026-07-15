@@ -1,0 +1,87 @@
+name: Reusable M0 Acceptance
+
+on:
+  workflow_call:
+    inputs:
+      git_sha:
+        required: true
+        type: string
+      run_label:
+        required: false
+        type: string
+        default: acceptance
+      reject_rerun:
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: verify M0
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-bookworm
+        env:
+          POSTGRES_DB: workflow
+          POSTGRES_USER: workflow
+          POSTGRES_PASSWORD: workflow
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U workflow -d workflow"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 30
+    env:
+      ACCEPTANCE_GIT_SHA: ${{ inputs.git_sha }}
+      ACCEPTANCE_DATABASE_URL: postgres://workflow:workflow@127.0.0.1:5432/workflow
+      FAKE_PROVIDER_API_KEY: M0_ACCEPTANCE_${{ github.run_id }}_${{ github.run_attempt }}_${{ inputs.run_label }}
+      EVIDENCE_DIR: ${{ github.workspace }}/artifacts/acceptance/M0/${{ inputs.git_sha }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.run_label }}
+      COMPOSE_PROJECT_NAME: m0-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.run_label }}
+    steps:
+      - name: Reject release-gate reruns
+        if: ${{ inputs.reject_rerun && github.run_attempt > 1 }}
+        run: exit 1
+      - name: Check out requested commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.git_sha }}
+      - name: Verify checked-out commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$ACCEPTANCE_GIT_SHA"
+      - name: Use Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Enable pinned pnpm
+        run: corepack enable && corepack prepare pnpm@11.13.0 --activate
+      - name: Install exact dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run complete M0 acceptance once
+        run: make verify-m0
+      - name: Verify report commit
+        run: node -e 'const report=require(process.argv[1]);if(report.gitSha!==process.argv[2])process.exit(1)' "$EVIDENCE_DIR/report.json" "$ACCEPTANCE_GIT_SHA"
+      - name: Clean acceptance Compose project
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file .env.example -f compose.yaml down --volumes --remove-orphans || true
+          for project in $(docker ps -aq --filter "label=com.docker.compose.project.working_dir=${GITHUB_WORKSPACE}" | xargs -r docker inspect --format '{{ index .Config.Labels "com.docker.compose.project" }}' | sort -u); do
+            docker compose --project-name "$project" --env-file .env.example -f compose.yaml down --volumes --remove-orphans || true
+          done
+      - name: Upload M0 evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: m0-evidence-${{ inputs.git_sha }}-${{ inputs.run_label }}
+          path: ${{ env.EVIDENCE_DIR }}
+          if-no-files-found: error
+          retention-days: 30

@@ -4,9 +4,18 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-workflow-m0-bootstrap-${GITHUB_RUN_ID:-local}}"
 compose=(docker compose --env-file .env.example -f compose.yaml)
+evidence_dir="${EVIDENCE_DIR:-}"
+if [[ -n "$evidence_dir" ]]; then
+  mkdir -p "$evidence_dir/logs" "$evidence_dir/test-results"
+fi
 
 cleanup() {
-  "${compose[@]}" down --volumes --remove-orphans
+  status=$?
+  if (( status != 0 )) && [[ -n "$evidence_dir" ]]; then
+    "${compose[@]}" logs --no-color >"$evidence_dir/logs/bootstrap-system.log" 2>&1 || true
+  fi
+  "${compose[@]}" down --volumes --remove-orphans >/dev/null 2>&1 || true
+  return "$status"
 }
 trap cleanup EXIT
 cleanup || true
@@ -51,3 +60,6 @@ wait_healthy app
 wait_healthy worker
 
 "${compose[@]}" ps
+if [[ -n "$evidence_dir" ]]; then
+  "${compose[@]}" ps --format json >"$evidence_dir/test-results/bootstrap-compose.json"
+fi
