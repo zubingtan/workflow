@@ -43,10 +43,55 @@ The thirteen files under `docs/source/v0.4` are an immutable source snapshot. Pr
 
 Every functional PR preserves RED-before-GREEN evidence, receives independent verification, and merges before the next PR starts from the latest `main`.
 
+PR7a was added after PR7 as a scoped hardening PR. It moved provider credentials to the worker-only environment boundary, made binding failures deterministic, and pinned runner, Actions, Node image, and PostgreSQL image identities without adding product scope.
+
+## As-built M0
+
+The implementation is a Node.js 22 / pnpm 11.13.0 application with TypeScript 7.0.2, Next.js 16.2.10, React 19.2.7, TypeBox 1.3.6, PostgreSQL through `postgres` 3.4.9, Pi Agent 0.73.1, Vitest 4.1.10, and Playwright 1.61.1. The application and worker share one digest-pinned Node 22 image; release acceptance runs on `ubuntu-24.04`.
+
+The Compose topology has exactly five services:
+
+1. `app` serves the Next.js Web shell and API.
+2. `worker` claims PostgreSQL queue leases and is the only service that resolves provider credentials or calls Pi.
+3. `postgres` persists definitions, Runs, events, queue state, and Markdown.
+4. `migrate` applies four ordered, idempotent SQL migrations and their seed rows.
+5. `fake-provider` supplies deterministic success and failure modes for acceptance.
+
+The eight public API routes are:
+
+- `GET /api/workflows`
+- `POST /api/workflows/import`
+- `GET /api/workflows/:id`
+- `GET /api/workflows/:id/runs`
+- `POST /api/runs`
+- `GET /api/runs/:id`
+- `GET /api/health/live`
+- `GET /api/health/ready`
+
+The ten M0 product and queue tables are `workflows`, `workflow_definition_versions`, `agent_definitions`, `agent_definition_versions`, `workflow_runs`, `node_runs`, `node_run_attempts`, `agent_executions`, `execution_events`, and `queue_jobs`. `schema_migrations` is a separate migration bookkeeping table. The four migration files are `001_bootstrap.sql`, `002_definition_versions.sql`, `003_async_runtime.sql`, and `004_terminal_failures.sql`.
+
+`POST /api/runs` transactionally creates the queued Run, three Node Runs, first event, and queue job, then returns `202`. A worker claims the lease and executes `input.prompt -> process.agent -> output.markdown` through the dedicated Pi Runtime Adapter. A successful Run persists three single Attempts, one Agent Execution, eleven append-only events, the per-Agent provider snapshot, and Markdown output. Failure and crash paths persist safe errors, a skipped Output, and an explicit terminal Run without requeueing or replaying the model request.
+
+The temporary Web shell delivers Workflow List, JSON Import, Workflow Detail, a neutral read-only Board, a right-side Run Sheet, status-text History, polling Run Detail, Markdown Output, `Run again`, and actionable failure explanations. Playwright exercises these flows in Chromium against the complete five-service stack, including light, system-dark, and narrow layouts.
+
+`make verify-m0` runs the unit, PostgreSQL integration, Compose system, and Playwright layers once, produces all thirteen blocking results including M0-T07E, creates a redacted Support Bundle, and seals the Evidence Bundle with `MANIFEST` and `SHA256SUMS`.
+
+## Actual differences from the initial plan
+
+- M0 pulled forward the smallest immutable `AgentDefinitionVersion`, one Attempt per executed node, one Agent Execution, and basic append-only events from the broader M1 governance model. Multiple Attempts, Retry, event streaming, and full Agent governance were not pulled forward.
+- Provider empty output became the additional blocking case M0-T07E. It terminates as `provider_empty_output`; it cannot be mistaken for successful blank Markdown.
+- Worker loss uses conservative durable dispatch markers. Before dispatch it becomes `worker_lost`; after dispatch and before result persistence it becomes `outcome_unknown`. Neither path replays a model request, even though the v0.4 source allowed recovery or explicit failure.
+- Seed data is applied idempotently inside `001_bootstrap.sql` and `002_definition_versions.sql`; there is no separate seed service beyond the five-service topology.
+- `WORKFLOW_ENV_FILE` is loaded only by the worker container. The app receives the binding-file path but no credential environment value; provider snapshots retain only alias, provider, effective model, and non-secret parameters.
+- Supply-chain hardening added immutable Node/PostgreSQL image digests, commit-pinned Actions, and an `ubuntu-24.04` runner after the initial bootstrap used stable tags. Acceptance captures the actual container identities before cleanup.
+- TypeScript 7.0.2 and Next.js 16.2.10 require the two-stage `compile` then `generate` build described below. This is a compatibility workaround, not an application architecture choice.
+
 ## Toolchain Compatibility
 
-TypeScript 7.0.2 no longer ships the legacy `typescript/lib/typescript.js` compiler API file that Next.js 16.2.10 checks during a standard build. Until a stable Next.js release supports that package layout, the build runs `tsc --noEmit` first and then uses Next.js two-phase `compile` and `generate` build modes. No shim, prerelease dependency, or TypeScript downgrade is used.
+TypeScript 7.0.2 no longer ships the legacy `typescript/lib/typescript.js` compiler API file that Next.js 16.2.10 checks during a standard build. Until a stable Next.js release supports that package layout, the build runs Next.js `compile`, then `tsc --noEmit`, then Next.js `generate`. No shim, prerelease dependency, or TypeScript downgrade is used.
 
 ## Deferred
 
-Builder, Feishu, Logic/Loop, Human Interaction, Tool Gateway, Memory, product-level Subagent support, arbitrary code, multi-user/RBAC, Temporal, SSE, Retry/Cancel, Replay/Compare, and product Artifact browsing are outside M0.
+Builder, Feishu, Logic/Loop, Human Interaction, Tool Gateway, Memory, product-level Subagent support, arbitrary code, multi-user/RBAC, Temporal or another Durable Execution backend, SSE, Retry/Cancel, multiple Attempts, Replay/Compare, complete Agent governance, and product Evidence/Artifact browsing are outside M0.
+
+A dedicated `ModelProvider` interface, a DeepSeek adapter, and opt-in live-model evaluation are follow-up work after `m0-v0.1.0`. M0's release gate remains deterministic and Fake Provider-only; real-model quality or transport behavior is not claimed by this milestone.

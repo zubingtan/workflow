@@ -2,7 +2,7 @@
 
 - **Version:** v0.4-M0
 - **Status:** Accepted implementation contract
-- **Applies to:** PR3 definition versioning, PR4 asynchronous happy path, and PR5 terminal failures
+- **Applies to:** the delivered M0 definition, asynchronous runtime, terminal-failure, and API projection contracts
 
 ## 1. Authority and scope
 
@@ -18,7 +18,7 @@ The source requirements are:
 
 The Roadmap places complete Agent Definition Version governance and the full Event/Attempt reliability model in M1. The higher-priority current decisions bring forward only the minimal immutable Agent Version reference, one Attempt per executed node, and the basic append-only events required to explain an M0 Run. Retry, event streaming, replay, and broader Agent governance remain outside PR4.
 
-PR3 covers Definition schema, validation, canonicalization, immutable versions, and Workflow import/list/detail APIs. PR4 adds the asynchronous successful path. PR5 adds only terminal Provider failures, worker-loss classification without automatic model replay, restart persistence, and secret redaction. PR6 owns UI implementation.
+PR3 delivered Definition schema, validation, canonicalization, immutable versions, and Workflow import/list/detail APIs. PR4 delivered the asynchronous successful path. PR5 added only terminal Provider failures, worker-loss classification without automatic model replay, restart persistence, and secret redaction. PR6 projected these contracts through the read-only Web shell without changing them.
 
 ## 2. Workflow Definition schema
 
@@ -209,7 +209,7 @@ A Workflow Definition Version stores at least:
 - SHA-256 hash;
 - creation timestamp.
 
-An Agent Definition Version stores the corresponding parent Agent ID, positive version, immutable definition payload, canonical JSON, hash, and creation timestamp. PR3 seeds the minimal Agent Version used by the valid example; its runtime prompt semantics are deferred to PR4.
+An Agent Definition Version stores the corresponding parent Agent ID, positive version, immutable definition payload, canonical JSON, hash, and creation timestamp. PR3 seeds the minimal Agent Version used by the valid example; PR4 consumes that immutable reference during runtime execution.
 
 Persistence rules:
 
@@ -687,11 +687,11 @@ PR5 adds nullable error code/message columns to Run, Node, Attempt, and Agent Ex
 
 Persisted and projected Provider data uses the Section 8 allowlist only: Binding alias, effective Provider, effective Model, and explicitly non-secret parameters. Product tables, APIs, events, logs, and acceptance evidence must omit credential values and names, Base URLs, `apiKeyEnv`, Pi session/internal data, request headers, and raw Provider request or response bodies. Safe error messages come only from the table in Section 14; external messages are never passed through.
 
-If diagnostic text must retain surrounding content, every configured credential value is replaced with `[REDACTED]` before persistence or logging. Acceptance injects a unique secret sentinel and scans serialized API responses, product-table exports, event exports, app/worker/Fake Provider logs, and PR5 evidence; any sentinel match fails M0-T11. PR6 extends the same rule to DOM/browser evidence. PR7 creates the final redacted Support Bundle; PR5 does not create that bundle.
+If diagnostic text must retain surrounding content, every configured credential value is replaced with `[REDACTED]` before persistence or logging. Acceptance injects a unique secret sentinel and scans serialized API responses, product-table exports, event exports, app/worker/Fake Provider logs, DOM/browser evidence, and the redacted Support Bundle; any sentinel match fails M0-T11. PR6 delivered the browser boundary and PR7 delivered Support Bundle generation.
 
 ## 19. Deferred runtime behavior
 
-Retry, Cancel, Replay, SSE, multiple Attempts, waiting, Human Interaction, Tool execution, and product-level Event browsing remain outside M0. Later contracts must not mutate historical Definition, Run reference, Attempt, Agent Execution, provider snapshot, Event, prompt, Markdown, error, or skip facts. PR6 UI behavior and PR7 Support Bundle creation remain deferred.
+Retry, Cancel, Replay, SSE, multiple Attempts, waiting, Human Interaction, Tool execution, live-model evaluation, and product-level Event browsing remain outside M0. Later runtime contracts must not mutate historical Definition, Run reference, Attempt, Agent Execution, provider snapshot, Event, prompt, Markdown, error, or skip facts.
 
 ## 20. Acceptance mapping
 
@@ -711,4 +711,4 @@ PR5 provides:
 - **M0-T09:** a full restart preserves terminal history, nodes, attempts, events, snapshots, errors, version references, and Markdown without duplicate calls.
 - **M0-T11:** the sentinel scan passes across API, database, events, logs, and PR5 evidence.
 
-The UI portion of M0-T04 and browser coverage remain pending PR6. Requirement-to-test-to-evidence traceability follows [`docs/source/v0.4/09-MILESTONE-AUTOMATED-ACCEPTANCE.md`, `Requirement Traceability`](../../source/v0.4/09-MILESTONE-AUTOMATED-ACCEPTANCE.md).
+PR6 provides the UI portion of M0-T04, the full-stack Chromium evidence for M0-T10, and the DOM/browser portion of M0-T11. PR7 provides M0-T12 Support Bundle evidence and generates the runtime Requirement-to-Test-to-Evidence matrix used by the complete M0 gate. Traceability follows [`docs/source/v0.4/09-MILESTONE-AUTOMATED-ACCEPTANCE.md`, `Requirement Traceability`](../../source/v0.4/09-MILESTONE-AUTOMATED-ACCEPTANCE.md).

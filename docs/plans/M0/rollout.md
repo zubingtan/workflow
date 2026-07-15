@@ -2,19 +2,30 @@
 
 ## Preconditions
 
-- PR1 through PR8 are merged sequentially with required checks passing.
-- The final `main` SHA has no unreviewed changes and all dependencies and container images are pinned.
-- Documentation, migration, Fake Provider scenarios, support-bundle redaction, and requirement-to-test-to-evidence traceability match the shipped implementation.
+- PR1 through PR8 are merged sequentially and the candidate is the current, reviewed `main` commit.
+- `make verify-m0` is green for the PR head, the thirteen source artifacts still match their recorded SHA256 values, and no local or unreviewed change is part of the candidate.
+- Documentation, four migrations, Fake Provider modes, worker-only provider credential boundary, Support Bundle redaction, and Requirement-to-Test-to-Evidence traceability match the shipped implementation.
+- The exact final `main` Git SHA is known. Tag `m0-v0.1.0` and the private GitHub Release do not exist before the release gate passes.
 
 ## Release Procedure
 
-1. Run the release workflow three times in sequence on independent clean runners using the same `main` SHA and isolated Compose projects.
-2. Require each run to execute the full `make verify-m0` suite and upload a complete evidence bundle.
-3. Aggregate the three bundles with a manifest and SHA256 checksums, then confirm secret scans and terminal-state invariants.
-4. Publish the private `m0-v0.1.0` tag and release notes only after the three-run gate passes.
+1. Trigger `.github/workflows/m0-release-gate.yml` once with `workflow_dispatch`, passing the exact final `main` SHA in `git_sha`.
+2. Let `validate` prove that the requested commit is current `main` and that this is workflow attempt 1.
+3. Let the workflow chain `run1 -> run2 -> run3` sequentially through job dependencies. Each job checks out the same SHA and invokes the reusable M0 acceptance workflow on an independent clean `ubuntu-24.04` runner with an isolated Compose project and database volume.
+4. After all three pass, let `aggregate` download and validate the three Evidence Bundles, confirm their identical SHA and secret scans, and generate aggregate `MANIFEST` and `SHA256SUMS` files.
+5. Inspect the aggregate evidence and record the final SHA, release-gate workflow URL, and aggregate artifact URL in the release record.
+6. Create the private `m0-v0.1.0` tag at that verified SHA and publish the private GitHub Release using the closeout notes. Neither action occurs automatically in the verification workflow.
 
-## Rollback and Rework
+## Failure and REWORK
 
-If any blocking test fails, mark the candidate `REWORK`, do not publish or reuse a partial pass, and repair the defect through a new PR. If a released deployment cannot preserve explainable Run history or secret boundaries, stop it, retain the database and diagnostic evidence, and return to the last accepted release while the fix is reviewed.
+Any failure in `validate`, `run1`, `run2`, `run3`, evidence validation, or aggregation invalidates the entire series and leaves the candidate `REWORK`. A later job cannot run around a failed dependency, a partial pass is not reusable, and a GitHub Actions rerun does not count as another consecutive pass.
 
-M0 rollback never retries an unknown model outcome. Runs interrupted before or after provider dispatch remain explicit terminal failures according to the persisted evidence.
+Repair requires a new TDD PR and merge, which produces a new final `main` SHA. Start a fresh single `workflow_dispatch` at `run1`; do not amend the failed release candidate, force a tag, or publish an incomplete Release.
+
+If an already published local deployment cannot preserve explainable Run history or the credential boundary, stop app and worker traffic, retain PostgreSQL and the redacted Support Bundle, and investigate from immutable evidence. M0 rollback never retries an unknown model outcome: interrupted Runs remain terminal `worker_lost` or `outcome_unknown` according to persisted dispatch facts.
+
+## Current release readiness
+
+- Final same-SHA three-run acceptance: **PENDING**, awaiting PR8 merge and one release `workflow_dispatch`.
+- Tag `m0-v0.1.0`: **PENDING**, created only after aggregate evidence review.
+- Private GitHub Release: **PENDING**, published only after the tag points to the verified final SHA.
