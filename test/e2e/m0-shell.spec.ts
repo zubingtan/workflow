@@ -233,18 +233,38 @@ secretSafeTest.describe("C — secret-safe crash and restart evidence", () => {
 test("D — keeps per-agent model facts readable in light, dark, and narrow layouts", async ({
   page, stack, evidence,
 }, testInfo) => {
+  const configuredModel = "configured-model-current";
+  const longWorkflowName = `PR6${"UnbrokenWorkflowName".repeat(12)}${Date.now()}`;
   await stack.startWorker();
-  await page.goto(`${stack.appUrl}/workflows/seed-workflow`);
-  await expect(page.getByRole("region", { name: "Board" })).toContainText("fake-default");
+  await stack.setAppConfiguredModel(configuredModel);
+  await page.goto(stack.appUrl);
+  const imported = await importWorkflow(page, definition(longWorkflowName));
+  expect(imported.status()).toBe(201);
+
+  const definitionAgent = node(page, "process.agent");
+  await expect(
+    definitionAgent.getByText("Provider binding", { exact: true }).locator(".."),
+  ).toContainText("fake-default");
+  await expect(
+    definitionAgent.getByText("Configured model", { exact: true }).locator(".."),
+  ).toContainText(configuredModel);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole("heading", { name: longWorkflowName, level: 1 })).toBeVisible();
+  await expect.poll(() => page.evaluate(() =>
+    document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+  await page.setViewportSize({ width: 1280, height: 720 });
   await submitRun(page, `Responsive check ${Date.now()}`);
   await expectRunStatus(page, "Succeeded");
 
   const agent = node(page, "process.agent");
-  await expect(agent).toContainText("Provider binding");
-  await expect(agent).toContainText("fake-default");
-  await expect(agent).toContainText("Configured model");
-  await expect(agent).toContainText("fake-m0");
-  await expect(agent).toContainText("Effective model");
+  const configured = agent.getByText("Configured model", { exact: true }).locator("..");
+  const effective = agent.getByText("Effective model", { exact: true }).locator("..");
+  await expect(agent.getByText("Provider binding", { exact: true }).locator("..")).toContainText("fake-default");
+  await expect(configured).toContainText(configuredModel);
+  await expect(configured).not.toContainText("fake-m0");
+  await expect(effective).toContainText("fake-m0");
+  await expect(effective).not.toContainText(configuredModel);
   await expect(page.getByRole("heading", { name: "Provider", exact: true })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Provider", exact: true })).toHaveCount(0);
   await expect(page.getByText("Succeeded with warnings", { exact: true })).toHaveCount(0);
