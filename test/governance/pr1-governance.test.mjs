@@ -305,17 +305,16 @@ test("M0 planning directory contains the four required Markdown skeletons", () =
   }
 });
 
-test("make verify-m0 is an explicit REWORK placeholder", () => {
-  requireFile("Makefile");
-  const result = spawnSync("make", ["verify-m0"], {
+test("make verify-m0 is registered as the non-placeholder PR7 acceptance gate", () => {
+  const makefile = requireFile("Makefile");
+  assert.match(makefile, /^support-bundle:/m, "PR7 must register support-bundle");
+  assert.doesNotMatch(makefile, /verify-m0:[\s\S]{0,200}(?:placeholder|full M0 acceptance is not implemented)/i);
+  const result = spawnSync("make", ["--no-print-directory", "-n", "verify-m0"], {
     cwd: repositoryRoot,
     encoding: "utf8",
     timeout: 10_000,
   });
-  const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
-
-  assert.notEqual(result.status, 0, "verify-m0 must remain nonzero until M0 acceptance exists");
-  assert.match(output, /REWORK/i, "verify-m0 must identify its placeholder status as REWORK");
+  assert.equal(result.status, 0, result.stderr);
 });
 
 test("active PR gate uses current checkout and setup-node actions", () => {
