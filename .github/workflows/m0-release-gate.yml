@@ -87,7 +87,7 @@ jobs:
           test "$(find aggregate/runs -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')" = "3"
           for bundle in aggregate/runs/*; do
             node scripts/acceptance/validate-evidence.mjs --bundle "$bundle" --secret ABSENT_RELEASE_SECRET
-            test "$(node -p 'require(process.argv[1]).gitSha' "$bundle/report.json")" = "${{ inputs.git_sha }}"
+            test "$(node -p 'JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).gitSha' "$bundle/report.json")" = "${{ inputs.git_sha }}"
           done
           find aggregate/runs -type f -print | LC_ALL=C sort > aggregate/MANIFEST
           while IFS= read -r file; do sha256sum "$file"; done < aggregate/MANIFEST > aggregate/SHA256SUMS
