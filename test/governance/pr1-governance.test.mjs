@@ -328,13 +328,13 @@ test("reusable M0 acceptance uses the pinned read-only Node and pnpm toolchain",
         (name) => !actions.some((action) => action.name === name),
       ),
       outdated: actions
-        .filter((action) => action.version !== "v7")
+        .filter((action) => !/^[a-f0-9]{40}$/u.test(action.version))
         .map((action) => `${action.name}@${action.version}`),
     },
     { missing: [], outdated: [] },
   );
   assert.match(workflow, /^permissions:\s*\n\s+contents:\s+read\s*$/m);
-  assert.match(workflow, /uses:\s*actions\/setup-node@v7[\s\S]{0,120}node-version:\s*22/);
+  assert.match(workflow, /uses:\s*actions\/setup-node@[a-f0-9]{40}[\s\S]{0,120}node-version:\s*22/);
   assert.match(workflow, /corepack enable && corepack prepare pnpm@11\.13\.0 --activate/);
   assert.match(workflow, /pnpm install --frozen-lockfile/);
 });

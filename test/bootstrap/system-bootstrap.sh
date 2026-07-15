@@ -36,6 +36,22 @@ wait_healthy() {
   return 1
 }
 
+assert_multiarch() {
+  local reference="$1"
+  docker buildx imagetools inspect --raw "$reference" | node --input-type=module -e '
+    let source = "";
+    for await (const chunk of process.stdin) source += chunk;
+    const manifest = JSON.parse(source);
+    const platforms = new Set((manifest.manifests ?? []).map((entry) => `${entry.platform?.os}/${entry.platform?.architecture}`));
+    if (!platforms.has("linux/amd64") || !platforms.has("linux/arm64")) process.exit(1);
+  '
+}
+
+node_image=$(node -e 'const s=require("fs").readFileSync("Dockerfile","utf8");process.stdout.write(s.match(/^FROM\s+(\S+)/m)?.[1]??"")')
+postgres_image=$(node -e 'const s=require("fs").readFileSync("compose.yaml","utf8");process.stdout.write(s.match(/^  postgres:\s*$[\s\S]*?^    image:\s*([^\s#]+)/m)?.[1]??"")')
+assert_multiarch "$node_image"
+assert_multiarch "$postgres_image"
+
 "${compose[@]}" build
 "${compose[@]}" up -d postgres fake-provider
 wait_healthy postgres
@@ -60,6 +76,20 @@ wait_healthy app
 wait_healthy worker
 
 "${compose[@]}" ps
+container_records=""
+for service in app worker postgres migrate fake-provider; do
+  container_id=$("${compose[@]}" ps -a -q "$service")
+  image_id=$(docker inspect --format '{{.Image}}' "$container_id")
+  [[ "$container_id" =~ ^[a-f0-9]{64}$ ]]
+  [[ "$image_id" =~ ^sha256:[a-f0-9]{64}$ ]]
+  container_records+="${service},${container_id},${image_id}"$'\n'
+done
 if [[ -n "$evidence_dir" ]]; then
-  "${compose[@]}" ps --format json >"$evidence_dir/test-results/bootstrap-compose.json"
+  CONTAINERS="$container_records" node -e '
+    const records = Object.fromEntries(process.env.CONTAINERS.trim().split("\n").map((line) => {
+      const [service, containerId, imageId] = line.split(",");
+      return [service, { containerId, imageId }];
+    }));
+    require("fs").writeFileSync(process.argv[1], JSON.stringify({ services: records }, null, 2) + "\n");
+  ' "$evidence_dir/test-results/bootstrap-compose.json"
 fi

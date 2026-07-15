@@ -12,6 +12,27 @@ function workflow(name) {
   return readFileSync(absolute, "utf8");
 }
 
+test("all release workflows pin runners, actions, and external service images", () => {
+  const workflows = ["pr-gate.yml", "m0-acceptance.yml", "m0-release-gate.yml"]
+    .map((name) => ({ name, source: workflow(name) }));
+  for (const { name, source } of workflows) {
+    for (const runner of [...source.matchAll(/^\s*runs-on:\s*([^\s#]+)\s*$/gm)].map((match) => match[1])) {
+      assert.equal(runner, "ubuntu-24.04", `${name} uses a floating runner: ${runner}`);
+    }
+    for (const action of [...source.matchAll(/^\s*uses:\s*([^\s#]+)\s*$/gm)].map((match) => match[1])) {
+      if (action.startsWith("./")) continue;
+      assert.match(action, /^[^@\s]+@[a-f0-9]{40}$/u, `${name} uses an unpinned external action: ${action}`);
+    }
+  }
+
+  const compose = readFileSync(path.join(root, "compose.yaml"), "utf8");
+  const composePostgres = compose.match(/^  postgres:\s*$[\s\S]*?^    image:\s*([^\s#]+)\s*$/m)?.[1];
+  const acceptancePostgres = workflow("m0-acceptance.yml")
+    .match(/^      postgres:\s*$[\s\S]*?^        image:\s*([^\s#]+)\s*$/m)?.[1];
+  assert.match(composePostgres ?? "", /^postgres:[^@\s]+@sha256:[a-f0-9]{64}$/u);
+  assert.equal(acceptancePostgres, composePostgres, "Actions must reuse the Compose PostgreSQL digest");
+});
+
 function topLevelKeys(block) {
   return [...block.matchAll(/^  ([A-Za-z0-9_-]+):\s*$/gm)].map((match) => match[1]);
 }
@@ -48,17 +69,18 @@ test("the PR gate calls one reusable full acceptance workflow", () => {
 
   const reusable = workflow("m0-acceptance.yml");
   assert.match(reusable, /workflow_call:[\s\S]{0,300}git_sha:[\s\S]{0,120}required:\s*true/);
-  assert.match(reusable, /runs-on:\s*ubuntu-latest/);
-  assert.match(reusable, /uses:\s*actions\/checkout@v7[\s\S]{0,180}ref:\s*\$\{\{\s*inputs\.git_sha\s*\}\}/);
+  assert.match(reusable, /runs-on:\s*ubuntu-24\.04/);
+  assert.match(reusable, /uses:\s*actions\/checkout@[a-f0-9]{40}[\s\S]{0,180}ref:\s*\$\{\{\s*inputs\.git_sha\s*\}\}/);
   assert.match(reusable, /git\s+rev-parse\s+HEAD[\s\S]{0,240}(?:inputs\.git_sha|ACCEPTANCE_GIT_SHA)/);
   assert.match(reusable, /ACCEPTANCE_GIT_SHA:\s*\$\{\{\s*inputs\.git_sha\s*\}\}/);
+  assert.match(reusable, /WORKFLOW_IMAGE_TAG:\s*\$\{\{\s*inputs\.git_sha\s*\}\}/);
   assert.equal((reusable.match(/make\s+verify-m0/g) ?? []).length, 1);
   const reportCheck = reusable.split(/\r?\n/).find((line) =>
     line.includes("report.json") && line.includes("gitSha") && line.includes("ACCEPTANCE_GIT_SHA"));
   assert.ok(reportCheck, "reusable acceptance must compare report gitSha with inputs.git_sha");
   assert.match(reusable, /COMPOSE_PROJECT_NAME|--project-name/);
   assert.match(reusable, /if:\s*\$\{\{\s*always\(\)\s*\}\}[\s\S]{0,500}down[^\n]*(?:--volumes|-v)/);
-  assert.match(reusable, /actions\/upload-artifact@v7[\s\S]{0,240}name:[^\n]*\$\{\{\s*inputs\.git_sha\s*\}\}/);
+  assert.match(reusable, /actions\/upload-artifact@[a-f0-9]{40}[\s\S]{0,240}name:[^\n]*\$\{\{\s*inputs\.git_sha\s*\}\}/);
 });
 
 test("the manual release gate chains three clean same-SHA runs and only aggregates evidence", () => {

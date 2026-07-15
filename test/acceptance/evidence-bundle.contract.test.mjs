@@ -18,6 +18,16 @@ const ids = [
   "M0-T01", "M0-T02", "M0-T03", "M0-T04", "M0-T05", "M0-T06", "M0-T07",
   "M0-T07E", "M0-T08", "M0-T09", "M0-T10", "M0-T11", "M0-T12",
 ];
+const serviceNames = ["app", "worker", "postgres", "migrate", "fake-provider"];
+
+function capturedContainers() {
+  return {
+    services: Object.fromEntries(serviceNames.map((name, index) => [name, {
+      containerId: String(index + 1).repeat(64),
+      imageId: `sha256:${(index + 6).toString(16).repeat(64)}`,
+    }])),
+  };
+}
 
 function sha256(file) {
   return createHash("sha256").update(readFileSync(file)).digest("hex");
@@ -52,12 +62,18 @@ function generatedEvidence() {
   const directory = mkdtempSync(path.join(tmpdir(), "m0-generated-evidence-"));
   const generated = spawnSync(process.execPath, [generateEvidence, "--evidence-dir", directory], {
     cwd: root,
-    env: { ...process.env, ACCEPTANCE_GIT_SHA: "a".repeat(40) },
+    env: {
+      ...process.env,
+      ACCEPTANCE_GIT_SHA: "a".repeat(40),
+      ACCEPTANCE_RUNNER_OS: "ubuntu-24.04",
+      ACCEPTANCE_RUNNER_IMAGE_VERSION: "20260714.1",
+    },
     encoding: "utf8",
     timeout: 10_000,
   });
   assert.equal(generated.status, 0, generated.stderr);
   for (const id of ids) writeJson(path.join(directory, "test-results", `${id}.json`), { id, result: "PASS" });
+  writeJson(path.join(directory, "test-results/bootstrap-compose.json"), capturedContainers());
   return directory;
 }
 
@@ -96,16 +112,23 @@ function fixture() {
     "Requirement,Test,Evidence,Result,Blocking",
     ...matrix.map((row) => Object.values(row).join(",")),
   ].join("\n") + "\n");
-  writeJson(path.join(directory, "environment.json"), { gitSha: "a".repeat(40), os: "test", architecture: "test" });
+  writeJson(path.join(directory, "environment.json"), {
+    gitSha: "a".repeat(40),
+    os: "test",
+    architecture: "test",
+    runner: { os: "ubuntu-24.04", imageVersion: "20260714.1" },
+  });
   writeJson(path.join(directory, "versions.json"), { document: "v0.4", schema: "oncall.workflow/v1alpha1", migration: "004_terminal_failures.sql", pi: "0.73.1" });
   for (const row of matrix) writeJson(path.join(directory, row.Evidence), { id: row.Test, result: "PASS" });
+  writeJson(path.join(directory, "test-results/bootstrap-compose.json"), capturedContainers());
   for (const [relative, value] of [
     ["event-exports/events.json", "[]\n"],
     ["logs/services.log", "redacted\n"],
     ["screenshots/m0.png", "image evidence\n"],
     ["traces/m0.trace", "trace evidence\n"],
     ["metrics/metrics.json", "{}\n"],
-    ["support-bundle/diagnostics.json", "{}\n"],
+    ["support-bundle/diagnostics.json", `${JSON.stringify({ containers: capturedContainers().services })}\n`],
+    ["support-bundle/environment-summary.json", `${JSON.stringify({ containers: capturedContainers().services })}\n`],
   ]) {
     const absolute = path.join(directory, relative);
     mkdirSync(path.dirname(absolute), { recursive: true });
@@ -139,6 +162,10 @@ test("complete 13/13 PASS and GO evidence validates with a closed manifest", () 
     assert.equal(report.databaseMigrationVersion, "004_terminal_failures.sql");
     assert.equal(report.piAgentVersion, "0.73.1");
     assert.deepEqual(Object.keys(report.containerDigests).sort(), ["app", "fakeProvider", "postgres"]);
+    const environment = JSON.parse(readFileSync(path.join(directory, "environment.json"), "utf8"));
+    assert.deepEqual(environment.runner, { os: "ubuntu-24.04", imageVersion: "20260714.1" });
+    const diagnostics = JSON.parse(readFileSync(path.join(directory, "support-bundle/diagnostics.json"), "utf8"));
+    assert.deepEqual(diagnostics.containers, capturedContainers().services);
     assert.equal(validate(directory, "ABSENT_SECRET").status, 0);
   } finally {
     rmSync(directory, { recursive: true, force: true });
@@ -253,7 +280,13 @@ test("support bundle blocks unavailable image inspection and records all real se
   mkdirSync(failingBin, { recursive: true });
   mkdirSync(passingBin, { recursive: true });
   writeExecutable(path.join(failingBin, "docker"), "#!/bin/sh\nexit 42\n");
-  writeExecutable(path.join(passingBin, "docker"), `#!/bin/sh\nprintf 'sha256:%064d\\n' 7\n`);
+  writeExecutable(path.join(passingBin, "docker"), `#!/bin/sh
+if [ "$1 $2" = "image inspect" ]; then
+  printf 'sha256:%064d\\n' 7
+  exit 0
+fi
+exit 42
+`);
   const failedEvidence = generatedEvidence();
   const passedEvidence = generatedEvidence();
 
@@ -277,6 +310,10 @@ test("support bundle blocks unavailable image inspection and records all real se
     const passedOutput = `${passed.stdout}${passed.stderr}`;
     const failedReport = JSON.parse(readFileSync(path.join(failedEvidence, "report.json"), "utf8"));
     const passedReport = JSON.parse(readFileSync(path.join(passedEvidence, "report.json"), "utf8"));
+    const passedEnvironment = JSON.parse(readFileSync(path.join(passedEvidence, "environment.json"), "utf8"));
+    const passedDiagnostics = JSON.parse(readFileSync(path.join(passedEvidence, "support-bundle/diagnostics.json"), "utf8"));
+    const passedEnvironmentSummary = JSON.parse(readFileSync(path.join(passedEvidence, "support-bundle/environment-summary.json"), "utf8"));
+    const preCleanupCapture = JSON.parse(readFileSync(path.join(passedEvidence, "test-results/bootstrap-compose.json"), "utf8"));
 
     assert.notEqual(failed.status, 0, "support bundle must fail when image inspection is unavailable");
     assert.equal(failedReport.result, "REWORK");
@@ -288,11 +325,14 @@ test("support bundle blocks unavailable image inspection and records all real se
     assert.equal(passed.status, 0, passed.stderr);
     assert.equal(passedReport.result, "PASS");
     assert.equal(passedReport.decision, "GO");
+    assert.deepEqual(passedEnvironment.runner, { os: "ubuntu-24.04", imageVersion: "20260714.1" });
     assert.deepEqual(
       Object.keys(passedReport.containerDigests).sort(),
       ["app", "fakeProvider", "migrate", "postgres", "worker"],
     );
     for (const digest of Object.values(passedReport.containerDigests)) assert.match(digest, /^sha256:[a-f0-9]{64}$/u);
+    assert.deepEqual(passedDiagnostics.containers, preCleanupCapture.services);
+    assert.deepEqual(passedEnvironmentSummary.containers, preCleanupCapture.services);
     assert.equal(passedOutput.includes(sentinel), false, "successful support output leaked the secret sentinel");
   } finally {
     rmSync(failedEvidence, { recursive: true, force: true });
@@ -324,6 +364,17 @@ test("tampering, incomplete evidence, invalid reports, and nested zip secrets ar
       const rows = readFileSync(matrixPath, "utf8").trimEnd().split("\n");
       rows[8] = rows[7];
       writeFileSync(matrixPath, `${rows.join("\n")}\n`);
+      seal(directory);
+    }],
+    ["missing runner identity", "ABSENT_SECRET_RUNNER", (directory) => {
+      const environmentPath = path.join(directory, "environment.json");
+      const environment = JSON.parse(readFileSync(environmentPath, "utf8"));
+      delete environment.runner;
+      writeJson(environmentPath, environment);
+      seal(directory);
+    }],
+    ["missing actual container IDs", "ABSENT_SECRET_CONTAINERS", (directory) => {
+      writeJson(path.join(directory, "test-results/bootstrap-compose.json"), { services: {} });
       seal(directory);
     }],
     ["nested zip secret", sentinel, (directory) => {

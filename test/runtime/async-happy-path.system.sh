@@ -6,7 +6,44 @@ cd "$(dirname "$0")/../.."
 project="workflow-pr4-${GITHUB_RUN_ID:-local}-$$"
 app_port=$((31000 + ($$ % 1000)))
 export APP_PORT="$app_port"
-compose=(docker compose --project-name "$project" --env-file .env.example -f compose.yaml)
+fixture_dir=$(mktemp -d)
+custom_provider_key="PR4_CUSTOM_$(node -e 'process.stdout.write(crypto.randomUUID())')"
+cat >"$fixture_dir/provider-bindings.json" <<'JSON'
+{"bindings":{"fake-default":{"provider":"openai-compatible","baseUrl":"http://fake-provider:4010/v1","apiKeyEnv":"CUSTOM_PROVIDER_KEY","model":"fake-m0","parameters":{"temperature":0}}}}
+JSON
+cat >"$fixture_dir/worker.env" <<EOF
+CUSTOM_PROVIDER_KEY=$custom_provider_key
+EOF
+cat >"$fixture_dir/compose.env" <<EOF
+POSTGRES_DB=workflow
+POSTGRES_USER=workflow
+POSTGRES_PASSWORD=workflow
+DATABASE_URL=postgres://workflow:workflow@postgres:5432/workflow
+PROVIDER_BINDINGS_FILE=/run/provider-bindings.json
+FAKE_PROVIDER_API_KEY=fixture-provider-key
+APP_PORT=$app_port
+WORKER_PROVIDER_TIMEOUT_MS=30000
+WORKER_LEASE_MS=300000
+WORKER_FAULT_HOOK=
+EOF
+cat >"$fixture_dir/compose.override.yaml" <<EOF
+services:
+  app:
+    environment:
+      FAKE_PROVIDER_API_KEY: null
+  worker:
+    env_file:
+      - $fixture_dir/worker.env
+    environment:
+      FAKE_PROVIDER_API_KEY: null
+    volumes:
+      - $fixture_dir/provider-bindings.json:/run/provider-bindings.json:ro
+  fake-provider:
+    environment:
+      FAKE_PROVIDER_API_KEY: null
+      FAKE_PROVIDER_EXPECTED_API_KEY: $custom_provider_key
+EOF
+compose=(docker compose --project-name "$project" --env-file "$fixture_dir/compose.env" -f compose.yaml -f "$fixture_dir/compose.override.yaml")
 app_url="http://127.0.0.1:${app_port}"
 evidence_dir="${EVIDENCE_DIR:-}"
 if [[ -n "$evidence_dir" ]]; then
@@ -17,12 +54,12 @@ cleanup() {
   status=$?
   if (( status != 0 )); then
     "${compose[@]}" ps || true
-    "${compose[@]}" logs --no-color || true
     if [[ -n "$evidence_dir" ]]; then
       "${compose[@]}" logs --no-color >"$evidence_dir/logs/async-happy-path.log" 2>&1 || true
     fi
   fi
   "${compose[@]}" down --volumes --remove-orphans >/dev/null 2>&1 || true
+  rm -rf "$fixture_dir"
   exit "$status"
 }
 trap cleanup EXIT
@@ -44,17 +81,25 @@ wait_healthy() {
 provider_calls() {
   "${compose[@]}" exec -T fake-provider node --input-type=module -e '
     const response = await fetch("http://127.0.0.1:4010/test/stats");
-    if (!response.ok) throw new Error(`stats returned ${response.status}`);
+    if (!response.ok) throw new Error("provider stats request failed");
     const body = await response.json();
     if (!Number.isInteger(body.calls)) throw new Error("stats.calls must be an integer");
     process.stdout.write(String(body.calls));
   '
 }
 
+provider_authorization_matches() {
+  "${compose[@]}" exec -T fake-provider node --input-type=module -e '
+    const response = await fetch("http://127.0.0.1:4010/test/stats");
+    const body = await response.json();
+    process.stdout.write(String(body.authorizationMatched === true));
+  '
+}
+
 reset_provider_stats() {
   "${compose[@]}" exec -T fake-provider node --input-type=module -e '
     const response = await fetch("http://127.0.0.1:4010/test/stats", { method: "DELETE" });
-    if (!response.ok) throw new Error(`stats reset returned ${response.status}`);
+    if (!response.ok) throw new Error("provider stats reset failed");
   '
 }
 
@@ -90,9 +135,9 @@ const response = await fetch(`${process.env.APP_URL}/api/runs`, {
   }),
 });
 const body = await response.json();
-if (response.status !== 202) throw new Error(`expected 202, got ${response.status}: ${JSON.stringify(body)}`);
+if (response.status !== 202) throw new Error("Run creation returned an unexpected status");
 if (body.status !== "queued" || typeof body.runId !== "string" || Object.keys(body).sort().join(",") !== "runId,status") {
-  throw new Error(`unexpected create response: ${JSON.stringify(body)}`);
+  throw new Error("Run creation returned an unexpected projection");
 }
 process.stdout.write(body.runId);
 NODE
@@ -106,10 +151,10 @@ while (Date.now() < deadline) {
   const response = await fetch(`${process.env.APP_URL}/api/runs/${process.env.RUN_ID}`, { cache: "no-store" });
   body = await response.json();
   if (body.run?.status === "succeeded") process.exit(0);
-  if (body.run?.status === "failed") throw new Error(`Run failed: ${JSON.stringify(body)}`);
+  if (body.run?.status === "failed") throw new Error("Run reached a failed terminal state");
   await new Promise((resolve) => setTimeout(resolve, 250));
 }
-throw new Error(`Run did not succeed before deadline: ${JSON.stringify(body)}`);
+throw new Error("Run did not succeed before deadline");
 NODE
 }
 
@@ -119,7 +164,7 @@ query() {
 
 assert_equal() {
   if [[ "$1" != "$2" ]]; then
-    echo "expected '$2', got '$1'" >&2
+    echo "async system assertion failed" >&2
     return 1
   fi
 }
@@ -131,6 +176,12 @@ wait_healthy fake-provider
 "${compose[@]}" run --rm migrate
 "${compose[@]}" up -d app
 wait_healthy app
+app_id=$("${compose[@]}" ps -q app)
+app_environment=$(docker inspect --format '{{json .Config.Env}}' "$app_id")
+if [[ "$app_environment" == *CUSTOM_PROVIDER_KEY* || "$app_environment" == *"$custom_provider_key"* ]]; then
+  echo "app received the worker provider credential" >&2
+  exit 1
+fi
 
 reset_provider_stats
 run_a_id=$(create_run "Run A proves app-only queueing")
@@ -138,9 +189,9 @@ run_a_id=$(create_run "Run A proves app-only queueing")
 RUN_ID="$run_a_id" APP_URL="$app_url" node --input-type=module <<'NODE'
 const response = await fetch(`${process.env.APP_URL}/api/runs/${process.env.RUN_ID}`);
 const body = await response.json();
-if (!response.ok || body.run?.status !== "queued") throw new Error(`Run did not remain queued: ${JSON.stringify(body)}`);
+if (!response.ok || body.run?.status !== "queued") throw new Error("Run did not remain queued");
 if (body.run.nodes.map((node) => node.status).join(",") !== "queued,pending,pending") {
-  throw new Error(`unexpected queued nodes: ${JSON.stringify(body.run.nodes)}`);
+  throw new Error("queued node projection mismatch");
 }
 if (body.run.nodes.some((node) => node.attempt !== null)) throw new Error("queued Run already has an Attempt");
 NODE
@@ -148,33 +199,41 @@ assert_equal "$(provider_calls)" "0"
 
 "${compose[@]}" up -d --scale worker=2 worker
 wait_workers_healthy
+for worker_id in $("${compose[@]}" ps -q worker); do
+  worker_environment=$(docker inspect --format '{{json .Config.Env}}' "$worker_id")
+  if [[ "$worker_environment" != *"CUSTOM_PROVIDER_KEY=$custom_provider_key"* ]]; then
+    echo "worker did not receive the custom provider credential" >&2
+    exit 1
+  fi
+done
 wait_run_succeeded "$run_a_id"
 assert_equal "$(provider_calls)" "1"
+assert_equal "$(provider_authorization_matches)" "true"
 
 reset_provider_stats
 assert_equal "$(provider_calls)" "0"
 run_b_id=$(create_run "Run B proves the two-worker claim race")
 
-RUN_ID="$run_b_id" APP_URL="$app_url" node --input-type=module <<'NODE'
+RUN_ID="$run_b_id" APP_URL="$app_url" SECRET="$custom_provider_key" node --input-type=module <<'NODE'
 const deadline = Date.now() + 90_000;
 let body;
 while (Date.now() < deadline) {
   const response = await fetch(`${process.env.APP_URL}/api/runs/${process.env.RUN_ID}`, { cache: "no-store" });
   body = await response.json();
   if (body.run?.status === "succeeded") break;
-  if (body.run?.status === "failed") throw new Error(`Run failed: ${JSON.stringify(body)}`);
+  if (body.run?.status === "failed") throw new Error("Run reached a failed terminal state");
   await new Promise((resolve) => setTimeout(resolve, 250));
 }
-if (body?.run?.status !== "succeeded") throw new Error(`Run did not succeed before deadline: ${JSON.stringify(body)}`);
+if (body?.run?.status !== "succeeded") throw new Error("Run did not succeed before deadline");
 if (body.run.error !== null || body.run.nodes.some((node) => node.error !== null || node.skipReason !== null)) {
   throw new Error("successful projection must expose null failure fields");
 }
 if (body.run.nodes.map((node) => `${node.type}:${node.status}`).join(",") !==
   "input.prompt:succeeded,process.agent:succeeded,output.markdown:succeeded") {
-  throw new Error(`unexpected final nodes: ${JSON.stringify(body.run.nodes)}`);
+  throw new Error("final node projection mismatch");
 }
 if (body.run.nodes.some((node) => node.attempt?.number !== 1 || node.attempt?.status !== "succeeded")) {
-  throw new Error(`expected one succeeded Attempt per node: ${JSON.stringify(body.run.nodes)}`);
+  throw new Error("Attempt projection mismatch");
 }
 if (body.run.nodes.some((node) => node.attempt?.error !== null)) {
   throw new Error("successful Attempts must expose error null");
@@ -191,18 +250,18 @@ const snapshot = {
   parameters: { temperature: 0 },
 };
 if (JSON.stringify(processNode.attempt.providerSnapshot) !== JSON.stringify(snapshot)) {
-  throw new Error(`unexpected Attempt snapshot: ${JSON.stringify(processNode.attempt.providerSnapshot)}`);
+  throw new Error("Attempt provider snapshot mismatch");
 }
 if (JSON.stringify(processNode.attempt.agentExecution?.providerSnapshot) !== JSON.stringify(snapshot)) {
-  throw new Error(`unexpected Agent Execution snapshot: ${JSON.stringify(processNode.attempt.agentExecution)}`);
+  throw new Error("Agent Execution provider snapshot mismatch");
 }
 if (outputNode.output?.markdown !== "Fake provider response") {
-  throw new Error(`Markdown output was not persisted: ${JSON.stringify(outputNode.output)}`);
+  throw new Error("Markdown output was not persisted");
 }
 const serialized = JSON.stringify(body);
-for (const forbidden of ["http://fake-provider", "FAKE_PROVIDER_API_KEY", "fake-provider-local", "sessionId", "session_id", "PiSession"]) {
-  if (serialized.includes(forbidden)) throw new Error(`Run API leaked ${forbidden}`);
-}
+  for (const forbidden of [process.env.SECRET, "http://fake-provider", "CUSTOM_PROVIDER_KEY", "apiKeyEnv", "FAKE_PROVIDER_API_KEY", "fake-provider-local", "sessionId", "session_id", "PiSession"]) {
+    if (serialized.includes(forbidden)) throw new Error("Run API redaction failed");
+  }
 NODE
 
 assert_equal "$(provider_calls)" "1"
@@ -229,9 +288,9 @@ events=$(query "
   WHERE event.workflow_run_id = '$run_b_id'
 ")
 EVENTS="$events" node --input-type=module <<'NODE'
-import assert from "node:assert/strict";
 const events = JSON.parse(process.env.EVENTS);
-assert.deepEqual(events.map(({ sequence, type, nodeId }) => ({ sequence, type, nodeId })), [
+const check = (condition) => { if (!condition) throw new Error("event contract failed"); };
+const expectedEvents = [
   { sequence: 1, type: "workflow.run.queued", nodeId: null },
   { sequence: 2, type: "workflow.run.started", nodeId: null },
   { sequence: 3, type: "node.attempt.started", nodeId: "prompt" },
@@ -243,36 +302,32 @@ assert.deepEqual(events.map(({ sequence, type, nodeId }) => ({ sequence, type, n
   { sequence: 9, type: "node.attempt.started", nodeId: "result" },
   { sequence: 10, type: "node.attempt.succeeded", nodeId: "result" },
   { sequence: 11, type: "workflow.run.succeeded", nodeId: null },
-]);
+];
+check(JSON.stringify(events.map(({ sequence, type, nodeId }) => ({ sequence, type, nodeId }))) === JSON.stringify(expectedEvents));
 
 for (const index of [0, 1, 10]) {
-  assert.deepEqual(
-    [events[index].nodeRunId, events[index].attemptId, events[index].agentExecutionId],
-    [null, null, null],
-  );
+  check([events[index].nodeRunId, events[index].attemptId, events[index].agentExecutionId]
+    .every((value) => value === null));
 }
 function assertAttemptPair(firstIndex, secondIndex) {
   const first = events[firstIndex];
   const second = events[secondIndex];
-  assert.equal(typeof first.nodeRunId, "string");
-  assert.equal(typeof first.attemptId, "string");
-  assert.equal(first.agentExecutionId, null);
-  assert.deepEqual(
-    [second.nodeRunId, second.attemptId, second.agentExecutionId],
-    [first.nodeRunId, first.attemptId, null],
-  );
+  check(typeof first.nodeRunId === "string");
+  check(typeof first.attemptId === "string");
+  check(first.agentExecutionId === null);
+  check(second.nodeRunId === first.nodeRunId
+    && second.attemptId === first.attemptId
+    && second.agentExecutionId === null);
 }
 assertAttemptPair(2, 3);
 assertAttemptPair(4, 7);
 assertAttemptPair(8, 9);
 for (const index of [5, 6]) {
-  assert.deepEqual(
-    [events[index].nodeRunId, events[index].attemptId],
-    [events[4].nodeRunId, events[4].attemptId],
-  );
-  assert.equal(typeof events[index].agentExecutionId, "string");
+  check(events[index].nodeRunId === events[4].nodeRunId
+    && events[index].attemptId === events[4].attemptId);
+  check(typeof events[index].agentExecutionId === "string");
 }
-assert.equal(events[5].agentExecutionId, events[6].agentExecutionId);
+check(events[5].agentExecutionId === events[6].agentExecutionId);
 NODE
 
 snapshots=$(query "
@@ -286,8 +341,7 @@ snapshots=$(query "
   WHERE node.workflow_run_id = '$run_b_id'
     AND node.node_type = 'process.agent'
 ")
-SNAPSHOTS="$snapshots" node --input-type=module <<'NODE'
-import assert from "node:assert/strict";
+SNAPSHOTS="$snapshots" SECRET="$custom_provider_key" node --input-type=module <<'NODE'
 const snapshots = JSON.parse(process.env.SNAPSHOTS);
 const expected = {
   bindingAlias: "fake-default",
@@ -295,14 +349,28 @@ const expected = {
   effectiveModel: "fake-m0",
   parameters: { temperature: 0 },
 };
-assert.deepEqual(snapshots.attempt, expected);
-assert.deepEqual(snapshots.execution, expected);
-assert.deepEqual(snapshots.attempt, snapshots.execution);
+if (JSON.stringify(snapshots.attempt) !== JSON.stringify(expected)
+  || JSON.stringify(snapshots.execution) !== JSON.stringify(expected)
+  || JSON.stringify(snapshots.attempt) !== JSON.stringify(snapshots.execution)) {
+  throw new Error("provider snapshot contract failed");
+}
 const serialized = JSON.stringify(snapshots);
-for (const forbidden of ["baseUrl", "apiKey", "apiKeyEnv", "fake-provider-local", "sessionId", "session_id", "PiSession"]) {
-  assert.ok(!serialized.includes(forbidden), `provider snapshot leaked ${forbidden}`);
+for (const forbidden of [process.env.SECRET, "baseUrl", "apiKey", "apiKeyEnv", "CUSTOM_PROVIDER_KEY", "fake-provider-local", "sessionId", "session_id", "PiSession"]) {
+  if (serialized.includes(forbidden)) throw new Error("provider snapshot redaction failed");
 }
 NODE
+
+: >"$fixture_dir/database.jsonl"
+for table in workflow_runs node_runs node_run_attempts agent_executions execution_events; do
+  query "SELECT row_to_json(value)::text FROM (SELECT * FROM $table) value" >>"$fixture_dir/database.jsonl"
+done
+"${compose[@]}" logs --no-color >"$fixture_dir/services.log"
+for forbidden in "$custom_provider_key" CUSTOM_PROVIDER_KEY apiKeyEnv "http://fake-provider:4010/v1"; do
+  if grep -Fq "$forbidden" "$fixture_dir/database.jsonl" "$fixture_dir/services.log"; then
+    echo "runtime evidence leaked provider credential material" >&2
+    exit 1
+  fi
+done
 
 if query "UPDATE execution_events SET type = type WHERE workflow_run_id = '$run_b_id'" >/dev/null 2>&1; then
   echo "execution events accepted UPDATE" >&2
@@ -317,6 +385,12 @@ if [[ -n "$evidence_dir" ]]; then
   printf '%s\n' "$events" >"$evidence_dir/event-exports/async-happy-events.json"
   "${compose[@]}" logs --no-color app worker fake-provider >"$evidence_dir/logs/async-happy-path.log"
   printf '{"runId":"%s","result":"PASS"}\n' "$run_b_id" >"$evidence_dir/test-results/async-happy-path.json"
+  for forbidden in "$custom_provider_key" CUSTOM_PROVIDER_KEY apiKeyEnv "http://fake-provider:4010/v1"; do
+    if grep -RFq "$forbidden" "$evidence_dir"; then
+      echo "caller evidence leaked provider credential material" >&2
+      exit 1
+    fi
+  done
 fi
 
 echo "M0-T05 async happy path passed for $run_b_id"

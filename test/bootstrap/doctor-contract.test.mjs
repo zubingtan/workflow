@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,14 +23,14 @@ function output(result) {
   return `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
 }
 
-function writeBinding(directory) {
+function writeBinding(directory, apiKeyEnv = "FAKE_PROVIDER_API_KEY") {
   const bindingPath = path.join(directory, "bindings.json");
   writeFileSync(bindingPath, JSON.stringify({
     bindings: {
       "fake-default": {
         provider: "openai-compatible",
         baseUrl: "http://fake-provider:4010/v1",
-        apiKeyEnv: "FAKE_PROVIDER_API_KEY",
+        apiKeyEnv,
         model: "fake-m0",
       },
     },
@@ -49,17 +50,20 @@ test("M0-T02 missing provider binding exits nonzero with an actionable diagnosis
 
 test("M0-T02 missing binding credential names the env key without leaking values", () => {
   const directory = mkdtempSync(path.join(tmpdir(), "workflow-doctor-"));
+  const sentinel = `DOCTOR_SECRET_${randomUUID()}`;
   try {
     const result = runDoctor({
       PATH: process.env.PATH ?? "",
-      PROVIDER_BINDINGS_FILE: writeBinding(directory),
+      PROVIDER_BINDINGS_FILE: writeBinding(directory, "CUSTOM_PROVIDER_KEY"),
       DATABASE_URL: "postgres://workflow:redacted-value@postgres:5432/workflow",
+      UNRELATED_SECRET: sentinel,
     });
     const text = output(result);
     assert.notEqual(result.status, 0);
-    assert.match(text, /FAKE_PROVIDER_API_KEY/);
+    assert.match(text, /CUSTOM_PROVIDER_KEY/);
     assert.match(text, /missing|set|configure/i);
     assert.doesNotMatch(text, /redacted-value/);
+    assert.doesNotMatch(text, new RegExp(sentinel));
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
@@ -80,12 +84,12 @@ test("M0-T02 valid fake-provider config passes with injected command probes", ()
       writeFileSync(file, script);
       chmodSync(file, 0o755);
     }
-    const secret = "fake-provider-doctor-secret";
+    const secret = `DOCTOR_SECRET_${randomUUID()}`;
     const result = runDoctor({
       PATH: `${bin}:${process.env.PATH ?? ""}`,
-      PROVIDER_BINDINGS_FILE: writeBinding(directory),
+      PROVIDER_BINDINGS_FILE: writeBinding(directory, "CUSTOM_PROVIDER_KEY"),
       DATABASE_URL: "postgres://workflow:workflow@postgres:5432/workflow",
-      FAKE_PROVIDER_API_KEY: secret,
+      CUSTOM_PROVIDER_KEY: secret,
     });
     const text = output(result);
     assert.equal(result.status, 0, text);

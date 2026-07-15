@@ -5,14 +5,48 @@ cd "$(dirname "$0")/../.."
 project="workflow-pr5-${GITHUB_RUN_ID:-local}-$$"
 app_port=$((32000 + ($$ % 1000)))
 evidence=$(mktemp -d)
+fixture_dir=$(mktemp -d)
 caller_evidence="${EVIDENCE_DIR:-}"
 export APP_PORT="$app_port"
-export FAKE_PROVIDER_API_KEY="PR5_SECRET_$(node -e 'process.stdout.write(crypto.randomUUID())')"
+custom_provider_key="PR5_CUSTOM_$(node -e 'process.stdout.write(crypto.randomUUID())')"
 export WORKER_PROVIDER_TIMEOUT_MS=200
 export WORKER_LEASE_MS=400
 export WORKER_FAULT_HOOK=""
 app_url="http://127.0.0.1:${app_port}"
-compose=(docker compose --project-name "$project" --env-file .env.example -f compose.yaml)
+cat >"$fixture_dir/provider-bindings.json" <<'JSON'
+{"bindings":{"fake-default":{"provider":"openai-compatible","baseUrl":"http://fake-provider:4010/v1","apiKeyEnv":"CUSTOM_PROVIDER_KEY","model":"fake-m0","parameters":{"temperature":0}}}}
+JSON
+printf 'CUSTOM_PROVIDER_KEY=%s\n' "$custom_provider_key" >"$fixture_dir/worker.env"
+cat >"$fixture_dir/compose.env" <<EOF
+POSTGRES_DB=workflow
+POSTGRES_USER=workflow
+POSTGRES_PASSWORD=workflow
+DATABASE_URL=postgres://workflow:workflow@postgres:5432/workflow
+PROVIDER_BINDINGS_FILE=/run/provider-bindings.json
+FAKE_PROVIDER_API_KEY=fixture-provider-key
+APP_PORT=$app_port
+WORKER_PROVIDER_TIMEOUT_MS=200
+WORKER_LEASE_MS=400
+WORKER_FAULT_HOOK=
+EOF
+cat >"$fixture_dir/compose.override.yaml" <<EOF
+services:
+  app:
+    environment:
+      FAKE_PROVIDER_API_KEY: null
+  worker:
+    env_file:
+      - $fixture_dir/worker.env
+    environment:
+      FAKE_PROVIDER_API_KEY: null
+    volumes:
+      - $fixture_dir/provider-bindings.json:/run/provider-bindings.json:ro
+  fake-provider:
+    environment:
+      FAKE_PROVIDER_API_KEY: null
+      FAKE_PROVIDER_EXPECTED_API_KEY: $custom_provider_key
+EOF
+compose=(docker compose --project-name "$project" --env-file "$fixture_dir/compose.env" -f compose.yaml -f "$fixture_dir/compose.override.yaml")
 LAST_RUN_ID=""
 
 cleanup() {
@@ -31,6 +65,7 @@ cleanup() {
     done
   fi
   rm -rf "$evidence"
+  rm -rf "$fixture_dir"
   exit "$status"
 }
 trap cleanup EXIT
@@ -81,8 +116,8 @@ NODE
 }
 
 wait_status() {
-  RUN_ID="$1" STATUS="$2" APP_URL="$app_url" node --input-type=module <<'NODE'
-const deadline = Date.now() + 90_000;
+  RUN_ID="$1" STATUS="$2" TIMEOUT_MS="${3:-90000}" APP_URL="$app_url" node --input-type=module <<'NODE'
+const deadline = Date.now() + Number(process.env.TIMEOUT_MS);
 while (Date.now() < deadline) {
   const response = await fetch(`${process.env.APP_URL}/api/runs/${process.env.RUN_ID}`, { cache: "no-store" });
   const body = await response.json();
@@ -95,7 +130,7 @@ NODE
 }
 
 assert_failed_api() {
-  RUN_ID="$1" CODE="$2" MESSAGE="$3" SECRET="$FAKE_PROVIDER_API_KEY" APP_URL="$app_url" EVIDENCE="$evidence/api.jsonl" node --input-type=module <<'NODE'
+  RUN_ID="$1" CODE="$2" MESSAGE="$3" SECRET="$custom_provider_key" APP_URL="$app_url" EVIDENCE="$evidence/api.jsonl" node --input-type=module <<'NODE'
 import { appendFile } from "node:fs/promises";
 const fail = (condition) => { if (!condition) throw new Error("failed Run projection mismatch"); };
 const response = await fetch(`${process.env.APP_URL}/api/runs/${process.env.RUN_ID}`, { cache: "no-store" });
@@ -216,6 +251,19 @@ wait_healthy app
 start_worker
 wait_healthy worker
 
+control_provider pr5-missing-key success
+: >"$fixture_dir/worker.env"
+start_worker
+wait_healthy worker
+missing_key_id=$(create_run pr5-missing-key)
+wait_status "$missing_key_id" failed 10000
+assert_failed_api "$missing_key_id" provider_auth_failed "Provider authentication failed"
+assert_failure_db "$missing_key_id" provider_auth_failed
+assert_equal "$(provider_calls pr5-missing-key)" 0
+printf 'CUSTOM_PROVIDER_KEY=%s\n' "$custom_provider_key" >"$fixture_dir/worker.env"
+start_worker
+wait_healthy worker
+
 failure_case pr5-auth auth_failure provider_auth_failed "Provider authentication failed"
 auth_id=$LAST_RUN_ID
 failure_case pr5-timeout timeout provider_timeout "Provider request timed out"
@@ -304,7 +352,7 @@ done
 query "SELECT row_to_json(value)::text FROM (SELECT * FROM execution_events ORDER BY workflow_run_id, sequence) value" >"$evidence/events.jsonl"
 scan_failed=0
 for file in "$evidence"/*; do
-  for forbidden in "$FAKE_PROVIDER_API_KEY" "http://fake-provider:4010/v1" "FAKE_PROVIDER_API_KEY" "RAW_PROVIDER_DETAIL_MUST_NOT_ESCAPE" "PiSession" "sessionId" "session_id"; do
+  for forbidden in "$custom_provider_key" "http://fake-provider:4010/v1" "CUSTOM_PROVIDER_KEY" "apiKeyEnv" "FAKE_PROVIDER_API_KEY" "RAW_PROVIDER_DETAIL_MUST_NOT_ESCAPE" "PiSession" "sessionId" "session_id"; do
     if grep -Fq "$forbidden" "$file"; then scan_failed=1; fi
   done
 done

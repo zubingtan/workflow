@@ -67,6 +67,30 @@ test("M0-T01 pins pnpm and Node runtime-compatible types exactly", () => {
   assert.equal(packageJson.devDependencies?.["@types/node"], "22.20.1");
 });
 
+test("M0-T01 pins every external container image by immutable digest", () => {
+  const dockerfile = requiredFile("Dockerfile");
+  const externalFrom = [...dockerfile.matchAll(/^FROM\s+(\S+)(?:\s+AS\s+\S+)?$/gmi)]
+    .map((match) => match[1])
+    .filter((reference) => !["base", "dependencies", "builder", "runner"].includes(reference));
+  assert.ok(externalFrom.length > 0, "Dockerfile must declare an external base image");
+  for (const reference of externalFrom) {
+    assert.match(reference, /^[^@\s]+@sha256:[a-f0-9]{64}$/u, `unpinned Dockerfile FROM: ${reference}`);
+  }
+  assert.equal(new Set(externalFrom).size, 1, "all Node build stages must use the same pinned base image");
+
+  const compose = requiredFile("compose.yaml");
+  const blocks = Object.fromEntries(
+    ["app", "worker", "postgres", "migrate", "fake-provider"]
+      .map((name) => [name, serviceBlock(compose, name)]),
+  );
+  const image = (name) => blocks[name].match(/^\s+image:\s*["']?([^\s"']+)/m)?.[1];
+  assert.match(image("postgres") ?? "", /^postgres:[^@\s]+@sha256:[a-f0-9]{64}$/u);
+  assert.equal(image("migrate"), image("postgres"), "migrate must use the exact PostgreSQL digest");
+  for (const name of ["app", "worker", "fake-provider"]) {
+    assert.equal(image(name), "workflow-m0:${WORKFLOW_IMAGE_TAG:-local}");
+  }
+});
+
 test("M0-T01 keeps local environment state and build metadata out of images", () => {
   const dockerignore = requiredFile(".dockerignore");
   const actual = Object.fromEntries(
@@ -179,4 +203,19 @@ test("M0-T01 includes an executable clean-Compose system harness", () => {
   assert.match(script, /migrate/);
   assert.match(script, /seed|agent_definitions|workflows/);
   assert.match(script, /down[^\n]*(?:--volumes|-v)/);
+});
+
+test("system harness failure diagnostics never interpolate provider values or serialized payloads", () => {
+  const asyncHarness = requiredFile("test/runtime/async-happy-path.system.sh");
+  assert.doesNotMatch(asyncHarness, /throw new Error\(`[^`]*\$\{/u);
+  assert.doesNotMatch(asyncHarness, /(?:leaked|expected)[^\n]*(?:\$\{?forbidden|\$1|\$2)/u);
+  assert.doesNotMatch(asyncHarness, /if \(\( status != 0 \)\)[\s\S]{0,180}logs --no-color \|\| true/u);
+
+  for (const relative of [
+    "test/bootstrap/system-bootstrap.sh",
+    "test/failure/failure-crash-restart.system.sh",
+  ]) {
+    const harness = requiredFile(relative);
+    assert.doesNotMatch(harness, /(?:echo|throw new Error)[^\n]*(?:custom_provider_key|CUSTOM_PROVIDER_KEY|SECRET)/u);
+  }
 });
