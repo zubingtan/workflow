@@ -43,7 +43,11 @@ export type ComposeStack = {
   providerCalls(correlationId: string): Promise<number>;
   restartAll(): Promise<void>;
   setAppConfiguredModel(model: string): Promise<void>;
-  startWorker(options?: { faultHook?: string; providerTimeoutMs?: number }): Promise<void>;
+  startWorker(options?: {
+    faultHook?: string;
+    providerTimeoutMs?: number;
+    waitForHealth?: boolean;
+  }): Promise<void>;
   stopWorker(): Promise<void>;
   sweepExpiredLeases(): Promise<void>;
   waitForExpiredLease(runId: string): Promise<void>;
@@ -146,7 +150,7 @@ async function createStack(
       env.WORKER_FAULT_HOOK = options.faultHook ?? "";
       env.WORKER_PROVIDER_TIMEOUT_MS = String(options.providerTimeoutMs ?? 5_000);
       await compose(["up", "-d", "--force-recreate", "worker"]);
-      if (!options.faultHook) await waitHealthy("worker");
+      if (!options.faultHook && options.waitForHealth !== false) await waitHealthy("worker");
     },
     async stopWorker() {
       await compose(["rm", "-sf", "worker"]);
