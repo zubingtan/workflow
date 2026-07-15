@@ -317,8 +317,8 @@ test("make verify-m0 is registered as the non-placeholder PR7 acceptance gate", 
   assert.equal(result.status, 0, result.stderr);
 });
 
-test("active PR gate uses current checkout and setup-node actions", () => {
-  const workflow = requireFile(".github/workflows/pr-gate.yml");
+test("reusable M0 acceptance uses the pinned read-only Node and pnpm toolchain", () => {
+  const workflow = requireFile(".github/workflows/m0-acceptance.yml");
   const actions = [...workflow.matchAll(/^\s*uses:\s*actions\/(checkout|setup-node)@([^\s#]+)\s*$/gm)]
     .map((match) => ({ name: match[1], version: match[2] }));
 
@@ -333,4 +333,8 @@ test("active PR gate uses current checkout and setup-node actions", () => {
     },
     { missing: [], outdated: [] },
   );
+  assert.match(workflow, /^permissions:\s*\n\s+contents:\s+read\s*$/m);
+  assert.match(workflow, /uses:\s*actions\/setup-node@v7[\s\S]{0,120}node-version:\s*22/);
+  assert.match(workflow, /corepack enable && corepack prepare pnpm@11\.13\.0 --activate/);
+  assert.match(workflow, /pnpm install --frozen-lockfile/);
 });

@@ -25,6 +25,19 @@ function yamlBlock(source, name, indent = 0) {
   return next === -1 ? rest : rest.slice(0, next);
 }
 
+function jobNeeds(block) {
+  const inline = block.match(/^    needs:\s*\[([^\]]+)\]\s*$/m);
+  if (inline) return inline[1].split(",").map((value) => value.trim());
+  const scalar = block.match(/^    needs:\s*([A-Za-z0-9_-]+)\s*$/m);
+  if (scalar) return [scalar[1]];
+  const header = /^    needs:\s*$/m.exec(block);
+  assert.ok(header, "missing job needs");
+  const remainder = block.slice(header.index + header[0].length);
+  const end = remainder.search(/^    \S/m);
+  const list = end === -1 ? remainder : remainder.slice(0, end);
+  return [...list.matchAll(/^      -\s*([A-Za-z0-9_-]+)\s*$/gm)].map((match) => match[1]);
+}
+
 test("the PR gate calls one reusable full acceptance workflow", () => {
   const prGate = workflow("pr-gate.yml");
   const jobs = yamlBlock(prGate, "jobs");
@@ -60,10 +73,11 @@ test("the manual release gate chains three clean same-SHA runs and only aggregat
     assert.match(block, /uses:\s*\.\/\.github\/workflows\/m0-acceptance\.yml/);
     assert.match(block, /git_sha:\s*\$\{\{\s*needs\.validate\.outputs\.git_sha\s*\}\}/);
   }
-  assert.match(yamlBlock(jobs, "run1", 2), /needs:\s*validate/);
-  assert.match(yamlBlock(jobs, "run2", 2), /needs:\s*run1/);
-  assert.match(yamlBlock(jobs, "run3", 2), /needs:\s*run2/);
-  assert.match(yamlBlock(jobs, "aggregate", 2), /needs:\s*run3/);
+  assert.deepEqual(jobNeeds(yamlBlock(jobs, "run1", 2)), ["validate"]);
+  assert.deepEqual(jobNeeds(yamlBlock(jobs, "run2", 2)).sort(), ["run1", "validate"]);
+  assert.deepEqual(jobNeeds(yamlBlock(jobs, "run3", 2)).sort(), ["run2", "validate"]);
+  const aggregateNeeds = jobNeeds(yamlBlock(jobs, "aggregate", 2));
+  for (const run of ["run1", "run2", "run3"]) assert.ok(aggregateNeeds.includes(run));
   assert.match(yamlBlock(jobs, "aggregate", 2), /MANIFEST[\s\S]*SHA256SUMS/);
   assert.doesNotMatch(release, /(?:git\s+tag|gh\s+release|actions\/create-release|softprops\/action-gh-release)/i);
 });

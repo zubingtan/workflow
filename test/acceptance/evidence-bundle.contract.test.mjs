@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
-  existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync,
+  chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -10,6 +10,10 @@ import test from "node:test";
 
 const root = path.resolve(import.meta.dirname, "../..");
 const validator = path.join(root, "scripts/acceptance/validate-evidence.mjs");
+const acceptance = path.join(root, "scripts/acceptance/m0-acceptance.mjs");
+const generateEvidence = path.join(root, "scripts/acceptance/generate-evidence.mjs");
+const sealEvidence = path.join(root, "scripts/acceptance/seal-evidence.mjs");
+const supportBundle = path.join(root, "scripts/acceptance/support-bundle.mjs");
 const ids = [
   "M0-T01", "M0-T02", "M0-T03", "M0-T04", "M0-T05", "M0-T06", "M0-T07",
   "M0-T07E", "M0-T08", "M0-T09", "M0-T10", "M0-T11", "M0-T12",
@@ -37,6 +41,24 @@ function seal(directory) {
   writeFileSync(path.join(directory, "SHA256SUMS"), checked
     .map((relative) => `${sha256(path.join(directory, relative))}  ${relative}`)
     .join("\n") + "\n");
+}
+
+function writeExecutable(file, source) {
+  writeFileSync(file, source);
+  chmodSync(file, 0o755);
+}
+
+function generatedEvidence() {
+  const directory = mkdtempSync(path.join(tmpdir(), "m0-generated-evidence-"));
+  const generated = spawnSync(process.execPath, [generateEvidence, "--evidence-dir", directory], {
+    cwd: root,
+    env: { ...process.env, ACCEPTANCE_GIT_SHA: "a".repeat(40) },
+    encoding: "utf8",
+    timeout: 10_000,
+  });
+  assert.equal(generated.status, 0, generated.stderr);
+  for (const id of ids) writeJson(path.join(directory, "test-results", `${id}.json`), { id, result: "PASS" });
+  return directory;
 }
 
 function writeJson(file, value) {
@@ -93,8 +115,10 @@ function fixture() {
   return directory;
 }
 
-function validate(directory, secret) {
-  return spawnSync(process.execPath, [validator, "--bundle", directory, "--secret", secret], {
+function validate(directory, secret, expectedResult) {
+  const args = [validator, "--bundle", directory, "--secret", secret];
+  if (expectedResult) args.push("--expected-result", expectedResult);
+  return spawnSync(process.execPath, args, {
     cwd: root,
     encoding: "utf8",
     timeout: 10_000,
@@ -118,6 +142,162 @@ test("complete 13/13 PASS and GO evidence validates with a closed manifest", () 
     assert.equal(validate(directory, "ABSENT_SECRET").status, 0);
   } finally {
     rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("acceptance validation failure after sealing ends REWORK and retains a valid final seal", () => {
+  const sentinel = "PR7_REWORK_SECRET_MUST_NOT_LEAK";
+  const workspace = mkdtempSync(path.join(tmpdir(), "m0-post-seal-failure-"));
+  const evidence = path.join(workspace, "evidence");
+  const bin = path.join(workspace, "bin");
+  const screenshotDirectory = path.join(root, "test-results");
+  const screenshot = path.join(screenshotDirectory, `${path.basename(workspace)}.png`);
+  mkdirSync(bin, { recursive: true });
+  mkdirSync(screenshotDirectory, { recursive: true });
+  writeFileSync(screenshot, "acceptance screenshot\n");
+  writeExecutable(path.join(bin, "docker"), `#!/bin/sh\nprintf 'sha256:%064d\\n' 1\n`);
+
+  const supportWrapper = path.join(workspace, "support-wrapper.mjs");
+  writeFileSync(supportWrapper, `
+import { spawnSync } from "node:child_process";
+import { mkdirSync, writeFileSync } from "node:fs";
+import path from "node:path";
+const evidence = process.argv[process.argv.indexOf("--evidence-dir") + 1];
+const ids = ${JSON.stringify(ids)};
+for (const id of ids) writeFileSync(path.join(evidence, "test-results", id + ".json"), JSON.stringify({ id, result: "PASS" }) + "\\n");
+mkdirSync(path.join(evidence, "event-exports"), { recursive: true });
+mkdirSync(path.join(evidence, "logs"), { recursive: true });
+writeFileSync(path.join(evidence, "event-exports/events.json"), "[]\\n");
+writeFileSync(path.join(evidence, "logs/services.log"), "redacted\\n");
+const result = spawnSync(process.execPath, [${JSON.stringify(supportBundle)}, "--evidence-dir", evidence, "--result", "PASS"], { encoding: "utf8", env: process.env });
+process.stdout.write(result.stdout ?? "");
+process.stderr.write(result.stderr ?? "");
+process.exit(result.status ?? 1);
+`);
+  const validateWrapper = path.join(workspace, "validate-wrapper.mjs");
+  const validationLog = path.join(workspace, "validation-invocations.jsonl");
+  writeFileSync(validateWrapper, `
+import { spawnSync } from "node:child_process";
+import { appendFileSync } from "node:fs";
+import path from "node:path";
+const evidence = process.argv[process.argv.indexOf("--bundle") + 1];
+const expectedIndex = process.argv.indexOf("--expected-result");
+const expectedResult = expectedIndex === -1 ? null : process.argv[expectedIndex + 1];
+if (expectedResult !== "REWORK") appendFileSync(path.join(evidence, "logs/services.log"), "tampered after seal\\n");
+const result = spawnSync(process.execPath, [${JSON.stringify(validator)}, ...process.argv.slice(2)], { encoding: "utf8", env: process.env });
+appendFileSync(${JSON.stringify(validationLog)}, JSON.stringify({ expectedResult, status: result.status }) + "\\n");
+process.stdout.write(result.stdout ?? "");
+process.stderr.write(result.stderr ?? "");
+process.exit(result.status ?? 1);
+`);
+
+  try {
+    const args = [
+      acceptance,
+      "--evidence-dir", evidence,
+      "--generate", generateEvidence,
+      "--support", supportWrapper,
+      "--seal", sealEvidence,
+      "--validate", validateWrapper,
+    ];
+    for (let index = 0; index < 10; index += 1) args.push("--test", "true");
+    const result = spawnSync(process.execPath, args, {
+      cwd: root,
+      env: {
+        ...process.env,
+        ACCEPTANCE_GIT_SHA: "a".repeat(40),
+        APP_PORT: "9",
+        FAKE_PROVIDER_API_KEY: sentinel,
+        PATH: `${bin}:${process.env.PATH}`,
+      },
+      encoding: "utf8",
+      timeout: 30_000,
+    });
+    const report = JSON.parse(readFileSync(path.join(evidence, "report.json"), "utf8"));
+    const invocations = existsSync(validationLog)
+      ? readFileSync(validationLog, "utf8").trimEnd().split("\n").filter(Boolean).map(JSON.parse)
+      : [];
+    const reworkValidation = validate(evidence, sentinel, "REWORK");
+    const defaultValidation = validate(evidence, sentinel);
+    assert.deepEqual({
+      acceptanceFailed: result.status !== 0,
+      reportResult: report.result,
+      reportDecision: report.decision,
+      failurePathUsedProductionReworkMode: invocations.some((entry) => (
+        entry.expectedResult === "REWORK" && entry.status === 0
+      )),
+      productionReworkValidationStatus: reworkValidation.status,
+      defaultGoOnlyValidationRejected: defaultValidation.status !== 0,
+      secretWasRedacted: `${result.stdout}${result.stderr}${reworkValidation.stdout}${reworkValidation.stderr}${defaultValidation.stdout}${defaultValidation.stderr}`
+        .includes(sentinel) === false,
+    }, {
+      acceptanceFailed: true,
+      reportResult: "REWORK",
+      reportDecision: "REWORK",
+      failurePathUsedProductionReworkMode: true,
+      productionReworkValidationStatus: 0,
+      defaultGoOnlyValidationRejected: true,
+      secretWasRedacted: true,
+    });
+  } finally {
+    rmSync(screenshot, { force: true });
+    rmSync(workspace, { recursive: true, force: true });
+  }
+});
+
+test("support bundle blocks unavailable image inspection and records all real service digests on success", () => {
+  const sentinel = "PR7_SUPPORT_SECRET_MUST_NOT_LEAK";
+  const workspace = mkdtempSync(path.join(tmpdir(), "m0-support-digests-"));
+  const failingBin = path.join(workspace, "failing-bin");
+  const passingBin = path.join(workspace, "passing-bin");
+  mkdirSync(failingBin, { recursive: true });
+  mkdirSync(passingBin, { recursive: true });
+  writeExecutable(path.join(failingBin, "docker"), "#!/bin/sh\nexit 42\n");
+  writeExecutable(path.join(passingBin, "docker"), `#!/bin/sh\nprintf 'sha256:%064d\\n' 7\n`);
+  const failedEvidence = generatedEvidence();
+  const passedEvidence = generatedEvidence();
+
+  try {
+    const run = (directory, bin) => spawnSync(process.execPath, [
+      supportBundle, "--evidence-dir", directory, "--result", "PASS",
+    ], {
+      cwd: root,
+      env: {
+        ...process.env,
+        APP_PORT: "9",
+        FAKE_PROVIDER_API_KEY: sentinel,
+        PATH: `${bin}:${process.env.PATH}`,
+      },
+      encoding: "utf8",
+      timeout: 10_000,
+    });
+    const failed = run(failedEvidence, failingBin);
+    const passed = run(passedEvidence, passingBin);
+    const failedOutput = `${failed.stdout}${failed.stderr}`;
+    const passedOutput = `${passed.stdout}${passed.stderr}`;
+    const failedReport = JSON.parse(readFileSync(path.join(failedEvidence, "report.json"), "utf8"));
+    const passedReport = JSON.parse(readFileSync(path.join(passedEvidence, "report.json"), "utf8"));
+
+    assert.notEqual(failed.status, 0, "support bundle must fail when image inspection is unavailable");
+    assert.equal(failedReport.result, "REWORK");
+    assert.equal(failedReport.decision, "REWORK");
+    assert.notEqual(failedReport.decision, "GO");
+    assert.deepEqual(failedReport.containerDigests, {}, "failed inspection must not be replaced with source hashes");
+    assert.equal(failedOutput.includes(sentinel), false, "failed support output leaked the secret sentinel");
+
+    assert.equal(passed.status, 0, passed.stderr);
+    assert.equal(passedReport.result, "PASS");
+    assert.equal(passedReport.decision, "GO");
+    assert.deepEqual(
+      Object.keys(passedReport.containerDigests).sort(),
+      ["app", "fakeProvider", "migrate", "postgres", "worker"],
+    );
+    for (const digest of Object.values(passedReport.containerDigests)) assert.match(digest, /^sha256:[a-f0-9]{64}$/u);
+    assert.equal(passedOutput.includes(sentinel), false, "successful support output leaked the secret sentinel");
+  } finally {
+    rmSync(failedEvidence, { recursive: true, force: true });
+    rmSync(passedEvidence, { recursive: true, force: true });
+    rmSync(workspace, { recursive: true, force: true });
   }
 });
 
