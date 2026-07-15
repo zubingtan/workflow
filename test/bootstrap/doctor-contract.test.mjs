@@ -99,3 +99,37 @@ test("M0-T02 valid fake-provider config passes with injected command probes", ()
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test("M0-T02 requires Docker Compose 2.24.0 or newer without echoing credentials", () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "workflow-doctor-compose-version-"));
+  try {
+    const bin = path.join(directory, "bin");
+    mkdirSync(bin);
+    for (const [name, script] of Object.entries({
+      node: "#!/bin/sh\necho v22.99.0\n",
+      pnpm: "#!/bin/sh\necho 11.13.0\n",
+      docker: "#!/bin/sh\nif [ \"$1\" = compose ]; then echo \"Docker Compose version $DOCKER_COMPOSE_VERSION\"; else echo 'Docker version 27.0.0'; fi\n",
+    })) {
+      const file = path.join(bin, name);
+      writeFileSync(file, script);
+      chmodSync(file, 0o755);
+    }
+    const secret = `DOCTOR_VERSION_SECRET_${randomUUID()}`;
+    const baseEnv = {
+      PATH: `${bin}:${process.env.PATH ?? ""}`,
+      PROVIDER_BINDINGS_FILE: writeBinding(directory, "CUSTOM_PROVIDER_KEY"),
+      DATABASE_URL: "postgres://workflow:workflow@postgres:5432/workflow",
+      CUSTOM_PROVIDER_KEY: secret,
+    };
+    const unsupported = runDoctor({ ...baseEnv, DOCKER_COMPOSE_VERSION: "v2.23.9" });
+    assert.notEqual(unsupported.status, 0);
+    assert.match(output(unsupported), /compose|2\.24|version/i);
+    assert.doesNotMatch(output(unsupported), new RegExp(secret));
+
+    const minimum = runDoctor({ ...baseEnv, DOCKER_COMPOSE_VERSION: "v2.24.0" });
+    assert.equal(minimum.status, 0, output(minimum));
+    assert.doesNotMatch(output(minimum), new RegExp(secret));
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

@@ -3,6 +3,9 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-workflow-m0-bootstrap-${GITHUB_RUN_ID:-local}}"
+fixture_dir=$(mktemp -d)
+printf 'FAKE_PROVIDER_API_KEY=BOOTSTRAP_%s\n' "$(node -e 'process.stdout.write(crypto.randomUUID())')" >"$fixture_dir/worker.env"
+export WORKFLOW_ENV_FILE="$fixture_dir/worker.env"
 compose=(docker compose --env-file .env.example -f compose.yaml)
 evidence_dir="${EVIDENCE_DIR:-}"
 if [[ -n "$evidence_dir" ]]; then
@@ -15,10 +18,11 @@ cleanup() {
     "${compose[@]}" logs --no-color >"$evidence_dir/logs/bootstrap-system.log" 2>&1 || true
   fi
   "${compose[@]}" down --volumes --remove-orphans >/dev/null 2>&1 || true
+  [[ -z "$fixture_dir" ]] || rm -rf "$fixture_dir"
   return "$status"
 }
 trap cleanup EXIT
-cleanup || true
+"${compose[@]}" down --volumes --remove-orphans >/dev/null 2>&1 || true
 
 wait_healthy() {
   local service="$1" container status

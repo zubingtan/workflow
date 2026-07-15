@@ -1,7 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
-import { writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { expect, test as base, type Page, type TestInfo } from "@playwright/test";
 
@@ -62,9 +63,10 @@ async function createStack(
   const runNonce = process.env.GITHUB_RUN_ID ?? `${process.pid}-${randomUUID().slice(0, 8)}`;
   const project = `workflow-pr6-${runNonce}-${hash}`.toLowerCase();
   const appPort = 33_000 + (Number.parseInt(hash.slice(0, 4), 16) % 1_000);
-  const secret = useSecretSentinel
-    ? `PR6_SECRET_${randomUUID()}`
-    : "FAKE_CREDENTIAL_NOT_SECRET";
+  const secret = `${useSecretSentinel ? "PR6_SECRET" : "PR6_FIXTURE"}_${randomUUID()}`;
+  const fixtureDirectory = await mkdtemp(join(tmpdir(), "workflow-pr6-"));
+  const workerEnvFile = join(fixtureDirectory, "worker.env");
+  await writeFile(workerEnvFile, `FAKE_PROVIDER_API_KEY=${secret}\n`);
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     APP_PORT: String(appPort),
@@ -72,6 +74,7 @@ async function createStack(
     WORKER_LEASE_MS: "400",
     WORKER_PROVIDER_TIMEOUT_MS: "5000",
     WORKER_FAULT_HOOK: "",
+    WORKFLOW_ENV_FILE: workerEnvFile,
     WORKFLOW_IMAGE_TAG: imageTag,
   };
   const base = ["compose", "--project-name", project, "--env-file", ".env.example", "-f", "compose.yaml"];
@@ -104,6 +107,7 @@ async function createStack(
     await waitHealthy("app");
   } catch (error) {
     await compose(["down", "--volumes", "--remove-orphans"]).catch(() => undefined);
+    await rm(fixtureDirectory, { recursive: true, force: true });
     throw error;
   }
 
@@ -181,7 +185,11 @@ async function createStack(
       }, "fault-injected worker did not exit", 30_000);
     },
     async dispose() {
-      await compose(["down", "--volumes", "--remove-orphans"]);
+      try {
+        await compose(["down", "--volumes", "--remove-orphans"]);
+      } finally {
+        await rm(fixtureDirectory, { recursive: true, force: true });
+      }
     },
   };
   return stack;
