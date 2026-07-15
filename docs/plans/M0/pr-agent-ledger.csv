@@ -1,0 +1,5 @@
+PR,Agent,ConfiguredModel,Reasoning,Task,Commit,Verification
+PR7,test-author,gpt-5.6-terra,ultra,Acceptance RED and hardened contracts,160ef17;9e03d1c,RED runs 29430131531 and 29434470811
+PR7,backend-runtime,gpt-5.6-terra,ultra,Acceptance GREEN implementation,7bbca21,Local acceptance 10/10; npm 28/28; typecheck and build PASS; CI pending
+PR7,verifier-reviewer,gpt-5.6-terra,ultra,Independent GREEN correctness and scope review,7bbca21,APPROVE; CI pending
+PR7,release-manager,gpt-5.6-terra,ultra,Git and PR evidence; Luna release quota fallback,7bbca21,Temporary Terra release-manager; CI pending
