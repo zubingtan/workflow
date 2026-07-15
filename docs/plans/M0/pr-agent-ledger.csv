@@ -1,5 +1,5 @@
 PR,Agent,ConfiguredModel,Reasoning,Task,Commit,Verification
 PR7,test-author,gpt-5.6-terra,ultra,Acceptance RED and hardened contracts,160ef17;9e03d1c,RED runs 29430131531 and 29434470811
-PR7,backend-runtime,gpt-5.6-terra,ultra,Acceptance GREEN implementation,7bbca21,Local acceptance 10/10; npm 28/28; typecheck and build PASS; CI pending
-PR7,verifier-reviewer,gpt-5.6-terra,ultra,Independent GREEN correctness and scope review,7bbca21,APPROVE; CI pending
-PR7,release-manager,gpt-5.6-terra,ultra,Git and PR evidence; Luna release quota fallback,7bbca21,Temporary Terra release-manager; CI pending
+PR7,backend-runtime,gpt-5.6-terra,ultra,Acceptance GREEN implementation,7bbca21,Local acceptance 10/10; npm 28/28; typecheck and build PASS; run 29434958885 job 87419153731 PASS 13/13; artifact 8351195940 SHA256 8fadc88325ad8845b0d10e2ce22c941ffb6b8345911f4e747a4aa240e517c589; secret scan clean
+PR7,verifier-reviewer,gpt-5.6-terra,ultra,Independent GREEN correctness and scope review,7bbca21,APPROVE; run 29434958885 job 87419153731 PASS 13/13; artifact 8351195940; secret scan clean
+PR7,release-manager,gpt-5.6-terra,ultra,Git and PR evidence; Luna release quota fallback,7bbca21,Temporary Terra release-manager; run 29434958885 job 87419153731 PASS; artifact 8351195940 SHA256 8fadc88325ad8845b0d10e2ce22c941ffb6b8345911f4e747a4aa240e517c589
