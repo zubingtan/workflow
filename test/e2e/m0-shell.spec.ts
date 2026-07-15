@@ -117,7 +117,7 @@ test("A — imports, runs, reopens history, and runs again on the real stack", a
   const prompt = `Investigate ${correlation}`;
   const runId = await submitRun(page, prompt);
   await expectRunStatus(page, "Queued");
-  await stack.startWorker({ providerTimeoutMs: 5_000 });
+  await stack.startWorker({ providerTimeoutMs: 5_000, waitForHealth: false });
   await expectRunStatus(page, "Running");
   await expectRunStatus(page, "Succeeded");
   for (const type of ["input.prompt", "process.agent", "output.markdown"]) {
