@@ -341,6 +341,7 @@ snapshots=$(query "
     AND node.node_type = 'process.agent'
 ")
 SNAPSHOTS="$snapshots" SECRET="$custom_provider_key" node --input-type=module <<'NODE'
+import assert from "node:assert/strict";
 const snapshots = JSON.parse(process.env.SNAPSHOTS);
 const expected = {
   bindingAlias: "fake-default",
@@ -348,11 +349,9 @@ const expected = {
   effectiveModel: "fake-m0",
   parameters: { temperature: 0 },
 };
-if (JSON.stringify(snapshots.attempt) !== JSON.stringify(expected)
-  || JSON.stringify(snapshots.execution) !== JSON.stringify(expected)
-  || JSON.stringify(snapshots.attempt) !== JSON.stringify(snapshots.execution)) {
-  throw new Error("provider snapshot contract failed");
-}
+assert.deepStrictEqual(snapshots.attempt, expected);
+assert.deepStrictEqual(snapshots.execution, expected);
+assert.deepStrictEqual(snapshots.attempt, snapshots.execution);
 const serialized = JSON.stringify(snapshots);
 for (const forbidden of [process.env.SECRET, "baseUrl", "apiKey", "apiKeyEnv", "CUSTOM_PROVIDER_KEY", "fake-provider-local", "sessionId", "session_id", "PiSession"]) {
   if (serialized.includes(forbidden)) throw new Error("provider snapshot redaction failed");
