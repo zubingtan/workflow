@@ -89,8 +89,14 @@ jobs:
             node scripts/acceptance/validate-evidence.mjs --bundle "$bundle" --secret ABSENT_RELEASE_SECRET
             test "$(node -p 'JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8")).gitSha' "$bundle/report.json")" = "${{ inputs.git_sha }}"
           done
-          find aggregate/runs -type f -print | LC_ALL=C sort > aggregate/MANIFEST
-          while IFS= read -r file; do sha256sum "$file"; done < aggregate/MANIFEST > aggregate/SHA256SUMS
+          cp docs/plans/M0/pr-agent-ledger.csv aggregate/pr-agent-ledger.csv
+          printf '%s\n' "${{ inputs.git_sha }}" > aggregate/FINAL_GIT_SHA
+          (
+            cd aggregate
+            find . -type f ! -path './MANIFEST' ! -path './SHA256SUMS' -print | sed 's#^\./##' | LC_ALL=C sort > MANIFEST
+            { while IFS= read -r file; do sha256sum "$file"; done < MANIFEST; sha256sum MANIFEST; } > SHA256SUMS
+            sha256sum -c SHA256SUMS
+          )
       - name: Upload aggregate evidence
         # actions/upload-artifact v7.0.1
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
