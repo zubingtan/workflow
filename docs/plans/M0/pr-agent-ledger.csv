@@ -41,3 +41,7 @@ PR10,test-author,gpt-5.6-terra,ultra,Release aggregate report-path RED contract,
 PR10,backend-runtime,gpt-5.6-terra,ultra,Filesystem-safe aggregate report parsing GREEN implementation,34b607b,GREEN run 29451175298 passed 43/43 contracts and 13/13 blocking requirements
 PR10,verifier-reviewer,gpt-5.6-terra,ultra,Independent aggregate hotfix correctness and scope review,34b607b,APPROVE; RED test frozen; one-line workflow implementation; GREEN run 29451175298 passed 43/43 and 13/13
 PR10,release-manager,gpt-5.6-terra,ultra,Git PR and aggregate incident evidence,8f0afe7;34b607b,Release run 29448146053 retained without rerun; RED run 29450258147 passed 42/43; GREEN run 29451175298 artifact 8357699323 passed 43/43 and 13/13
+PR11,test-author,gpt-5.6-terra,ultra,Self-contained aggregate evidence RED contract,5089cc3,Audit NO-GO artifact 8358613784 retained; RED run 29454871393 passed 43/44 contracts
+PR11,backend-runtime,gpt-5.6-terra,ultra,Self-contained aggregate packaging GREEN implementation,57aec6d,GREEN run 29455710762 passed 44/44 contracts and 13/13 blocking requirements; artifact 8359424478
+PR11,verifier-reviewer,gpt-5.6-terra,ultra,Independent aggregate evidence correctness and frozen-test review,57aec6d,APPROVE; focused 2/2; full 44/44; GREEN run 29455710762 passed 13/13
+PR11,release-manager,gpt-5.6-terra,ultra,Git PR and exact-head aggregate evidence,5089cc3;57aec6d,Audit NO-GO artifact 8358613784; RED run 29454871393 passed 43/44; GREEN run 29455710762 passed 44/44 and 13/13; artifact 8359424478
