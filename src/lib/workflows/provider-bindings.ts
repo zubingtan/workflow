@@ -27,7 +27,7 @@ function validBinding(value: unknown) {
     && (!Object.hasOwn(value, "parameters") || validParameters(value.parameters));
 }
 
-export async function providerBindingExists(alias: string) {
+async function readProviderBindings() {
   const bindingFile = process.env.PROVIDER_BINDINGS_FILE;
   if (!bindingFile) throw new ProviderBindingConfigurationError();
 
@@ -39,8 +39,17 @@ export async function providerBindingExists(alias: string) {
       || Object.entries(document.bindings).some(([name, binding]) => name.length === 0 || !validBinding(binding))) {
       throw new ProviderBindingConfigurationError();
     }
-    return Object.hasOwn(document.bindings, alias);
+    return document.bindings as Record<string, { model: string }>;
   } catch {
     throw new ProviderBindingConfigurationError();
   }
+}
+
+export async function providerBindingExists(alias: string) {
+  return Object.hasOwn(await readProviderBindings(), alias);
+}
+
+export async function getProviderBindingModel(alias: string) {
+  const bindings = await readProviderBindings();
+  return Object.hasOwn(bindings, alias) ? bindings[alias].model : null;
 }
