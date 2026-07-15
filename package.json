@@ -19,7 +19,9 @@
     "test:runtime-contract": "node --test test/runtime/runtime-contract.test.mjs",
     "test:runtime": "vitest run --config vitest.runtime.config.ts",
     "test:failure:unit": "vitest run --config vitest.failure.config.ts test/failure/provider-failure.contract.test.ts",
-    "test:failure:pg": "vitest run --config vitest.failure.config.ts test/failure/terminal-failure.integration.test.ts"
+    "test:failure:pg": "vitest run --config vitest.failure.config.ts test/failure/terminal-failure.integration.test.ts",
+    "test:e2e": "playwright test",
+    "test:e2e:list": "playwright test --list"
   },
   "dependencies": {
     "@mariozechner/pi-agent-core": "0.73.1",
@@ -31,6 +33,7 @@
     "typebox": "1.3.6"
   },
   "devDependencies": {
+    "@playwright/test": "1.61.1",
     "@types/node": "22.20.1",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
