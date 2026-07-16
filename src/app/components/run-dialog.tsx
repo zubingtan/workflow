@@ -6,10 +6,11 @@ import { useRouter } from "next/navigation";
 type RunDialogProps = {
   definitionVersionId: string;
   initialPrompt?: string;
+  onCreated?: (runId: string) => void;
   onClose: () => void;
 };
 
-export function RunDialog({ definitionVersionId, initialPrompt = "", onClose }: RunDialogProps) {
+export function RunDialog({ definitionVersionId, initialPrompt = "", onCreated, onClose }: RunDialogProps) {
   const router = useRouter();
   const [prompt, setPrompt] = useState(initialPrompt);
   const [submitting, setSubmitting] = useState(false);
@@ -35,7 +36,8 @@ export function RunDialog({ definitionVersionId, initialPrompt = "", onClose }: 
         return;
       }
       onClose();
-      router.push(`/runs/${body.runId}`);
+      if (onCreated) onCreated(body.runId);
+      else router.push(`/runs/${body.runId}`);
     } catch {
       setError("The run could not be created");
     } finally {

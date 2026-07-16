@@ -154,6 +154,34 @@ a { color: inherit; }
   background-size: 14px 14px;
 }
 
+.board-flowgram { display: block; padding: 0; }
+.workflow-flowgram-board {
+  --g-editor-background: transparent;
+  position: relative;
+  width: 100%;
+  min-height: 340px;
+  overflow: hidden;
+  isolation: isolate;
+}
+.flowgram-editor,
+.flowgram-editor .gedit-playground-container {
+  position: relative;
+  width: 100%;
+  height: 340px;
+}
+.flowgram-rendered-node { width: 270px; }
+.flowgram-node-button { width: 100%; padding: 0; border: 0; background: transparent; color: inherit; cursor: pointer; text-align: left; }
+.flowgram-node-button:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 35%, transparent); outline-offset: 3px; }
+.flowgram-edge-metadata { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.flowgram-edge-metadata span { display: block; width: 1px; height: 1px; }
+.canvas-fallback { min-height: 340px; display: grid; place-items: center; padding: 18px; color: var(--muted); font-size: 13px; }
+.node-detail { margin-top: 18px; padding: 22px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.node-detail h2 { margin: 0 0 16px; font-size: 18px; }
+.node-detail dl { display: grid; gap: 10px; margin: 0; }
+.node-detail dl > div { display: grid; grid-template-columns: minmax(130px, .25fr) 1fr; gap: 18px; }
+.node-detail dt { color: var(--muted); }
+.node-detail dd { margin: 0; overflow-wrap: anywhere; }
+
 .board-track { width: 100%; display: flex; align-items: center; justify-content: center; }
 .board-step { display: flex; align-items: center; min-width: 0; }
 .connector { width: clamp(28px, 5vw, 72px); height: 1px; background: var(--border-strong); position: relative; flex: 0 1 auto; }
@@ -282,6 +310,7 @@ td { font-size: 14px; }
   .page-heading, .run-header { align-items: flex-start; }
   .page-heading h1, .run-header h1 { font-size: 32px; }
   .board { padding: 28px 18px; }
+  .board-flowgram { padding: 0; }
   .board-track { flex-direction: column; }
   .board-step { flex-direction: column; width: 100%; }
   .node-card { width: min(100%, 360px); }

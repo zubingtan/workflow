@@ -20,7 +20,16 @@ async function importWorkflow(page: Page, value: unknown) {
   return response;
 }
 
-async function submitRun(page: Page, prompt: string, repeat = false, expectedPrefill?: string) {
+type RunDestination = "run-detail" | "same-workflow";
+
+async function submitRun(
+  page: Page,
+  prompt: string,
+  repeat = false,
+  expectedPrefill?: string,
+  destination: RunDestination = "run-detail",
+) {
+  const startingUrl = page.url();
   await page.getByRole("button", { name: repeat ? "Run again" : "Run workflow" }).click();
   const sheet = page.getByRole("dialog", { name: "Run workflow" });
   const promptInput = sheet.getByLabel("Prompt");
@@ -36,7 +45,11 @@ async function submitRun(page: Page, prompt: string, repeat = false, expectedPre
   const body = await created.json() as { runId: string; status: string };
   expect(Object.keys(body).sort()).toEqual(["runId", "status"]);
   expect(body).toEqual({ runId: expect.stringMatching(/^run-/u), status: "queued" });
-  await expect(page).toHaveURL(new RegExp(`/runs/${body.runId}$`, "u"));
+  if (destination === "same-workflow") {
+    await expect(page).toHaveURL(startingUrl);
+  } else {
+    await expect(page).toHaveURL(new RegExp(`/runs/${body.runId}$`, "u"));
+  }
   return body.runId;
 }
 
@@ -50,6 +63,15 @@ function node(page: Page, type: string) {
 
 async function expectRunStatus(page: Page, status: "Queued" | "Running" | "Succeeded" | "Failed") {
   await expect(facts(page).getByText(status, { exact: true })).toBeVisible();
+}
+
+async function expectWorkflowNodeStatuses(
+  page: Page,
+  statuses: readonly ["Queued" | "Running" | "Succeeded", "Queued" | "Running" | "Succeeded", "Queued" | "Running" | "Succeeded"],
+) {
+  for (const [index, type] of ["input.prompt", "process.agent", "output.markdown"].entries()) {
+    await expect(node(page, type).getByText(statuses[index], { exact: true })).toBeVisible();
+  }
 }
 
 async function expectFailure(page: Page, code: string, message: string) {
@@ -116,16 +138,18 @@ test("A — imports, runs, reopens history, and runs again on the real stack", a
   await expect(board.getByRole("textbox")).toHaveCount(0);
 
   const prompt = `Investigate ${correlation}`;
-  const runId = await submitRun(page, prompt);
-  await expectRunStatus(page, "Queued");
+  const runId = await submitRun(page, prompt, false, undefined, "same-workflow");
+  await expectWorkflowNodeStatuses(page, ["Queued", "Queued", "Queued"]);
   await stack.startWorker({ providerTimeoutMs: 5_000, waitForHealth: false });
-  await expectRunStatus(page, "Running");
-  await expectRunStatus(page, "Succeeded");
+  await expectWorkflowNodeStatuses(page, ["Succeeded", "Running", "Queued"]);
+  await expectWorkflowNodeStatuses(page, ["Succeeded", "Succeeded", "Succeeded"]);
   for (const type of ["input.prompt", "process.agent", "output.markdown"]) {
     await expect(node(page, type).getByText("Succeeded", { exact: true })).toBeVisible();
   }
   await expect(page.getByRole("region", { name: "Output" })).toContainText("Fake provider response");
-  await expect(facts(page)).toContainText("Definition v2");
+  await expect(
+    page.getByRole("heading", { name: workflowName, level: 1 }).locator("..").getByText("Definition v2", { exact: true }),
+  ).toBeVisible();
 
   await page.getByRole("link", { name: "History", exact: true }).click();
   const historyRow = page.getByRole("row").filter({ hasText: runId });
