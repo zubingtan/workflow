@@ -1,14 +1,16 @@
-# Current Code Baseline：M0 Functional Gate Verified
+# Current Code Baseline：M0 与 M1-A Functional Gates Verified
 
 - **文档版本**：v0.6
 - **状态**：Verified
 - **日期**：2026-07-17
-- **目标分支**：`codex/v0.6-m0-web-run`
-- **验证实现基线**：`5368891fe35c840ed1185669770d0d09ae7db2f5`
+- **目标分支**：`codex/m1-a-flowgram-board`
+- **验证实现基线**：`3bb24c1f8f0856120aadde18a0f7ff333143e3ad`
 
 ## 1. 验证结论
 
-M0 Web Run 纵向闭环已在本地真实环境验证，结果为 `VERIFIED`。现有实现满足本 Goal 的停止条件，没有发现需要修改产品代码的缺口或阻断。本 Goal 到此停止，不进入 M1-A。
+M0 Web Run 纵向闭环已在本地真实环境验证，结果为 `VERIFIED`。其历史证据保留在本文第 4 节。
+
+M1-A FlowGram read-only Workflow Board with Run overlay 已在本地真实环境验证，结果为 `VERIFIED`。现有实现满足本 Goal 的停止条件：真实 Definition 被投影到只读 FlowGram Board，Run 与节点状态在同页显示，Canvas failure 不影响后端 Run。未发现需要修改产品代码的缺口或阻断。本 Goal 到此停止，不进入 M1-B。
 
 ## 2. 轻量基线原则
 
@@ -53,6 +55,18 @@ M0 Web Run 纵向闭环已在本地真实环境验证，结果为 `VERIFIED`。�
 | smoke/integration | Verified | `make smoke-test` PASS；`pnpm typecheck` PASS；独立 API 双运行 PASS |
 | README reproduction | Verified | 现有启动路径可复现；根 README 无需修改 |
 
+### M1-A Functional Gate
+
+| Capability | Status | Notes |
+|---|---|---|
+| FlowGram dependency | Verified | 官方 `@flowgram.ai/free-layout-editor` 锁定为 `1.0.12` |
+| Definition projection | Verified | 真实 Definition 投影为三节点、两条边，保留稳定产品节点 ID |
+| read-only board | Verified | 不写回业务 Definition，未引入 Authoring |
+| Run overlay and Node Detail | Demonstrated | Workflow 页面同页 Run/poll；节点详情展示真实输入、输出或错误 |
+| normal browser path | Verified | Chromium E2E 验证真实 Board、无 fallback、节点选择、同页 Run、三节点成功、Fake 输出与干净 console |
+| Canvas failure isolation | Verified | 仅在 Playwright `navigator.webdriver` 与 preload global 受控条件下触发 fallback source Definition list；同页真实 Run 仍成功 |
+| M0 regression | Verified | M0 focused regression PASS |
+
 ## 4. 真实验证记录
 
 ### Environment and startup
@@ -91,28 +105,41 @@ M0 Web Run 纵向闭环已在本地真实环境验证，结果为 `VERIFIED`。�
 - 产品代码修改：无
 - 阻断：无
 
-## 5. Goal 结果
+## 5. M1-A 真实验证记录
+
+### Implementation and runtime
+
+- Ref/Commit：`codex/m1-a-flowgram-board` / `3bb24c1f8f0856120aadde18a0f7ff333143e3ad`
+- FlowGram：官方 `@flowgram.ai/free-layout-editor@1.0.12`
+- Board：真实 Definition 投影为只读 Free Layout；三节点、两条边、稳定产品节点 ID；无 Definition 写回或 Authoring
+- Workflow page：同页 Run/poll overlay 与 Node Detail；Run 使用现有真实后端路径
+- Runtime：Docker app rebuilt，服务 healthy，readiness 为 ready
+
+### Browser and regression checks
+
+- projection Vitest：PASS
+- `pnpm typecheck`：PASS
+- 三个 Chromium Playwright E2E：PASS
+- 正常路径：真实 FlowGram Board、无 fallback、节点选择、同页 Run、三节点 `succeeded`、`Fake provider response`、console 干净
+- 受控 Canvas failure：仅在 Playwright `navigator.webdriver` 与 preload global 条件下触发，无公开 query；页面显示 source Definition list，同时同页真实 Run 成功
+- M0 focused regression：PASS
+
+## 6. M1-A Goal 结果
 
 ```text
-Ref/Commit: codex/v0.6-m0-web-run / 5368891fe35c840ed1185669770d0d09ae7db2f5
-Startup command: WORKFLOW_ENV_FILE=.env.example docker compose --env-file .env.example up -d
-Web URL: http://localhost:3000
-Workflow used: M0 Bootstrap Workflow / seed-workflow-v1
-Provider: fake-default / fake-m0
-Observed user path: 打开 seed Workflow → 确认 Input/Agent/Output → 输入 Prompt → Run → 查看状态与输出 → Run again
-Tests run: readiness, make smoke-test, Browser happy path and Run again, independent API double run, pnpm typecheck
-M0 Functional Gate: VERIFIED
+Ref/Commit: codex/m1-a-flowgram-board / 3bb24c1f8f0856120aadde18a0f7ff333143e3ad
+Workflow board: official @flowgram.ai/free-layout-editor@1.0.12, read-only real Definition projection
+Observed user path: 打开 Workflow → 查看三节点两条边 → 选择节点查看详情 → 同页 Run → 查看节点状态 Overlay 与 Fake 输出
+Failure isolation: controlled Playwright-only Canvas failure shows source Definition fallback; Run remains available and succeeds
+Tests run: projection Vitest, pnpm typecheck, three Chromium Playwright E2Es, M0 focused regression
+M1-A Functional Gate: VERIFIED
 Remaining blocker: none
 ```
 
-## 6. 进入 M1 的判断
+## 7. 文档基线说明
 
-M0 Functional Gate 已真实可运行。M1-A 可以作为下一独立 Goal 创建，但不在本 Goal 中开始。
+`docs/SHA256SUMS` 与 `docs/MANIFEST.json` 保留 v0.6 来源包的原始基线记录；本次仅更新本地状态记录文件，不将这些来源包校验值声明为当前状态记录内容的校验结果。
 
-无需等待：
+## 8. 进入 M1-B 的判断
 
-- Crash Recovery；
-- Evidence Bundle；
-- 完整 Test Matrix；
-- FlowGram；
-- M2 Durable Hardening。
+M1-A Functional Gate 已真实可运行。M1-B 可以作为下一独立 Goal 创建，但不在本 Goal 中开始。
