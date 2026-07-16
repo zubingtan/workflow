@@ -25,6 +25,7 @@
     "test:e2e:list": "playwright test --list"
   },
   "dependencies": {
+    "@flowgram.ai/free-layout-editor": "1.0.12",
     "@mariozechner/pi-agent-core": "0.73.1",
     "@mariozechner/pi-ai": "0.73.1",
     "next": "16.2.10",

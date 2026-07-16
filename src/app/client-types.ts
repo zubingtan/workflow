@@ -4,7 +4,14 @@ export type WorkflowNodeDefinition = {
   config: {
     agentVersionRef?: string;
     providerBindingRef?: string;
+    [key: string]: unknown;
   };
+};
+
+export type WorkflowEdgeDefinition = {
+  from: string;
+  to: string;
+  mapping: Array<{ from: string; to: string }>;
 };
 
 export type WorkflowSummary = {
@@ -24,7 +31,10 @@ export type WorkflowDetail = {
     version: number;
     hash: string;
     definition: {
-      spec: { nodes: WorkflowNodeDefinition[] };
+      spec: {
+        nodes: WorkflowNodeDefinition[];
+        edges: WorkflowEdgeDefinition[];
+      };
     };
   };
 };

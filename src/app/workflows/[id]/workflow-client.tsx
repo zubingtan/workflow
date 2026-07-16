@@ -5,7 +5,9 @@ import { useEffect, useState } from "react";
 import { AppShell } from "../../components/app-shell";
 import { RunDialog } from "../../components/run-dialog";
 import { WorkflowBoard } from "../../components/workflow-board";
-import type { RunHistoryItem, WorkflowDetail } from "../../client-types";
+import type { Run, RunHistoryItem, WorkflowDetail } from "../../client-types";
+
+const terminalStatuses = new Set(["succeeded", "failed"]);
 
 function statusLabel(status: string) {
   return status.charAt(0).toUpperCase() + status.slice(1);
@@ -32,6 +34,8 @@ export function WorkflowClient({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [runOpen, setRunOpen] = useState(false);
+  const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const [activeRun, setActiveRun] = useState<Run | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -54,6 +58,51 @@ export function WorkflowClient({
     return () => controller.abort();
   }, [id]);
 
+  useEffect(() => {
+    if (!activeRunId) return;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let controller: AbortController | undefined;
+
+    async function refreshHistory() {
+      const response = await fetch(`/api/workflows/${id}/runs`, { cache: "no-store" });
+      if (!response.ok || stopped) return;
+      const body = await response.json() as { runs: RunHistoryItem[] };
+      if (!stopped) setRuns(body.runs);
+    }
+
+    async function poll() {
+      controller = new AbortController();
+      try {
+        const response = await fetch(`/api/runs/${activeRunId}`, {
+          signal: controller.signal,
+          cache: "no-store",
+        });
+        if (!response.ok) throw new Error();
+        const body = await response.json() as { run: Run };
+        if (stopped) return;
+        setActiveRun(body.run);
+        if (terminalStatuses.has(body.run.status)) {
+          void refreshHistory();
+        } else {
+          timer = setTimeout(poll, 150);
+        }
+      } catch (caught) {
+        if (stopped || (caught instanceof DOMException && caught.name === "AbortError")) return;
+        setError("Run could not be loaded");
+      }
+    }
+
+    void poll();
+    return () => {
+      stopped = true;
+      controller?.abort();
+      if (timer) clearTimeout(timer);
+    };
+  }, [activeRunId, id]);
+
+  const output = activeRun?.nodes.find((node) => node.type === "output.markdown")?.output?.markdown;
+
   return (
     <AppShell>
       <main className="page workflow-page">
@@ -71,8 +120,17 @@ export function WorkflowClient({
             </div>
             <WorkflowBoard
               configuredModels={configuredModels}
-              nodes={detail.workflowDefinitionVersion.definition.spec.nodes}
+              definition={detail.workflowDefinitionVersion.definition}
+              run={activeRun}
             />
+            {activeRun ? (
+              <section className="output-panel" aria-label="Output">
+                <div className="section-heading"><h2>Output</h2></div>
+                {output ? <div className="markdown-output">{output}</div> : (
+                  <p className="empty-state">Output will appear when the run succeeds.</p>
+                )}
+              </section>
+            ) : null}
             <section className="history-section" id="history" aria-labelledby="history-title">
               <div className="section-heading">
                 <h2 id="history-title">History</h2>
@@ -99,6 +157,7 @@ export function WorkflowClient({
             {runOpen ? (
               <RunDialog
                 definitionVersionId={detail.workflowDefinitionVersion.id}
+                onCreated={setActiveRunId}
                 onClose={() => setRunOpen(false)}
               />
             ) : null}
