@@ -1,11 +1,11 @@
 # 基于 Pi Agent 的 Oncall Workflow Platform
 
 - **文档集版本**：v0.6
-- **状态**：Architecture Complete / Delivery Strategy Reset
+- **状态**：M0 Functional Gate Verified
 - **更新日期**：2026-07-17
-- **代码参考基线**：`m0-v0.1.0`（当前文档环境未能读取代码内容）
-- **当前执行目标**：完成 M0 Functional Gate——可启动、可打开 Web、可运行最小 Workflow、可看到结果
-- **下一阶段**：M1-A——基于 FlowGram 的 Workflow Board 与 Run 状态集成
+- **代码参考基线**：`5368891fe35c840ed1185669770d0d09ae7db2f5`（分支 `codex/v0.6-m0-web-run`）
+- **当前执行目标**：M0 Functional Gate 已验证完成；本 Goal 到此停止
+- **下一阶段**：M1-A——基于 FlowGram 的 Workflow Board 与 Run 状态集成（需另建 Goal）
 
 ## 1. 项目一句话
 
@@ -91,7 +91,7 @@ Functional Gate 优先交付；Hardening Gate 在进入高风险外部集成或�
 
 ### M0：Local Workflow Walking Skeleton
 
-当前只要求完成 Functional Gate：
+M0 Functional Gate 已完成真实验证：
 
 - 本地一键启动；
 - Web 页面可打开；
@@ -164,15 +164,15 @@ M0 当前不要求：
 
 ## 8. 当前 Codex Goal
 
-当前 Goal 只完成 M0 Web Run 纵向闭环。完成后停止，不自动进入 M1，不扩展发布级测试和文档系统。
+当前 Goal 已完成 M0 Web Run 纵向闭环验证，并在此停止；不自动进入 M1，不扩展发布级测试和文档系统。
 
 详细指令见 [CODEX-NEXT-INSTRUCTION.md](./CODEX-NEXT-INSTRUCTION.md)。
 
-## 9. 当前代码事实限制
+## 9. 当前代码事实
 
-本次文档重写环境无法访问 `zubingtan/workflow` 的 tag 归档，因此不能可信声明 `m0-v0.1.0` 已实现哪些能力。
+已在分支 `codex/v0.6-m0-web-run`、实现基线 `5368891fe35c840ed1185669770d0d09ae7db2f5` 上完成本地启动、API 与 in-app Browser 纵向闭环验证。M0 未发现产品代码缺口或阻断。
 
-本包对代码状态只使用：
+本包对代码状态使用：
 
 - `Unknown`：尚未检查；
 - `Implemented`：本地代码存在；

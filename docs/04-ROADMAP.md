@@ -1,9 +1,9 @@
 # Roadmap：从 Walking Skeleton 到可信 Oncall Platform
 
 - **版本**：v0.6
-- **状态**：Active Delivery Plan
+- **状态**：M0 Functional Gate Verified
 - **日期**：2026-07-17
-- **当前阶段**：M0 Functional Gate
+- **当前阶段**：M0 Functional Gate 已验证；本 Goal 停止
 
 ## 1. Roadmap 设计
 
@@ -66,14 +66,16 @@ Roadmap 按风险和用户价值排序，而不是按组件数量排序。
 
 ### Functional Gate
 
-- [ ] 新环境按 README 启动；
-- [ ] 页面可打开；
-- [ ] 页面能理解为三节点 Workflow；
-- [ ] 用户可输入 Prompt；
-- [ ] 点击 Run 后状态变化；
-- [ ] Output 展示结果；
-- [ ] Fake Provider 不依赖外部凭证；
-- [ ] 一个 smoke/integration test 通过。
+- [x] 新环境按 README 启动；
+- [x] 页面可打开；
+- [x] 页面能理解为三节点 Workflow；
+- [x] 用户可输入 Prompt；
+- [x] 点击 Run 后状态变化；
+- [x] Output 展示结果；
+- [x] Fake Provider 不依赖外部凭证；
+- [x] 一个 smoke/integration test 通过。
+
+验证记录：2026-07-17 在分支 `codex/v0.6-m0-web-run`、实现基线 `5368891fe35c840ed1185669770d0d09ae7db2f5` 上通过真实 Web Run、Run again、API 双运行、smoke 与 typecheck。未发现产品代码缺口或阻断。
 
 ### Hardening Scope
 
@@ -98,7 +100,7 @@ Roadmap 按风险和用户价值排序，而不是按组件数量排序。
 
 ### Exit
 
-M0 Functional Gate 通过后停止当前 Goal，进行 Review。不要在同一 Goal 自动扩展 M1。
+M0 Functional Gate 已通过；当前 Goal 在此停止并完成 Review。M1-A 需另建 Goal，不在本 Goal 中自动展开。
 
 ## 4. M1：Workflow Visibility and Persistence
 
