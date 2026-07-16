@@ -1,9 +1,9 @@
 # Roadmap：从 Walking Skeleton 到可信 Oncall Platform
 
 - **版本**：v0.6
-- **状态**：M0 Functional Gate Verified
+- **状态**：M1-A Functional Gate Verified
 - **日期**：2026-07-17
-- **当前阶段**：M0 Functional Gate 已验证；本 Goal 停止
+- **当前阶段**：M1-A Functional Gate 已验证；本 Goal 停止，不自动进入 M1-B
 
 ## 1. Roadmap 设计
 
@@ -100,7 +100,7 @@ Roadmap 按风险和用户价值排序，而不是按组件数量排序。
 
 ### Exit
 
-M0 Functional Gate 已通过；当前 Goal 在此停止并完成 Review。M1-A 需另建 Goal，不在本 Goal 中自动展开。
+M0 Functional Gate 已通过；历史 Goal 已在此停止并完成 Review。
 
 ## 4. M1：Workflow Visibility and Persistence
 
@@ -132,11 +132,13 @@ Definition
 
 #### Functional Gate
 
-- 用户在同一页面看到真实 Workflow 和 Run；
-- 节点状态对应当前 Run；
-- 点击节点可查看输入/输出/错误；
-- Canvas 不是 mock 数据；
-- 后端 Run 在 Canvas 故障时仍可工作。
+- [x] 用户在同一页面看到真实 Workflow 和 Run；
+- [x] 节点状态对应当前 Run；
+- [x] 点击节点可查看输入/输出/错误；
+- [x] Canvas 不是 mock 数据；
+- [x] 后端 Run 在 Canvas 故障时仍可工作。
+
+验证记录：2026-07-17 在分支 `codex/m1-a-flowgram-board`、实现基线 `3bb24c1f8f0856120aadde18a0f7ff333143e3ad` 上通过。真实 Definition 投影为三个稳定产品节点 ID、两条边的只读 FlowGram Free Layout Board；正常 Chromium E2E 验证无 fallback、节点选择、同页 Run、三节点成功、Fake 输出与干净 console。受控 Canvas failure 仅在 Playwright 的 `navigator.webdriver` 加 preload global 条件下触发，显示 source Definition list，同时同页真实 Run 仍成功。
 
 #### Hardening
 
@@ -337,14 +339,13 @@ Feishu Trigger
 
 不使用“完成百分比”。
 
-## 10. 当前唯一下一目标
+## 10. 当前下一目标
 
-完成 M0 Functional Gate。具体 Codex 指令见 `CODEX-NEXT-INSTRUCTION.md`。
+M1-A Functional Gate 已验证完成；当前 Goal 到此停止。下一独立 Goal 为 M1-B：Persistent Run History，不自动开始。
 
-在该目标完成前，不推进：
+在 M1-B Goal 明确开始前，不推进：
 
-- FlowGram；
-- Event；
+- M1-C Event；
 - Durable Runtime；
 - 全量文档同步；
 - 完整验收平台。
