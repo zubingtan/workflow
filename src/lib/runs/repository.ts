@@ -141,6 +141,67 @@ function runtimeError(code: string | null, message: string | null, nodeId: strin
   return { code, message, nodeId };
 }
 
+const timelineTypes = new Set([
+  "workflow.run.queued",
+  "workflow.run.started",
+  "node.attempt.started",
+  "node.attempt.succeeded",
+  "node.attempt.failed",
+  "node.run.skipped",
+  "agent.execution.started",
+  "agent.execution.succeeded",
+  "agent.execution.failed",
+  "artifact.created",
+  "workflow.run.succeeded",
+  "workflow.run.failed",
+]);
+
+const failureTimelineTypes = new Set([
+  "agent.execution.failed",
+  "node.attempt.failed",
+  "workflow.run.failed",
+]);
+
+const timelineErrorCodes = new Set([
+  "provider_auth_failed",
+  "provider_timeout",
+  "provider_empty_output",
+  "worker_lost",
+  "outcome_unknown",
+]);
+
+function timelineArtifact(value: unknown, nodeId: string | null) {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
+  const payload = value as JsonObject;
+  const source = payload.source;
+  if (source === null || typeof source !== "object" || Array.isArray(source)) return null;
+  const sourceValue = source as JsonObject;
+  const sourceNodeId = sourceValue.nodeId;
+  const sha256 = payload.sha256;
+  const sizeBytes = payload.sizeBytes;
+  if (
+    sourceValue.kind !== "node.output"
+    || typeof sourceNodeId !== "string"
+    || sourceNodeId !== nodeId
+    || typeof sha256 !== "string"
+    || !/^[0-9a-f]{64}$/.test(sha256)
+    || payload.mediaType !== "text/markdown"
+    || typeof sizeBytes !== "number"
+    || !Number.isSafeInteger(sizeBytes)
+    || sizeBytes < 0
+    || payload.sensitivity !== "internal"
+    || payload.retentionPolicy !== "run-history"
+  ) return null;
+  return {
+    source: { kind: "node.output" as const, nodeId: sourceNodeId },
+    sha256,
+    mediaType: "text/markdown" as const,
+    sizeBytes,
+    sensitivity: "internal" as const,
+    retentionPolicy: "run-history" as const,
+  };
+}
+
 export async function getWorkflowRun(id: string) {
   const sql = getDatabase();
   return sql.begin("ISOLATION LEVEL REPEATABLE READ READ ONLY", async (transaction) => {
@@ -212,6 +273,21 @@ export async function getWorkflowRun(id: string) {
       ORDER BY node.execution_order
     `;
 
+    const events = await transaction`
+      SELECT
+        event.sequence,
+        event.type,
+        event.occurred_at,
+        event.error_code,
+        event.skip_reason,
+        event.payload,
+        node.node_id
+      FROM execution_events AS event
+      LEFT JOIN node_runs AS node ON node.id = event.node_run_id
+      WHERE event.workflow_run_id = ${id}
+      ORDER BY event.sequence ASC
+    `;
+
     const projectedNodes = nodes.map((node) => ({
       id: node.id,
       nodeId: node.node_id,
@@ -254,6 +330,28 @@ export async function getWorkflowRun(id: string) {
       },
     }));
     const processNode = nodes.find((node) => node.node_type === "process.agent");
+    const timeline = events.flatMap((event) => {
+      if (!timelineTypes.has(event.type)) return [];
+      const occurredAt = date(event.occurred_at);
+      if (occurredAt === null) return [];
+      const projected: Record<string, unknown> = {
+        sequence: event.sequence,
+        type: event.type,
+        occurredAt,
+      };
+      if (typeof event.node_id === "string") projected.nodeId = event.node_id;
+      if (failureTimelineTypes.has(event.type) && timelineErrorCodes.has(event.error_code)) {
+        projected.code = event.error_code;
+      }
+      if (event.type === "node.run.skipped" && event.skip_reason === "upstream_failed") {
+        projected.reason = event.skip_reason;
+      }
+      if (event.type === "artifact.created") {
+        const artifact = timelineArtifact(event.payload, event.node_id);
+        if (artifact !== null) projected.artifact = artifact;
+      }
+      return [projected];
+    });
 
     return {
       run: {
@@ -272,6 +370,7 @@ export async function getWorkflowRun(id: string) {
         },
         input: run.input,
         nodes: projectedNodes,
+        timeline,
       },
     };
   });

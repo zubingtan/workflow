@@ -63,7 +63,13 @@ services:
       - -c
       - |
         for migration in /migrations/*.sql; do
-          psql --set ON_ERROR_STOP=1 --file "$$migration"
+          migration_name=$$(basename "$$migration")
+          if psql -Atq -c "SELECT to_regclass('public.schema_migrations') IS NOT NULL" | grep -qx t \
+            && psql -Atq \
+              -c "SELECT 1 FROM schema_migrations WHERE name = '$$migration_name'" | grep -qx 1; then
+            continue
+          fi
+          psql --single-transaction --set ON_ERROR_STOP=1 --file "$$migration"
         done
     environment:
       PGHOST: postgres

@@ -366,7 +366,7 @@ for correlation in pr5-auth pr5-timeout pr5-empty pr5-crash-before pr5-crash-aft
   assert_equal "$actual_calls" 0
   printf '%s:%s\n' "$correlation" "$actual_calls" >>"$evidence/calls-after-restart.txt"
 done
-assert_equal "$(query "SELECT count(*) FROM execution_events WHERE workflow_run_id='$success_id'")" 11
+assert_equal "$(query "SELECT count(*) FROM execution_events WHERE workflow_run_id='$success_id'")" 12
 assert_equal "$(query "SELECT count(*) FROM execution_events WHERE workflow_run_id='$auth_id'")" 10
 
 "${compose[@]}" logs --no-color app worker fake-provider >"$evidence/services-after-restart.log"

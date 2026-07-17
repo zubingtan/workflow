@@ -215,7 +215,7 @@ a { color: inherit; }
 .status-running .node-status { color: var(--accent); }
 .status-skipped .node-status { color: var(--warning); }
 
-.history-section, .output-panel { margin-top: 48px; }
+.history-section, .output-panel, .timeline-panel { margin-top: 48px; }
 .section-heading { align-items: center; margin-bottom: 14px; }
 .section-heading h2 { margin: 0; font-size: 22px; font-weight: 620; letter-spacing: -.025em; }
 .section-heading a { color: var(--accent); font-size: 14px; text-decoration: none; }
@@ -255,6 +255,17 @@ td { font-size: 14px; }
 .markdown-output { max-width: 780px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 16px; line-height: 1.7; }
 .run-history-link { margin-top: 22px; }
 .run-history-link a { color: var(--accent); text-decoration: none; }
+
+.timeline-panel { padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+.timeline-list { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.timeline-event { padding: 16px 18px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.timeline-event-heading { display: grid; grid-template-columns: minmax(42px, auto) minmax(0, 1fr) auto; align-items: baseline; gap: 14px; }
+.timeline-event-heading strong { overflow-wrap: anywhere; font-size: 13px; font-weight: 620; }
+.timeline-event-heading time { color: var(--muted); font-size: 13px; white-space: nowrap; }
+.timeline-event-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 24px; margin: 14px 0 0; padding-top: 14px; border-top: 1px solid var(--border); }
+.timeline-event-details div { min-width: 0; }
+.timeline-event-details dt { color: var(--muted); font-size: 12px; }
+.timeline-event-details dd { margin: 4px 0 0; overflow-wrap: anywhere; font-size: 13px; }
 
 .sheet-layer { position: fixed; inset: 0; z-index: 50; background: rgb(10 14 22 / 20%); }
 .sheet-layer.nonblocking { background: transparent; pointer-events: none; }
@@ -322,6 +333,8 @@ td { font-size: 14px; }
   .run-facts dl > div:nth-last-child(-n + 2) { border-bottom: 0; }
   .run-facts dl > div:first-child { padding-left: 12px; }
   .failure-panel { grid-template-columns: 1fr; gap: 24px; padding: 22px; }
+  .timeline-event-heading { grid-template-columns: minmax(42px, auto) minmax(0, 1fr); }
+  .timeline-event-heading time { grid-column: 2; }
 }
 
 @media (max-width: 520px) {
@@ -333,6 +346,7 @@ td { font-size: 14px; }
   .run-facts dl { grid-template-columns: 1fr; }
   .run-facts dl > div { border-right: 0; border-bottom: 1px solid var(--border) !important; }
   .run-facts dl > div:last-child { border-bottom: 0 !important; }
+  .timeline-event-details { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {

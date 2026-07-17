@@ -294,6 +294,53 @@ databaseSuite("M0-T08/T11 terminal failure persistence", () => {
     expect(body.run.nodes[1].attempt.agentExecution.error).toEqual(expectedError);
     expect(body.run.nodes[2]).toMatchObject({ status: "skipped", error: null, skipReason: "upstream_failed", attempt: null, output: null });
 
+    const timeline = body.run.timeline;
+    expect(Array.isArray(timeline)).toBe(true);
+    expect(timeline.map((event: Record<string, unknown>) => ({
+      sequence: event.sequence,
+      type: event.type,
+      nodeId: event.nodeId ?? null,
+      code: event.code ?? null,
+      reason: event.reason ?? null,
+      artifact: event.artifact ?? null,
+    }))).toEqual([
+      { sequence: 1, type: "workflow.run.queued", nodeId: null, code: null, reason: null, artifact: null },
+      { sequence: 2, type: "workflow.run.started", nodeId: null, code: null, reason: null, artifact: null },
+      { sequence: 3, type: "node.attempt.started", nodeId: "prompt", code: null, reason: null, artifact: null },
+      { sequence: 4, type: "node.attempt.succeeded", nodeId: "prompt", code: null, reason: null, artifact: null },
+      { sequence: 5, type: "node.attempt.started", nodeId: "analyze", code: null, reason: null, artifact: null },
+      { sequence: 6, type: "agent.execution.started", nodeId: "analyze", code: null, reason: null, artifact: null },
+      { sequence: 7, type: "agent.execution.failed", nodeId: "analyze", code, reason: null, artifact: null },
+      { sequence: 8, type: "node.attempt.failed", nodeId: "analyze", code, reason: null, artifact: null },
+      { sequence: 9, type: "node.run.skipped", nodeId: "result", code: null, reason: "upstream_failed", artifact: null },
+      { sequence: 10, type: "workflow.run.failed", nodeId: null, code, reason: null, artifact: null },
+    ]);
+    const allowedTimelineKeys = new Set([
+      "sequence", "type", "occurredAt", "nodeId", "code", "reason", "artifact",
+    ]);
+    for (const event of timeline as Array<Record<string, unknown>>) {
+      expect(Object.keys(event).every((key) => allowedTimelineKeys.has(key))).toBe(true);
+      expect(event.sequence).toEqual(expect.any(Number));
+      expect(event.type).toEqual(expect.any(String));
+      expect(event.occurredAt).toEqual(expect.any(String));
+      expect(Number.isNaN(Date.parse(event.occurredAt as string))).toBe(false);
+    }
+    const timelineText = JSON.stringify(timeline);
+    for (const forbidden of [
+      body.run.input.prompt,
+      "fake-default",
+      "openai-compatible",
+      "fake-m0",
+      process.env.FAKE_PROVIDER_API_KEY!,
+      "payload",
+      "providerSnapshot",
+      "agentExecutionId",
+      "attemptId",
+      "nodeRunId",
+    ]) {
+      expect(timelineText).not.toContain(forbidden);
+    }
+
     await sweep();
     expect(await terminalFacts(runId)).toEqual(first);
     expect(first.jobs.filter((job) => job.status === "available")).toHaveLength(0);

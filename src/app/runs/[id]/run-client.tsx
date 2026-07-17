@@ -62,6 +62,7 @@ export function RunClient({
       } catch (caught) {
         if (stopped || (caught instanceof DOMException && caught.name === "AbortError")) return;
         setError("Run could not be loaded");
+        timer = setTimeout(poll, 150);
       }
     }
 
@@ -103,6 +104,39 @@ export function RunClient({
               definition={run.workflowDefinitionVersion.definition}
               run={run}
             />
+            <section className="timeline-panel" aria-label="Timeline">
+              <div className="section-heading"><h2>Timeline</h2></div>
+              {run.timeline.length > 0 ? (
+                <ol className="timeline-list">
+                  {run.timeline.map((event) => (
+                    <li className="timeline-event" key={event.sequence}>
+                      <div className="timeline-event-heading">
+                        <span className="mono">#{event.sequence}</span>
+                        <strong className="mono">{event.type}</strong>
+                        <time dateTime={event.occurredAt}>{timestamp(event.occurredAt)}</time>
+                      </div>
+                      {event.nodeId || event.code || event.reason || event.artifact ? (
+                        <dl className="timeline-event-details">
+                          {event.nodeId ? <div><dt>Node</dt><dd className="mono">{event.nodeId}</dd></div> : null}
+                          {event.code ? <div><dt>Code</dt><dd className="mono">{event.code}</dd></div> : null}
+                          {event.reason ? <div><dt>Reason</dt><dd>{event.reason}</dd></div> : null}
+                          {event.artifact ? (
+                            <>
+                              <div><dt>Source</dt><dd className="mono">{event.artifact.source.kind}: {event.artifact.source.nodeId}</dd></div>
+                              <div><dt>Digest</dt><dd className="mono">{event.artifact.sha256}</dd></div>
+                              <div><dt>Media type</dt><dd>{event.artifact.mediaType}</dd></div>
+                              <div><dt>Size</dt><dd>{event.artifact.sizeBytes} bytes</dd></div>
+                              <div><dt>Sensitivity</dt><dd>{event.artifact.sensitivity}</dd></div>
+                              <div><dt>Retention</dt><dd>{event.artifact.retentionPolicy}</dd></div>
+                            </>
+                          ) : null}
+                        </dl>
+                      ) : null}
+                    </li>
+                  ))}
+                </ol>
+              ) : <p className="empty-state">No execution events have been recorded yet.</p>}
+            </section>
             {run.error ? (
               <section className="failure-panel" aria-labelledby="failure-title">
                 <div>
