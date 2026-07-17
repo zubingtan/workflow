@@ -1,10 +1,10 @@
-# Current Code Baseline：M0、M1-A 与 M1-B Functional Gates Verified
+# Current Code Baseline：M0、M1-A、M1-B、M1-C 与 M1 Hardening Verified
 
 - **文档版本**：v0.6
-- **状态**：Verified
+- **状态**：M1 Complete / Stable
 - **日期**：2026-07-17
-- **目标分支**：`codex/m1b-persistent-history`
-- **验证实现基线**：`e20cbbd2e7e99e44c863b1fd3cfc60a6335c18ac`
+- **目标分支**：`codex/m1c-events-hardening`
+- **验证实现基线**：`585b7a6e7fe3ae570cae95bfef03b751871dc5e7`
 
 ## 1. 验证结论
 
@@ -12,7 +12,9 @@ M0 Web Run 纵向闭环已在本地真实环境验证，结果为 `VERIFIED`。�
 
 M1-A FlowGram read-only Workflow Board with Run overlay 已在本地真实环境验证，结果为 `VERIFIED`。现有实现满足该 Goal 的停止条件：真实 Definition 被投影到只读 FlowGram Board，Run 与节点状态在同页显示，Canvas failure 不影响后端 Run。
 
-M1-B Persistent Run History 已在本地真实 Compose 环境验证，结果为 `VERIFIED`。本次不是重做 PostgreSQL、DefinitionVersion、Run History 或重启恢复能力；最小修复让 Run Detail 使用其固定、不可变的 `WorkflowDefinitionVersion.definition` 渲染 Board，消除了导入 v2 后历史 v1 Run 显示 v2 节点的漂移。未新增 schema、migration 或 endpoint。本 Goal 到此停止，不进入 M1-C、M2 或 FlowGram Authoring。
+M1-B Persistent Run History 已在本地真实 Compose 环境验证，结果为 `VERIFIED`。本次不是重做 PostgreSQL、DefinitionVersion、Run History 或重启恢复能力；最小修复让 Run Detail 使用其固定、不可变的 `WorkflowDefinitionVersion.definition` 渲染 Board，消除了导入 v2 后历史 v1 Run 显示 v2 节点的漂移。该基线随后由 M1-C 使用，M1-B 本身未新增 schema、migration 或 endpoint。
+
+M1-C Execution Events 与 M1 Hardening 已在本地真实 Compose 环境验证，结果为 `VERIFIED`。Run Detail 从 append-only 事件投影安全 Timeline；成功 Output 生成 `artifact.created` metadata reference，但 canonical Markdown 仍只保存在 PostgreSQL Output，未复制到 Artifact Store。可靠 polling 能从一次临时请求失败恢复；Run 在浏览器离开页面后仍可由 Worker 完成。M1 在此达到 `Complete / Stable`，下一步须作为独立 M2 Goal 再决定与开始。
 
 ## 2. 轻量基线原则
 
@@ -78,6 +80,19 @@ M1-B Persistent Run History 已在本地真实 Compose 环境验证，结果为 
 | restart persistence | Demonstrated | Compose restart 后 History 仍有同一 v1 Run/Definition v1；Run、Attempt、Agent Execution 快照与 Fake 输出不变 |
 | runtime integration | Verified | v1/v2 漂移 RED→GREEN，12/12 PASS |
 | browser regression | Verified | M1-B Chromium 真实 Compose restart E2E PASS（78s，console clean）；相邻 M1-A 与 M0 E2E 亦通过 |
+
+### M1-C 与 M1 Hardening Gate
+
+| Capability | Status | Notes |
+|---|---|---|
+| append-only Timeline | Verified | Run Detail 按 committed sequence 投影 12 条成功事件；不暴露数据库 event、attempt 或 execution 内部 ID |
+| artifact metadata reference | Verified | `artifact.created` 仅含 source、SHA-256、`text/markdown`、字节数、`internal` 与 `run-history`；不复制 canonical Markdown 内容 |
+| reliable polling | Verified | Run Detail 注入一次临时 GET 失败后显示错误并继续 polling，随后恢复到成功 Output 与完整 Timeline |
+| non-default Output node | Verified | 自定义 `result-v1` Output Node ID 仍产生正确 source reference 和 metadata，不依赖 seed ID |
+| migration ledger / repeatability | Verified | `schema_migrations` ledger 记录 `005_execution_events_timeline.sql`；artifact Run 后重复 Compose migrate 成功 |
+| browser-lifecycle independence | Verified | 创建 queued Run 后离开页面，Worker 仍完成；重新从 History 打开可读取 Output 与 Timeline |
+| focused regression | Verified | M1-B Chromium E2E 1 passed；M1-A Chromium E2E 2 passed；async happy 与 crash/restart system tests 均通过 |
+| in-app Browser evidence | Not available | 两个 isolated Codex agent runtimes 均返回 `iab unavailable/list []`；没有 IAB screenshot，不将 Chromium E2E 表述为 IAB 手工验收 |
 
 ## 4. 真实验证记录
 
@@ -162,10 +177,26 @@ M1-B Functional Gate: VERIFIED
 Remaining blocker: none
 ```
 
-## 8. 文档基线说明
+## 8. M1-C 与 M1 Hardening 真实验证记录
+
+```text
+Ref/Commit: codex/m1c-events-hardening / 585b7a6e7fe3ae570cae95bfef03b751871dc5e7
+Timeline: append-only persisted events project in committed sequence; successful Run has 12 events, including artifact.created
+Artifact: source node.output reference plus SHA-256, text/markdown, byte size, internal sensitivity, and run-history retention; Markdown remains the canonical PostgreSQL Output and is not copied into the timeline
+Polling: one injected transient Run Detail GET failure clears on retry and reaches succeeded Output plus Timeline
+Lifecycle: queued Run completes while browser is on about:blank; reopening History restores the successful Run, Output, and Timeline
+Migration: schema_migrations ledger records 005_execution_events_timeline.sql; Compose migrate replay succeeds after an artifact Run
+Regression: non-default result-v1 Output ID preserves artifact source metadata; M1-B E2E 1 passed and M1-A E2E 2 passed
+Checks: pnpm typecheck PASS; M1-C Chromium E2E 3 passed; async happy PASS; crash/restart PASS; git diff --check PASS
+IAB boundary: two isolated Codex agent runtimes returned iab unavailable/list []; no in-app Browser screenshot was produced. Real Compose Chromium E2E passed, but this is not claimed as IAB manual acceptance.
+M1 status: COMPLETE / STABLE
+Next independent Goal: M2 Durable Execution; not started automatically
+```
+
+## 9. 文档基线说明
 
 `docs/SHA256SUMS` 与 `docs/MANIFEST.json` 保留 v0.6 来源包的原始基线记录；本次仅更新本地状态记录文件，不将这些来源包校验值声明为当前状态记录内容的校验结果。
 
-## 9. 后续阶段判断
+## 10. 后续阶段判断
 
-M1-B Functional Gate 已真实可运行。本 Goal 在此停止；M1-C、M2 与 FlowGram Authoring 均须作为后续独立 Goal 再决定与开始。
+M1 已真实可运行并达到 Stable。本 Goal 在此停止；M2 Durable Execution 须作为下一独立 Goal 再决定与开始。FlowGram Authoring 不随 M2 自动开始。
