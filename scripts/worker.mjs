@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import postgres from "postgres";
@@ -62,6 +62,7 @@ async function addEvent(
     agentExecutionId = null,
     errorCode = null,
     skipReason = null,
+    payload = {},
   } = {},
 ) {
   await transaction`
@@ -74,7 +75,8 @@ async function addEvent(
       attempt_id,
       agent_execution_id,
       error_code,
-      skip_reason
+      skip_reason,
+      payload
     ) VALUES (
       ${`event-${randomUUID()}`},
       ${runId},
@@ -84,7 +86,8 @@ async function addEvent(
       ${attemptId},
       ${agentExecutionId},
       ${errorCode},
-      ${skipReason}
+      ${skipReason},
+      ${transaction.json(payload)}
     )
   `;
 }
@@ -186,7 +189,7 @@ async function executeJob(job) {
     WHERE id = ${job.workflow_run_id}
   `;
   const nodeRows = await sql`
-    SELECT id, node_type, agent_definition_version_id, provider_binding_ref
+    SELECT id, node_id, node_type, agent_definition_version_id, provider_binding_ref
     FROM node_runs
     WHERE workflow_run_id = ${job.workflow_run_id}
     ORDER BY execution_order
@@ -351,6 +354,14 @@ async function executeJob(job) {
   }
 
   const outputAttemptId = `attempt-${randomUUID()}`;
+  const artifact = {
+    source: { kind: "node.output", nodeId: outputNode.node_id },
+    sha256: createHash("sha256").update(markdown, "utf8").digest("hex"),
+    mediaType: "text/markdown",
+    sizeBytes: Buffer.byteLength(markdown, "utf8"),
+    sensitivity: "internal",
+    retentionPolicy: "run-history",
+  };
   await sql.begin(async (transaction) => {
     await transaction`
       UPDATE agent_executions
@@ -402,6 +413,10 @@ async function executeJob(job) {
       nodeRunId: outputNode.id,
       attemptId: outputAttemptId,
     });
+    await addEvent(transaction, job.workflow_run_id, 11, "artifact.created", {
+      nodeRunId: outputNode.id,
+      payload: artifact,
+    });
     await transaction`
       UPDATE workflow_runs SET status = 'succeeded', completed_at = now()
       WHERE id = ${job.workflow_run_id}
@@ -412,7 +427,7 @@ async function executeJob(job) {
       RETURNING id
     `;
     if (completed.length !== 1) throw new Error("Queue lease was not retained");
-    await addEvent(transaction, job.workflow_run_id, 11, "workflow.run.succeeded");
+    await addEvent(transaction, job.workflow_run_id, 12, "workflow.run.succeeded");
   });
 }
 

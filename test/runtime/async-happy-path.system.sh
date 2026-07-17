@@ -211,9 +211,13 @@ assert_equal "$(provider_authorization_matches)" "true"
 
 reset_provider_stats
 assert_equal "$(provider_calls)" "0"
-run_b_id=$(create_run "Run B proves the two-worker claim race")
+run_b_prompt="M1-C timeline must not repeat this prompt"
+run_b_id=$(create_run "$run_b_prompt")
 
-RUN_ID="$run_b_id" APP_URL="$app_url" SECRET="$custom_provider_key" node --input-type=module <<'NODE'
+RUN_ID="$run_b_id" APP_URL="$app_url" PROMPT="$run_b_prompt" SECRET="$custom_provider_key" node --input-type=module <<'NODE'
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+
 const deadline = Date.now() + 90_000;
 let body;
 while (Date.now() < deadline) {
@@ -257,6 +261,78 @@ if (JSON.stringify(processNode.attempt.agentExecution?.providerSnapshot) !== JSO
 if (outputNode.output?.markdown !== "Fake provider response") {
   throw new Error("Markdown output was not persisted");
 }
+const timeline = body.run.timeline;
+if (!Array.isArray(timeline)) throw new Error("Run detail must return an execution timeline");
+const expectedTimeline = [
+  [1, "workflow.run.queued", null, null, null, false],
+  [2, "workflow.run.started", null, null, null, false],
+  [3, "node.attempt.started", "prompt", null, null, false],
+  [4, "node.attempt.succeeded", "prompt", null, null, false],
+  [5, "node.attempt.started", "analyze", null, null, false],
+  [6, "agent.execution.started", "analyze", null, null, false],
+  [7, "agent.execution.succeeded", "analyze", null, null, false],
+  [8, "node.attempt.succeeded", "analyze", null, null, false],
+  [9, "node.attempt.started", "result", null, null, false],
+  [10, "node.attempt.succeeded", "result", null, null, false],
+  [11, "artifact.created", "result", null, null, true],
+  [12, "workflow.run.succeeded", null, null, null, false],
+];
+assert.deepStrictEqual(timeline.map((event) => [
+  event.sequence,
+  event.type,
+  event.nodeId ?? null,
+  event.code ?? null,
+  event.reason ?? null,
+  event.artifact !== undefined,
+]), expectedTimeline);
+const allowedTimelineKeys = new Set([
+  "sequence", "type", "occurredAt", "nodeId", "code", "reason", "artifact",
+]);
+for (const event of timeline) {
+  if (Object.keys(event).some((key) => !allowedTimelineKeys.has(key))) {
+    throw new Error("Run timeline exposed a non-public event field");
+  }
+  if (!Number.isInteger(event.sequence) || typeof event.type !== "string") {
+    throw new Error("Run timeline event identity is invalid");
+  }
+  if (typeof event.occurredAt !== "string" || Number.isNaN(Date.parse(event.occurredAt))) {
+    throw new Error("Run timeline event timestamp is invalid");
+  }
+  if (event.nodeId !== undefined && typeof event.nodeId !== "string") {
+    throw new Error("Run timeline node reference is invalid");
+  }
+  if (event.code !== undefined && typeof event.code !== "string") {
+    throw new Error("Run timeline code is invalid");
+  }
+  if (event.reason !== undefined && typeof event.reason !== "string") {
+    throw new Error("Run timeline reason is invalid");
+  }
+}
+const artifact = timeline.find((event) => event.type === "artifact.created")?.artifact;
+assert.deepStrictEqual(artifact, {
+  source: { kind: "node.output", nodeId: "result" },
+  sha256: createHash("sha256").update(outputNode.output.markdown, "utf8").digest("hex"),
+  mediaType: "text/markdown",
+  sizeBytes: Buffer.byteLength(outputNode.output.markdown, "utf8"),
+  sensitivity: "internal",
+  retentionPolicy: "run-history",
+});
+const timelineSerialized = JSON.stringify(timeline);
+for (const forbidden of [
+  process.env.PROMPT,
+  outputNode.output.markdown,
+  "fake-default",
+  "openai-compatible",
+  "fake-m0",
+  process.env.SECRET,
+  "payload",
+  "providerSnapshot",
+  "agentExecutionId",
+  "attemptId",
+  "nodeRunId",
+]) {
+  if (timelineSerialized.includes(forbidden)) throw new Error("Run timeline redaction failed");
+}
 const serialized = JSON.stringify(body);
   for (const forbidden of [process.env.SECRET, "http://fake-provider", "CUSTOM_PROVIDER_KEY", "apiKeyEnv", "FAKE_PROVIDER_API_KEY", "fake-provider-local", "sessionId", "session_id", "PiSession"]) {
     if (serialized.includes(forbidden)) throw new Error("Run API redaction failed");
@@ -271,7 +347,34 @@ assert_equal "$(query "SELECT count(*) FROM node_run_attempts attempt JOIN node_
 assert_equal "$(query "SELECT count(*) FROM agent_executions execution JOIN node_run_attempts attempt ON attempt.id = execution.node_run_attempt_id JOIN node_runs node ON node.id = attempt.node_run_id WHERE node.workflow_run_id = '$run_b_id'")" "1"
 assert_equal "$(query "SELECT count(*) FROM agent_executions execution JOIN node_run_attempts attempt ON attempt.id = execution.node_run_attempt_id JOIN node_runs node ON node.id = attempt.node_run_id WHERE node.workflow_run_id = '$run_b_id' AND execution.status = 'succeeded'")" "1"
 assert_equal "$(query "SELECT count(*) FROM node_runs WHERE workflow_run_id = '$run_b_id' AND node_type = 'output.markdown' AND output->>'markdown' = 'Fake provider response'")" "1"
-assert_equal "$(query "SELECT count(*) FROM execution_events WHERE workflow_run_id = '$run_b_id'")" "11"
+assert_equal "$(query "SELECT count(*) FROM execution_events WHERE workflow_run_id = '$run_b_id'")" "12"
+
+artifact=$(query "
+  SELECT json_build_object(
+    'nodeId', node.node_id,
+    'payload', event.payload
+  )::text
+  FROM execution_events event
+  JOIN node_runs node ON node.id = event.node_run_id
+  WHERE event.workflow_run_id = '$run_b_id' AND event.type = 'artifact.created'
+")
+ARTIFACT="$artifact" node --input-type=module <<'NODE'
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+
+const artifact = JSON.parse(process.env.ARTIFACT);
+assert.deepStrictEqual(artifact, {
+  nodeId: "result",
+  payload: {
+    source: { kind: "node.output", nodeId: "result" },
+    sha256: createHash("sha256").update("Fake provider response", "utf8").digest("hex"),
+    mediaType: "text/markdown",
+    sizeBytes: Buffer.byteLength("Fake provider response", "utf8"),
+    sensitivity: "internal",
+    retentionPolicy: "run-history",
+  },
+});
+NODE
 
 events=$(query "
   SELECT json_agg(json_build_object(
@@ -300,11 +403,12 @@ const expectedEvents = [
   { sequence: 8, type: "node.attempt.succeeded", nodeId: "analyze" },
   { sequence: 9, type: "node.attempt.started", nodeId: "result" },
   { sequence: 10, type: "node.attempt.succeeded", nodeId: "result" },
-  { sequence: 11, type: "workflow.run.succeeded", nodeId: null },
+  { sequence: 11, type: "artifact.created", nodeId: "result" },
+  { sequence: 12, type: "workflow.run.succeeded", nodeId: null },
 ];
 check(JSON.stringify(events.map(({ sequence, type, nodeId }) => ({ sequence, type, nodeId }))) === JSON.stringify(expectedEvents));
 
-for (const index of [0, 1, 10]) {
+for (const index of [0, 1, 11]) {
   check([events[index].nodeRunId, events[index].attemptId, events[index].agentExecutionId]
     .every((value) => value === null));
 }
@@ -321,6 +425,9 @@ function assertAttemptPair(firstIndex, secondIndex) {
 assertAttemptPair(2, 3);
 assertAttemptPair(4, 7);
 assertAttemptPair(8, 9);
+check(events[10].nodeRunId === events[8].nodeRunId
+  && events[10].attemptId === null
+  && events[10].agentExecutionId === null);
 for (const index of [5, 6]) {
   check(events[index].nodeRunId === events[4].nodeRunId
     && events[index].attemptId === events[4].attemptId);
@@ -376,6 +483,12 @@ if query "UPDATE execution_events SET type = type WHERE workflow_run_id = '$run_
 fi
 if query "DELETE FROM execution_events WHERE workflow_run_id = '$run_b_id'" >/dev/null 2>&1; then
   echo "execution events accepted DELETE" >&2
+  exit 1
+fi
+
+if ! "${compose[@]}" run --rm migrate >"$fixture_dir/migration-replay.log" 2>&1; then
+  cat "$fixture_dir/migration-replay.log" >&2
+  echo "applied migrations failed to replay after an artifact Run" >&2
   exit 1
 fi
 

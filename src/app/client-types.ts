@@ -68,6 +68,25 @@ export type RunNode = {
   } | null;
 };
 
+export type TimelineArtifact = {
+  source: { kind: "node.output"; nodeId: string };
+  sha256: string;
+  mediaType: "text/markdown";
+  sizeBytes: number;
+  sensitivity: "internal";
+  retentionPolicy: "run-history";
+};
+
+export type TimelineEvent = {
+  sequence: number;
+  type: string;
+  occurredAt: string;
+  nodeId?: string;
+  code?: string;
+  reason?: string;
+  artifact?: TimelineArtifact;
+};
+
 export type Run = {
   id: string;
   status: "queued" | "running" | "succeeded" | "failed";
@@ -89,9 +108,10 @@ export type Run = {
   };
   input: { prompt: string };
   nodes: RunNode[];
+  timeline: TimelineEvent[];
 };
 
-export type RunHistoryItem = Omit<Run, "workflow" | "nodes">;
+export type RunHistoryItem = Omit<Run, "workflow" | "nodes" | "timeline">;
 
 export type ApiError = {
   code?: string;
