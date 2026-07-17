@@ -36,6 +36,19 @@ async function getWorkflowRuns(id: string) {
   });
 }
 
+function definitionWithVersionedNodeIds(name: string, version: "v1" | "v2") {
+  const definition = validDefinition(name);
+  const [prompt, analyze, result] = definition.spec.nodes;
+  prompt.id = `prompt-${version}`;
+  analyze.id = `analyze-${version}`;
+  result.id = `result-${version}`;
+  definition.spec.edges[0].from = prompt.id;
+  definition.spec.edges[0].to = analyze.id;
+  definition.spec.edges[1].from = analyze.id;
+  definition.spec.edges[1].to = result.id;
+  return definition;
+}
+
 databaseSuite("M0-T05 asynchronous Run API", () => {
   let sql: ReturnType<typeof postgres>;
 
@@ -201,7 +214,9 @@ databaseSuite("M0-T05 asynchronous Run API", () => {
       "workflow", "workflowDefinitionVersion",
     ]);
     expect(Object.keys(body.run.workflow).sort()).toEqual(["id", "name"]);
-    expect(Object.keys(body.run.workflowDefinitionVersion).sort()).toEqual(["hash", "id", "version"]);
+    expect(Object.keys(body.run.workflowDefinitionVersion).sort()).toEqual([
+      "definition", "hash", "id", "version",
+    ]);
     expect(Object.keys(body.run.input).sort()).toEqual(["prompt"]);
     expect(body.run).toMatchObject({
       id: runId,
@@ -215,9 +230,11 @@ databaseSuite("M0-T05 asynchronous Run API", () => {
         id: importedBody.workflowDefinitionVersion.id,
         version: importedBody.workflowDefinitionVersion.version,
         hash: importedBody.workflowDefinitionVersion.hash,
+        definition: importedBody.workflowDefinitionVersion.definition,
       },
       input: { prompt },
     });
+    expect(JSON.stringify(body)).not.toContain(process.env.FAKE_PROVIDER_API_KEY!);
     const nodeKeys = [
       "agentDefinitionVersion", "attempt", "error", "id", "nodeId", "output",
       "providerBindingRef", "skipReason", "status", "type",
@@ -245,6 +262,33 @@ databaseSuite("M0-T05 asynchronous Run API", () => {
         providerBindingRef: null, output: null, attempt: null,
       }),
     ]);
+  });
+
+  test("Run detail remains pinned to the original immutable Definition after a later version is imported", async () => {
+    const name = `run-detail-history-${randomUUID()}`;
+    const firstDefinition = definitionWithVersionedNodeIds(name, "v1");
+    const firstImport = await importWorkflow(firstDefinition);
+    const first = await firstImport.json();
+    const created = await createRun({
+      workflowDefinitionVersionId: first.workflowDefinitionVersion.id,
+      input: { prompt: "original prompt" },
+    });
+    expect(created.status).toBe(202);
+    const { runId } = await created.json();
+
+    const secondDefinition = definitionWithVersionedNodeIds(name, "v2");
+    const secondImport = await importWorkflow(secondDefinition);
+    const second = await secondImport.json();
+    expect(second.workflowDefinitionVersion.version).toBe(2);
+
+    const detail = await getRun(runId);
+    expect(detail.status).toBe(200);
+    expect((await detail.json()).run.workflowDefinitionVersion).toEqual({
+      id: first.workflowDefinitionVersion.id,
+      version: 1,
+      hash: first.workflowDefinitionVersion.hash,
+      definition: firstDefinition,
+    });
   });
 
   test("history remains pinned to the original Definition Version and missing resources 404", async () => {

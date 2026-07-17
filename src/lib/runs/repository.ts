@@ -158,7 +158,8 @@ export async function getWorkflowRun(id: string) {
         workflow.name AS workflow_name,
         version.id AS version_id,
         version.version,
-        version.hash
+        version.hash,
+        version.definition
       FROM workflow_runs AS run
       JOIN workflow_definition_versions AS version
         ON version.id = run.workflow_definition_version_id
@@ -267,6 +268,7 @@ export async function getWorkflowRun(id: string) {
           id: run.version_id,
           version: run.version,
           hash: run.hash,
+          definition: run.definition,
         },
         input: run.input,
         nodes: projectedNodes,
