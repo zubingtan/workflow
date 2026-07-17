@@ -1,9 +1,9 @@
 # Roadmap：从 Walking Skeleton 到可信 Oncall Platform
 
 - **版本**：v0.6
-- **状态**：M1-A Functional Gate Verified
+- **状态**：M1-B Functional Gate Verified
 - **日期**：2026-07-17
-- **当前阶段**：M1-A Functional Gate 已验证；本 Goal 停止，不自动进入 M1-B
+- **当前阶段**：M1-B Functional Gate 已验证；本 Goal 停止，不自动进入 M1-C、M2 或 FlowGram Authoring
 
 ## 1. Roadmap 设计
 
@@ -149,12 +149,22 @@ Definition
 
 ### M1-B：Persistent Run History
 
+#### Scope
+
 - PostgreSQL；
 - WorkflowDefinitionVersion；
 - WorkflowRun / NodeRun；
 - Run history；
 - 页面刷新和服务重启后历史存在；
 - 简单 migration。
+
+#### Functional Gate
+
+- [x] History 从重启后的服务中仍可找到同一历史 Run 与其 Definition v1；
+- [x] 从 History 打开 v1 Run 时，Board 只显示该 Run 固定 Definition v1 的节点；
+- [x] Run、Attempt、Agent Execution 快照和 Fake 输出在重启前后保持不变。
+
+验证记录：2026-07-17 在分支 `codex/m1b-persistent-history`、实现基线 `e20cbbd2e7e99e44c863b1fd3cfc60a6335c18ac` 上通过。持久化基础能力不是本次重做范围；最小修复让 Run Detail 直接使用该 Run 不可变的 `WorkflowDefinitionVersion.definition` 渲染 Board，消除后续导入 v2 时历史 v1 Run 显示 v2 节点的漂移。未新增 schema、migration 或 endpoint。
 
 ### M1-C：Execution Events
 
@@ -341,11 +351,12 @@ Feishu Trigger
 
 ## 10. 当前下一目标
 
-M1-A Functional Gate 已验证完成；当前 Goal 到此停止。下一独立 Goal 为 M1-B：Persistent Run History，不自动开始。
+M1-B Functional Gate 已验证完成；当前 Goal 到此停止。下一独立 Goal 可为 M1-C：Execution Events，不自动开始。
 
-在 M1-B Goal 明确开始前，不推进：
+在 M1-C Goal 明确开始前，不推进：
 
 - M1-C Event；
-- Durable Runtime；
+- Durable Runtime / M2；
+- FlowGram Authoring；
 - 全量文档同步；
 - 完整验收平台。
