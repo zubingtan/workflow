@@ -1,11 +1,11 @@
 # 基于 Pi Agent 的 Oncall Workflow Platform
 
 - **文档集版本**：v0.6
-- **状态**：M1-A Functional Gate Verified
+- **状态**：M1-B Functional Gate Verified
 - **更新日期**：2026-07-17
-- **代码参考基线**：`3bb24c1f8f0856120aadde18a0f7ff333143e3ad`（分支 `codex/m1-a-flowgram-board`）
-- **当前执行目标**：M1-A Functional Gate 已验证完成；本 Goal 到此停止
-- **下一阶段**：M1-B——Persistent Run History（需另建 Goal，不自动进入）
+- **代码参考基线**：`e20cbbd2e7e99e44c863b1fd3cfc60a6335c18ac`（分支 `codex/m1b-persistent-history`）
+- **当前执行目标**：M1-B Functional Gate 已验证完成；本 Goal 到此停止
+- **下一阶段**：M1-C——Execution Events（需另建 Goal，不自动进入）
 
 ## 1. 项目一句话
 
@@ -164,7 +164,7 @@ M0 当前不要求：
 
 ## 8. 当前 Codex Goal
 
-当前 Goal 已完成 M1-A FlowGram read-only Workflow Board with Run overlay 的真实验证，并在此停止；不自动进入 M1-B，不扩展 M1-C、Durable Runtime 或发布级测试和文档系统。
+当前 Goal 已完成 M1-B Persistent Run History 的真实验证，并在此停止；不自动进入 M1-C、M2 或 FlowGram Authoring，不扩展发布级测试和文档系统。
 
 详细指令见 [CODEX-NEXT-INSTRUCTION.md](./CODEX-NEXT-INSTRUCTION.md)。
 
@@ -173,6 +173,8 @@ M0 当前不要求：
 M0 已在分支 `codex/v0.6-m0-web-run`、实现基线 `5368891fe35c840ed1185669770d0d09ae7db2f5` 上完成本地启动、API 与 in-app Browser 纵向闭环验证。
 
 M1-A 已在分支 `codex/m1-a-flowgram-board`、实现基线 `3bb24c1f8f0856120aadde18a0f7ff333143e3ad` 上验证：真实 Definition 被投影为只读 FlowGram Free Layout Board，保持稳定产品节点 ID；同页 Run/poll overlay 与 Node Detail 使用真实 Run 数据；正常路径和受控 Canvas failure 路径都不影响后端 Run。M1-A 未引入 Definition 写回或 Authoring。
+
+M1-B 已在分支 `codex/m1b-persistent-history`、实现基线 `e20cbbd2e7e99e44c863b1fd3cfc60a6335c18ac` 上验证：持久化 Run、DefinitionVersion、History 与重启后查询均为既有能力；本次最小修复让 Run Detail 使用该 Run 固定且不可变的 `WorkflowDefinitionVersion.definition` 渲染 Board，消除了导入 v2 后历史 v1 Run 误显示 v2 节点的漂移。未引入 schema、migration 或新 endpoint，亦未开始 Authoring。
 
 本包对代码状态使用：
 

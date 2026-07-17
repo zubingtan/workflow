@@ -1,16 +1,18 @@
-# Current Code Baseline：M0 与 M1-A Functional Gates Verified
+# Current Code Baseline：M0、M1-A 与 M1-B Functional Gates Verified
 
 - **文档版本**：v0.6
 - **状态**：Verified
 - **日期**：2026-07-17
-- **目标分支**：`codex/m1-a-flowgram-board`
-- **验证实现基线**：`3bb24c1f8f0856120aadde18a0f7ff333143e3ad`
+- **目标分支**：`codex/m1b-persistent-history`
+- **验证实现基线**：`e20cbbd2e7e99e44c863b1fd3cfc60a6335c18ac`
 
 ## 1. 验证结论
 
 M0 Web Run 纵向闭环已在本地真实环境验证，结果为 `VERIFIED`。其历史证据保留在本文第 4 节。
 
-M1-A FlowGram read-only Workflow Board with Run overlay 已在本地真实环境验证，结果为 `VERIFIED`。现有实现满足本 Goal 的停止条件：真实 Definition 被投影到只读 FlowGram Board，Run 与节点状态在同页显示，Canvas failure 不影响后端 Run。未发现需要修改产品代码的缺口或阻断。本 Goal 到此停止，不进入 M1-B。
+M1-A FlowGram read-only Workflow Board with Run overlay 已在本地真实环境验证，结果为 `VERIFIED`。现有实现满足该 Goal 的停止条件：真实 Definition 被投影到只读 FlowGram Board，Run 与节点状态在同页显示，Canvas failure 不影响后端 Run。
+
+M1-B Persistent Run History 已在本地真实 Compose 环境验证，结果为 `VERIFIED`。本次不是重做 PostgreSQL、DefinitionVersion、Run History 或重启恢复能力；最小修复让 Run Detail 使用其固定、不可变的 `WorkflowDefinitionVersion.definition` 渲染 Board，消除了导入 v2 后历史 v1 Run 显示 v2 节点的漂移。未新增 schema、migration 或 endpoint。本 Goal 到此停止，不进入 M1-C、M2 或 FlowGram Authoring。
 
 ## 2. 轻量基线原则
 
@@ -66,6 +68,16 @@ M1-A FlowGram read-only Workflow Board with Run overlay 已在本地真实环境
 | normal browser path | Verified | Chromium E2E 验证真实 Board、无 fallback、节点选择、同页 Run、三节点成功、Fake 输出与干净 console |
 | Canvas failure isolation | Verified | 仅在 Playwright `navigator.webdriver` 与 preload global 受控条件下触发 fallback source Definition list；同页真实 Run 仍成功 |
 | M0 regression | Verified | M0 focused regression PASS |
+
+### M1-B Functional Gate
+
+| Capability | Status | Notes |
+|---|---|---|
+| immutable Run Definition rendering | Verified | Run Detail 使用该 Run 的 `WorkflowDefinitionVersion.definition` 渲染 Board，不再重新请求最新 Workflow Definition |
+| historical version consistency | Verified | 导入 v2 后，从 History 打开 v1 Run 只显示 v1 节点 ID 与 Definition v1 |
+| restart persistence | Demonstrated | Compose restart 后 History 仍有同一 v1 Run/Definition v1；Run、Attempt、Agent Execution 快照与 Fake 输出不变 |
+| runtime integration | Verified | v1/v2 漂移 RED→GREEN，12/12 PASS |
+| browser regression | Verified | M1-B Chromium 真实 Compose restart E2E PASS（78s，console clean）；相邻 M1-A 与 M0 E2E 亦通过 |
 
 ## 4. 真实验证记录
 
@@ -136,10 +148,24 @@ M1-A Functional Gate: VERIFIED
 Remaining blocker: none
 ```
 
-## 7. 文档基线说明
+## 7. M1-B 真实验证记录
+
+```text
+Ref/Commit: codex/m1b-persistent-history / e20cbbd2e7e99e44c863b1fd3cfc60a6335c18ac
+Change: Run Detail 的 Board 直接渲染 Run 固定且不可变的 WorkflowDefinitionVersion.definition
+Regression fixed: 导入 v2 后，历史 v1 Run 不再显示 v2 节点
+No new persistence surface: no schema, migration, or endpoint
+Runtime integration: v1/v2 RED→GREEN, 12/12 PASS
+Browser: M1-B Chromium real Compose restart E2E PASS (78s); after restart History retains the same v1 Run/Definition v1; opening it shows only v1 node IDs, and Run/Attempt/Execution snapshots plus Fake output are unchanged; console clean
+Adjacent regression: M1-A and M0 E2E PASS
+M1-B Functional Gate: VERIFIED
+Remaining blocker: none
+```
+
+## 8. 文档基线说明
 
 `docs/SHA256SUMS` 与 `docs/MANIFEST.json` 保留 v0.6 来源包的原始基线记录；本次仅更新本地状态记录文件，不将这些来源包校验值声明为当前状态记录内容的校验结果。
 
-## 8. 进入 M1-B 的判断
+## 9. 后续阶段判断
 
-M1-A Functional Gate 已真实可运行。M1-B 可以作为下一独立 Goal 创建，但不在本 Goal 中开始。
+M1-B Functional Gate 已真实可运行。本 Goal 在此停止；M1-C、M2 与 FlowGram Authoring 均须作为后续独立 Goal 再决定与开始。
