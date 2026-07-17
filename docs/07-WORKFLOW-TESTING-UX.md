@@ -21,6 +21,12 @@
 
 ## 2. 工程测试分类
 
+### 2.0 Delivery automation 分层
+
+日常 PR 只执行 `pnpm typecheck` 和 `pnpm test:fast`：Doctor、health、runtime boundary、definition compiler/projection 与 provider-failure 的无数据库、无浏览器契约。`test:integration` 覆盖 workflow/run/terminal-failure 的数据库集成；`test:release-tools` 覆盖 bootstrap、evidence、governance 与 release 静态契约。Compose、Chromium、Docker 与 Evidence Bundle 仅由 `make verify-m0` 的发布验收执行。
+
+可用 `git diff --name-only <base>...HEAD | pnpm test:changed` 输出确定性的建议风险层和命令；它不自动执行重型测试。`make install-hooks` 才会启用本仓库 pre-push hook，该 hook 仅运行 typecheck 和 `test:fast`。
+
 ### 2.1 Contract Test
 
 用于稳定边界：

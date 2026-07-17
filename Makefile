@@ -1,4 +1,4 @@
-.PHONY: help setup doctor up down logs smoke-test support-bundle verify-m0
+.PHONY: help setup doctor up down logs smoke-test support-bundle install-hooks test-fast test-integration test-release-tools verify-m0
 
 EVIDENCE_DIR ?= artifacts/acceptance/M0/$(shell date -u +%Y%m%dT%H%M%SZ)-$(shell node -e 'process.stdout.write(crypto.randomUUID())')
 
@@ -10,6 +10,10 @@ help:
 	@echo "logs        Follow local stack logs"
 	@echo "smoke-test  Check the running app readiness endpoint"
 	@echo "support-bundle  Generate a redacted diagnostic bundle"
+	@echo "install-hooks  Explicitly enable the repository pre-push hook"
+	@echo "test-fast   Run no-database, no-browser product contracts"
+	@echo "test-integration  Run database-backed workflow and runtime integrations"
+	@echo "test-release-tools  Run bootstrap, release, evidence, and governance static tests"
 	@echo "verify-m0   Run the complete M0 acceptance gate"
 
 setup:
@@ -35,16 +39,25 @@ smoke-test:
 support-bundle:
 	node scripts/acceptance/support-bundle.mjs --evidence-dir "$(EVIDENCE_DIR)"
 
+install-hooks:
+	git config core.hooksPath .githooks
+
+test-fast:
+	pnpm test:fast
+
+test-integration:
+	pnpm test:integration
+
+test-release-tools:
+	pnpm test:release-tools
+
 verify-m0:
 	node scripts/acceptance/m0-acceptance.mjs \
 		--evidence-dir "$(EVIDENCE_DIR)" \
 		--generate scripts/acceptance/generate-evidence.mjs --generate-dir "$(EVIDENCE_DIR)" \
-		--test "npm test" \
-		--test "pnpm test:definition" \
-		--test "pnpm test:runtime-contract" \
-		--test "pnpm test:runtime" \
-		--test "pnpm test:failure:unit" \
-		--test "pnpm test:failure:pg" \
+		--test "pnpm test:fast" \
+		--test "pnpm test:integration" \
+		--test "pnpm test:release-tools" \
 		--test "test/bootstrap/system-bootstrap.sh" \
 		--test "test/runtime/async-happy-path.system.sh" \
 		--test "test/failure/failure-crash-restart.system.sh" \

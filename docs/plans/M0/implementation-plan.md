@@ -1,5 +1,7 @@
 # M0 Implementation Plan
 
+> Historical M0 plan: the current delivery policy keeps `make verify-m0` release-only; PRs use typecheck plus `test:fast`.
+
 ## Objective
 
 Deliver the v0.4 M0 local executable workflow skeleton: a clean machine can start the stack, import and validate an immutable JSON definition, run `input.prompt -> process.agent -> output.markdown` asynchronously, inspect failures and persisted history in a temporary Web UI, and produce automated acceptance evidence.

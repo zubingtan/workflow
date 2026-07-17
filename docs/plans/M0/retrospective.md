@@ -1,5 +1,7 @@
 # M0 Retrospective
 
+> Historical M0 record: full acceptance evidence remains release-only; it is no longer the pull-request gate.
+
 ## Outcome
 
 M0 product scope is implemented through PR7a and PR8 closeout is under review. The latest completed full PR acceptance evidence is run `29443302168` at exact head `f7a6a83265929d1f4c31cd46910b62131e9cf7f1`, attempt 1: all `13/13` blocking cases passed and artifact `8354551937` was uploaded with ZIP SHA256 `914891b3647ca78c3a2ac57d405ef2f2e1db7017cdf4767280f197c110df6c59`. This proves the implemented gate at that PR head; it is not the milestone release gate for the final post-PR8 `main` commit.

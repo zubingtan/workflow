@@ -59,13 +59,14 @@ function jobNeeds(block) {
   return [...list.matchAll(/^      -\s*([A-Za-z0-9_-]+)\s*$/gm)].map((match) => match[1]);
 }
 
-test("the PR gate calls one reusable full acceptance workflow", () => {
+test("the PR gate runs only typecheck and no-database, no-browser fast contracts", () => {
   const prGate = workflow("pr-gate.yml");
   const jobs = yamlBlock(prGate, "jobs");
   assert.equal(topLevelKeys(jobs).length, 1);
-  assert.equal((jobs.match(/uses:\s*\.\/\.github\/workflows\/m0-acceptance\.yml/g) ?? []).length, 1);
-  assert.match(jobs, /git_sha:\s*\$\{\{\s*github\.event\.pull_request\.head\.sha\s*\}\}/);
-  assert.equal((jobs.match(/make\s+verify-m0/g) ?? []).length, 0, "PR gate must not duplicate acceptance steps");
+  assert.match(jobs, /pnpm\s+typecheck/);
+  assert.match(jobs, /pnpm\s+test:fast/);
+  assert.equal((jobs.match(/uses:\s*\.\/\.github\/workflows\/m0-acceptance\.yml/g) ?? []).length, 0);
+  assert.doesNotMatch(jobs, /(?:make\s+verify-m0|docker|postgres|playwright|chromium|upload-artifact)/i);
 
   const reusable = workflow("m0-acceptance.yml");
   assert.match(reusable, /workflow_call:[\s\S]{0,300}git_sha:[\s\S]{0,120}required:\s*true/);

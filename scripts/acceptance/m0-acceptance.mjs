@@ -14,7 +14,7 @@ const commands = [];
 for (let index = 2; index < process.argv.length; index += 1) {
   if (process.argv[index] === "--test") commands.push(process.argv[index + 1]);
 }
-if (![generate, support, seal, validate].every(Boolean) || commands.length !== 10) throw new Error("Invalid M0 acceptance command configuration");
+if (![generate, support, seal, validate].every(Boolean) || commands.length !== 7) throw new Error("Invalid M0 acceptance command configuration");
 
 const env = {
   ...process.env,
@@ -34,8 +34,9 @@ function runNode(script, args = []) {
 if (!runNode(generate, ["--evidence-dir", evidence])) process.exit(1);
 
 const mappings = new Map([
-  ["npm test", ["M0-T02"]],
-  ["pnpm test:definition", ["M0-T03", "M0-T04"]],
+  ["pnpm test:fast", ["M0-T02"]],
+  ["pnpm test:integration", ["M0-T03", "M0-T04", "M0-T05", "M0-T06", "M0-T07", "M0-T07E", "M0-T08", "M0-T09", "M0-T11"]],
+  ["pnpm test:release-tools", ["M0-T12"]],
   ["test/bootstrap/system-bootstrap.sh", ["M0-T01"]],
   ["test/runtime/async-happy-path.system.sh", ["M0-T05"]],
   ["test/failure/failure-crash-restart.system.sh", ["M0-T06", "M0-T07", "M0-T07E", "M0-T08", "M0-T09", "M0-T11"]],
@@ -45,7 +46,7 @@ const mappings = new Map([
 for (const [index, command] of commands.entries()) {
   const label = `layer-${String(index + 1).padStart(2, "0")}`;
   const commandEnv = { ...env };
-  const needsDatabase = ["pnpm test:definition", "pnpm test:runtime", "pnpm test:failure:pg"].includes(command);
+  const needsDatabase = command === "pnpm test:integration";
   if (needsDatabase) commandEnv.DATABASE_URL = process.env.ACCEPTANCE_DATABASE_URL ?? process.env.DATABASE_URL ?? "";
   else delete commandEnv.DATABASE_URL;
   const startedAt = Date.now();

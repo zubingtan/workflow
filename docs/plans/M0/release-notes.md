@@ -1,5 +1,7 @@
 # M0 v0.1.0 Release Notes
 
+> Historical M0 record: the full acceptance workflow described here is release-only; PR validation is limited to typecheck and `test:fast`.
+
 These notes describe the `m0-v0.1.0` candidate. Publication remains gated by the final same-SHA three-run acceptance workflow.
 
 ## Delivered
