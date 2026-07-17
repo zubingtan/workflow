@@ -76,7 +76,17 @@ export type Run = {
   startedAt: string | null;
   completedAt: string | null;
   workflow: { id: string; name: string };
-  workflowDefinitionVersion: { id: string; version: number; hash: string };
+  workflowDefinitionVersion: {
+    id: string;
+    version: number;
+    hash: string;
+    definition: {
+      spec: {
+        nodes: WorkflowNodeDefinition[];
+        edges: WorkflowEdgeDefinition[];
+      };
+    };
+  };
   input: { prompt: string };
   nodes: RunNode[];
 };

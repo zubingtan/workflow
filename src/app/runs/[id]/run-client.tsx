@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { AppShell } from "../../components/app-shell";
 import { RunDialog } from "../../components/run-dialog";
 import { WorkflowBoard } from "../../components/workflow-board";
-import type { Run, WorkflowDetail } from "../../client-types";
+import type { Run } from "../../client-types";
 
 const terminalStatuses = new Set(["succeeded", "failed"]);
 
@@ -40,7 +40,6 @@ export function RunClient({
   const [run, setRun] = useState<Run | null>(null);
   const [error, setError] = useState("");
   const [runOpen, setRunOpen] = useState(false);
-  const [definition, setDefinition] = useState<WorkflowDetail["workflowDefinitionVersion"]["definition"] | null>(null);
 
   useEffect(() => {
     let stopped = false;
@@ -74,23 +73,6 @@ export function RunClient({
     };
   }, [id]);
 
-  useEffect(() => {
-    if (!run) return;
-    const controller = new AbortController();
-    void fetch(`/api/workflows/${run.workflow.id}`, {
-      signal: controller.signal,
-      cache: "no-store",
-    }).then(async (response) => {
-      if (!response.ok) throw new Error();
-      return response.json() as Promise<WorkflowDetail>;
-    }).then((detail) => setDefinition(detail.workflowDefinitionVersion.definition)).catch((caught: unknown) => {
-      if (!(caught instanceof DOMException && caught.name === "AbortError")) {
-        setError("Workflow definition could not be loaded");
-      }
-    });
-    return () => controller.abort();
-  }, [run?.workflow.id]);
-
   const output = run?.nodes.find((node) => node.type === "output.markdown")?.output?.markdown;
 
   return (
@@ -116,13 +98,11 @@ export function RunClient({
                 <div><dt>Duration</dt><dd>{duration(run)}</dd></div>
               </dl>
             </section>
-            {definition ? (
-              <WorkflowBoard
-                configuredModels={configuredModels}
-                definition={definition}
-                run={run}
-              />
-            ) : <p className="empty-state">Loading workflow canvas…</p>}
+            <WorkflowBoard
+              configuredModels={configuredModels}
+              definition={run.workflowDefinitionVersion.definition}
+              run={run}
+            />
             {run.error ? (
               <section className="failure-panel" aria-labelledby="failure-title">
                 <div>
