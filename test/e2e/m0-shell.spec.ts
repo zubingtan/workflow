@@ -30,7 +30,9 @@ async function submitRun(
   destination: RunDestination = "run-detail",
 ) {
   const startingUrl = page.url();
-  await page.getByRole("button", { name: repeat ? "Run again" : "Run workflow" }).click();
+  await page.getByRole("button", {
+    name: destination === "same-workflow" ? "Run workflow" : repeat ? "Run again" : "Run workflow",
+  }).click();
   const sheet = page.getByRole("dialog", { name: "Run workflow" });
   const promptInput = sheet.getByLabel("Prompt");
   if (!repeat) await expect(sheet.getByRole("button", { name: "Run", exact: true })).toBeDisabled();
@@ -65,6 +67,14 @@ async function expectRunStatus(page: Page, status: "Queued" | "Running" | "Succe
   await expect(facts(page).getByText(status, { exact: true })).toBeVisible();
 }
 
+async function expectOverlayRunStatus(
+  page: Page,
+  runId: string,
+  status: "Queued" | "Running" | "Succeeded" | "Failed",
+) {
+  await expect(page.getByRole("row").filter({ hasText: runId })).toContainText(status);
+}
+
 async function expectWorkflowNodeStatuses(
   page: Page,
   statuses: readonly ["Queued" | "Running" | "Succeeded", "Queued" | "Running" | "Succeeded", "Queued" | "Running" | "Succeeded"],
@@ -79,13 +89,31 @@ async function expectFailure(page: Page, code: string, message: string) {
   await expect(node(page, "input.prompt").getByText("Succeeded", { exact: true })).toBeVisible();
   await expect(node(page, "process.agent").getByText("Failed", { exact: true })).toBeVisible();
   await expect(node(page, "output.markdown").getByText("Skipped", { exact: true })).toBeVisible();
-  await expect(page.getByText(code, { exact: true })).toBeVisible();
-  await expect(page.getByText(message, { exact: true })).toBeVisible();
-  await expect(page.getByText("Affected node", { exact: true })).toBeVisible();
-  await expect(page.getByText("analyze", { exact: true })).toBeVisible();
-  await expect(page.getByText("Why downstream was skipped", { exact: true })).toBeVisible();
-  await expect(page.getByText("M0 does not support Retry", { exact: true })).toBeVisible();
-  await expect(page.getByText("Next step", { exact: true })).toBeVisible();
+  const failure = page.locator(".failure-panel");
+  await expect(failure.getByText(code, { exact: true })).toBeVisible();
+  await expect(failure.getByText(message, { exact: true })).toBeVisible();
+  await expect(failure.getByText("Affected node", { exact: true })).toBeVisible();
+  await expect(failure.getByText("analyze", { exact: true })).toBeVisible();
+  await expect(failure.getByText("Why downstream was skipped", { exact: true })).toBeVisible();
+  await expect(failure.getByText("M0 does not support Retry", { exact: true })).toBeVisible();
+  await expect(failure.getByText("Next step", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Retry", exact: true })).toHaveCount(0);
+}
+
+async function expectOverlayFailure(page: Page, runId: string, code: string, message: string) {
+  await expectOverlayRunStatus(page, runId, "Failed");
+  await expect(node(page, "input.prompt").getByText("Succeeded", { exact: true })).toBeVisible();
+  await expect(node(page, "process.agent").getByText("Failed", { exact: true })).toBeVisible();
+  await expect(node(page, "output.markdown").getByText("Skipped", { exact: true })).toBeVisible();
+  const agent = node(page, "process.agent").getByRole("button");
+  await expect(agent).toHaveCount(1);
+  await agent.click();
+  const detail = page.getByRole("region", { name: "Node detail" });
+  await expect(detail).toContainText("analyze");
+  await expect(detail).toContainText(`${code}: ${message}`);
+  await expect(page.getByRole("region", { name: "Output" })).toContainText(
+    "Output will appear when the run succeeds.",
+  );
   await expect(page.getByRole("button", { name: "Retry", exact: true })).toHaveCount(0);
 }
 
@@ -180,8 +208,8 @@ test("B — explains auth, timeout, and empty-output failures without Retry", as
   for (const [index, [mode, code, message]] of cases.entries()) {
     const correlation = `pr6-${mode}-${Date.now()}`;
     await stack.configureProvider(correlation, mode);
-    await submitRun(page, `Investigate ${correlation}`, index > 0);
-    await expectFailure(page, code, message);
+    const runId = await submitRun(page, `Investigate ${correlation}`, index > 0, undefined, "same-workflow");
+    await expectOverlayFailure(page, runId, code, message);
     expect(await stack.providerCalls(correlation)).toBe(1);
   }
 
@@ -207,23 +235,23 @@ secretSafeTest.describe("C — secret-safe crash and restart evidence", () => {
     await page.goto(`${stack.appUrl}/workflows/seed-workflow`);
     const before = `pr6-crash-before-${Date.now()}`;
     await stack.configureProvider(before, "success");
-    const beforeRunId = await submitRun(page, `Investigate ${before}`);
+    const beforeRunId = await submitRun(page, `Investigate ${before}`, false, undefined, "same-workflow");
     await stack.startWorker({ faultHook: "before_model_request" });
     await stack.waitForWorkerExit();
     await stack.waitForExpiredLease(beforeRunId);
     await stack.sweepExpiredLeases();
-    await expectFailure(page, "worker_lost", "Worker was lost before provider dispatch");
+    await expectOverlayFailure(page, beforeRunId, "worker_lost", "Worker was lost before provider dispatch");
     expect(await stack.providerCalls(before)).toBe(0);
 
     await stack.stopWorker();
     const after = `pr6-crash-after-${Date.now()}`;
     await stack.configureProvider(after, "success");
-    const afterRunId = await submitRun(page, `Investigate ${after}`, true);
+    const afterRunId = await submitRun(page, `Investigate ${after}`, true, undefined, "same-workflow");
     await stack.startWorker({ faultHook: "after_model_request_before_persist" });
     await stack.waitForWorkerExit();
     await stack.waitForExpiredLease(afterRunId);
     await stack.sweepExpiredLeases();
-    await expectFailure(page, "outcome_unknown", "Provider outcome is unknown");
+    await expectOverlayFailure(page, afterRunId, "outcome_unknown", "Provider outcome is unknown");
     expect(await stack.providerCalls(after)).toBe(1);
     const logs = await stack.logs();
     expect(logs.includes(stack.secret), "compose logs contained the test secret").toBe(false);
@@ -232,8 +260,8 @@ secretSafeTest.describe("C — secret-safe crash and restart evidence", () => {
     await stack.startWorker();
     const successful = `pr6-restart-success-${Date.now()}`;
     await stack.configureProvider(successful, "success");
-    const successfulRunId = await submitRun(page, `Investigate ${successful}`, true);
-    await expectRunStatus(page, "Succeeded");
+    const successfulRunId = await submitRun(page, `Investigate ${successful}`, true, undefined, "same-workflow");
+    await expectOverlayRunStatus(page, successfulRunId, "Succeeded");
     await expect(page.getByRole("region", { name: "Output" })).toContainText("Fake provider response");
 
     await page.goto("about:blank");
@@ -279,8 +307,8 @@ test("D — keeps per-agent model facts readable in light, dark, and narrow layo
   await expect.poll(() => page.evaluate(() =>
     document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   await page.setViewportSize({ width: 1280, height: 720 });
-  await submitRun(page, `Responsive check ${Date.now()}`);
-  await expectRunStatus(page, "Succeeded");
+  const runId = await submitRun(page, `Responsive check ${Date.now()}`, false, undefined, "same-workflow");
+  await expectOverlayRunStatus(page, runId, "Succeeded");
 
   const agent = node(page, "process.agent");
   const configured = agent.getByText("Configured model", { exact: true }).locator("..");

@@ -1,4 +1,3 @@
-import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { argument, blockingTests, readJson, requireArgument, writeJson } from "./evidence-utils.mjs";
@@ -29,12 +28,6 @@ function capturedContainers() {
   return services;
 }
 
-function assertImageInspectable(imageId) {
-  const inspected = spawnSync("docker", ["image", "inspect", "--format", "{{.Id}}", imageId], { encoding: "utf8" });
-  const value = inspected.status === 0 ? inspected.stdout.trim() : "";
-  if (!/^sha256:[a-f0-9]{64}$/u.test(value)) throw new Error("Required container image digest is unavailable");
-}
-
 const reportPath = path.join(bundle, "report.json");
 if (existsSync(reportPath)) {
   const pendingReport = readJson(reportPath);
@@ -45,7 +38,6 @@ let containers;
 let containerDigests;
 try {
   containers = capturedContainers();
-  for (const name of serviceNames) assertImageInspectable(containers[name].imageId);
   containerDigests = {
     app: containers.app.imageId,
     worker: containers.worker.imageId,

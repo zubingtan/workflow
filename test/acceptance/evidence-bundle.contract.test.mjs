@@ -313,26 +313,14 @@ process.exit(result.status ?? 1);
   }
 });
 
-test("support bundle blocks unavailable image inspection and records all real service digests on success", () => {
+test("support bundle preserves capture-time image identities after post-bootstrap image replacement", () => {
   const sentinel = "PR7_SUPPORT_SECRET_MUST_NOT_LEAK";
   const workspace = mkdtempSync(path.join(tmpdir(), "m0-support-digests-"));
-  const failingBin = path.join(workspace, "failing-bin");
-  const passingBin = path.join(workspace, "passing-bin");
-  mkdirSync(failingBin, { recursive: true });
-  mkdirSync(passingBin, { recursive: true });
-  writeExecutable(path.join(failingBin, "docker"), "#!/bin/sh\nexit 42\n");
-  writeExecutable(path.join(passingBin, "docker"), `#!/bin/sh
-if [ "$1 $2" = "image inspect" ]; then
-  case "$*" in
-    *postgres*) printf 'sha256:%064d\\n' 7 ;;
-    *) printf 'sha256:%064d\\n' 6 ;;
-  esac
-  exit 0
-fi
-exit 42
-`);
-  const failedEvidence = generatedEvidence();
-  const passedEvidence = generatedEvidence();
+  const rebuiltBin = path.join(workspace, "rebuilt-bin");
+  mkdirSync(rebuiltBin, { recursive: true });
+  writeExecutable(path.join(rebuiltBin, "docker"), "#!/bin/sh\nexit 42\n");
+  const invalidEvidence = generatedEvidence();
+  const rebuiltEvidence = generatedEvidence();
 
   try {
     const run = (directory, bin) => spawnSync(process.execPath, [
@@ -348,36 +336,45 @@ exit 42
       encoding: "utf8",
       timeout: 10_000,
     });
-    const failed = run(failedEvidence, failingBin);
-    const passed = run(passedEvidence, passingBin);
-    const failedOutput = `${failed.stdout}${failed.stderr}`;
-    const passedOutput = `${passed.stdout}${passed.stderr}`;
-    const failedReport = JSON.parse(readFileSync(path.join(failedEvidence, "report.json"), "utf8"));
-    const passedReport = JSON.parse(readFileSync(path.join(passedEvidence, "report.json"), "utf8"));
-    const passedEnvironment = JSON.parse(readFileSync(path.join(passedEvidence, "environment.json"), "utf8"));
-    const passedDiagnostics = JSON.parse(readFileSync(path.join(passedEvidence, "support-bundle/diagnostics.json"), "utf8"));
-    const passedEnvironmentSummary = JSON.parse(readFileSync(path.join(passedEvidence, "support-bundle/environment-summary.json"), "utf8"));
-    const preCleanupCapture = JSON.parse(readFileSync(path.join(passedEvidence, "test-results/bootstrap-compose.json"), "utf8"));
+    const invalidCapture = JSON.parse(readFileSync(path.join(invalidEvidence, "test-results/bootstrap-compose.json"), "utf8"));
+    invalidCapture.services.app.imageId = "invalid-image-id";
+    writeJson(path.join(invalidEvidence, "test-results/bootstrap-compose.json"), invalidCapture);
 
-    assert.notEqual(failed.status, 0, "support bundle must fail when image inspection is unavailable");
-    assert.equal(failedReport.result, "REWORK");
-    assert.equal(failedReport.decision, "REWORK");
-    assert.notEqual(failedReport.decision, "GO");
-    assert.deepEqual(failedReport.containerDigests, {}, "failed inspection must not be replaced with source hashes");
-    assert.equal(failedOutput.includes(sentinel), false, "failed support output leaked the secret sentinel");
+    const invalid = run(invalidEvidence, rebuiltBin);
+    const rebuilt = run(rebuiltEvidence, rebuiltBin);
+    const invalidOutput = `${invalid.stdout}${invalid.stderr}`;
+    const rebuiltOutput = `${rebuilt.stdout}${rebuilt.stderr}`;
+    const invalidReport = JSON.parse(readFileSync(path.join(invalidEvidence, "report.json"), "utf8"));
 
-    assert.equal(passed.status, 0, passed.stderr);
-    assert.equal(passedReport.result, "PASS");
-    assert.equal(passedReport.decision, "GO");
-    assert.deepEqual(passedEnvironment.runner, { os: "ubuntu-24.04", imageVersion: "20260714.1" });
-    assert.deepEqual(passedReport.containerDigests, capturedDigests());
-    for (const digest of Object.values(passedReport.containerDigests)) assert.match(digest, /^sha256:[a-f0-9]{64}$/u);
-    assert.deepEqual(passedDiagnostics.containers, preCleanupCapture.services);
-    assert.deepEqual(passedEnvironmentSummary.containers, preCleanupCapture.services);
-    assert.equal(passedOutput.includes(sentinel), false, "successful support output leaked the secret sentinel");
+    assert.notEqual(invalid.status, 0, "support bundle must reject an invalid captured identity");
+    assert.equal(invalidReport.result, "REWORK");
+    assert.equal(invalidReport.decision, "REWORK");
+    assert.notEqual(invalidReport.decision, "GO");
+    assert.deepEqual(invalidReport.containerDigests, {}, "invalid capture must not be replaced with source hashes");
+    assert.equal(invalidOutput.includes(sentinel), false, "invalid-capture support output leaked the secret sentinel");
+
+    assert.equal(rebuilt.status, 0, rebuilt.stderr);
+    const rebuiltReport = JSON.parse(readFileSync(path.join(rebuiltEvidence, "report.json"), "utf8"));
+    const rebuiltEnvironment = JSON.parse(readFileSync(path.join(rebuiltEvidence, "environment.json"), "utf8"));
+    const rebuiltDiagnostics = JSON.parse(readFileSync(path.join(rebuiltEvidence, "support-bundle/diagnostics.json"), "utf8"));
+    const rebuiltEnvironmentSummary = JSON.parse(readFileSync(path.join(rebuiltEvidence, "support-bundle/environment-summary.json"), "utf8"));
+    const capture = JSON.parse(readFileSync(path.join(rebuiltEvidence, "test-results/bootstrap-compose.json"), "utf8"));
+    assert.equal(rebuiltReport.result, "PASS");
+    assert.equal(rebuiltReport.decision, "GO");
+    assert.deepEqual(rebuiltEnvironment.runner, { os: "ubuntu-24.04", imageVersion: "20260714.1" });
+    assert.deepEqual(rebuiltReport.containerDigests, {
+      app: capture.services.app.imageId,
+      worker: capture.services.worker.imageId,
+      postgres: capture.services.postgres.imageId,
+      migrate: capture.services.migrate.imageId,
+      fakeProvider: capture.services["fake-provider"].imageId,
+    });
+    assert.deepEqual(rebuiltDiagnostics.containers, capture.services);
+    assert.deepEqual(rebuiltEnvironmentSummary.containers, capture.services);
+    assert.equal(rebuiltOutput.includes(sentinel), false, "rebuilt-image support output leaked the secret sentinel");
   } finally {
-    rmSync(failedEvidence, { recursive: true, force: true });
-    rmSync(passedEvidence, { recursive: true, force: true });
+    rmSync(invalidEvidence, { recursive: true, force: true });
+    rmSync(rebuiltEvidence, { recursive: true, force: true });
     rmSync(workspace, { recursive: true, force: true });
   }
 });

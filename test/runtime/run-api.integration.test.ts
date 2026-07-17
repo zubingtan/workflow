@@ -211,7 +211,7 @@ databaseSuite("M0-T05 asynchronous Run API", () => {
     expect(Object.keys(body).sort()).toEqual(["run"]);
     expect(Object.keys(body.run).sort()).toEqual([
       "completedAt", "createdAt", "error", "id", "input", "nodes", "startedAt", "status",
-      "workflow", "workflowDefinitionVersion",
+      "timeline", "workflow", "workflowDefinitionVersion",
     ]);
     expect(Object.keys(body.run.workflow).sort()).toEqual(["id", "name"]);
     expect(Object.keys(body.run.workflowDefinitionVersion).sort()).toEqual([
@@ -235,6 +235,17 @@ databaseSuite("M0-T05 asynchronous Run API", () => {
       input: { prompt },
     });
     expect(JSON.stringify(body)).not.toContain(process.env.FAKE_PROVIDER_API_KEY!);
+    expect(body.run.timeline).toEqual([
+      {
+        sequence: 1,
+        type: "workflow.run.queued",
+        occurredAt: expect.any(String),
+      },
+    ]);
+    expect(Object.keys(body.run.timeline[0]).sort()).toEqual([
+      "occurredAt", "sequence", "type",
+    ]);
+    expect(JSON.stringify(body.run.timeline)).not.toContain(prompt);
     const nodeKeys = [
       "agentDefinitionVersion", "attempt", "error", "id", "nodeId", "output",
       "providerBindingRef", "skipReason", "status", "type",
