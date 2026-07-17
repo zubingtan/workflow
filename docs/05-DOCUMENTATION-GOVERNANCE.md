@@ -71,6 +71,10 @@
 - Verified：关键自动测试成功；
 - Stable：对应 Hardening Gate 成功。
 
+## 4.1 Delivery gate 事实
+
+PR 的状态证据是 `pnpm typecheck` 与 `pnpm test:fast`；它不表示 Compose、browser 或 release evidence 已验证。只有 release-only 的 `make verify-m0` 能产生 M0 完整验收与 sealed evidence 的结论。
+
 ## 5. Coding Agent 阅读集
 
 Coding Agent 不应每次阅读全部文档。

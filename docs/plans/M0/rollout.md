@@ -1,5 +1,7 @@
 # M0 Rollout Plan
 
+> Historical M0 plan: the full acceptance sequence below is release-only; pull requests do not invoke it.
+
 ## Preconditions
 
 - PR1 through PR8 are merged sequentially and the candidate is the current, reviewed `main` commit.

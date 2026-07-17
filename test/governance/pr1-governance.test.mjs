@@ -14,35 +14,35 @@ const repositoryRoot = path.resolve(
 const approvedAgents = {
   "backend-runtime": {
     model: "gpt-5.6-terra",
-    effort: "ultra",
+    effort: "high",
   },
   "docs-contract": {
     model: "gpt-5.6-luna",
-    effort: "max",
+    effort: "medium",
   },
   "e2e-verifier": {
     model: "gpt-5.6-terra",
-    effort: "ultra",
+    effort: "high",
   },
   "frontend-ui": {
     model: "gpt-5.6-terra",
-    effort: "ultra",
+    effort: "high",
   },
   "release-manager": {
     model: "gpt-5.6-luna",
-    effort: "max",
+    effort: "high",
   },
   "repo-scout": {
     model: "gpt-5.6-luna",
-    effort: "max",
+    effort: "medium",
   },
   "test-author": {
     model: "gpt-5.6-terra",
-    effort: "ultra",
+    effort: "high",
   },
   "verifier-reviewer": {
     model: "gpt-5.6-terra",
-    effort: "ultra",
+    effort: "high",
   },
 };
 
@@ -244,18 +244,28 @@ test("root AGENTS.md limits the main agent to orchestration and enforces one wri
   );
   assert.match(
     content,
-    /test-author[\s\S]{0,120}unit[\s\S]{0,40}integration[\s\S]{0,40}system[\s\S]{0,40}RED/i,
+    /Goal Card[\s\S]{0,360}goal[\s\S]{0,120}changed boundary[\s\S]{0,120}risk tier[\s\S]{0,120}owner[\s\S]{0,160}required tests\/evidence[\s\S]{0,160}exit condition/i,
+    "AGENTS.md must define fixed Goal Card fields",
+  );
+  assert.match(
+    content,
+    /small, single-boundary[\s\S]{0,160}one implementation agent[\s\S]{0,160}necessary deterministic tests/i,
+    "AGENTS.md must permit one owner for a low-risk boundary",
+  );
+  assert.match(
+    content,
+    /Persistence, migrations, concurrency, recovery, security, or cross-boundary[\s\S]{0,160}independent RED[\s\S]{0,120}verifier-reviewer/i,
+    "AGENTS.md must require independent RED and review for high-risk changes",
+  );
+  assert.match(
+    content,
+    /test-author[\s\S]{0,120}unit[\s\S]{0,40}integration[\s\S]{0,40}system RED/i,
     "AGENTS.md must assign unit, integration, and system RED work to test-author",
   );
   assert.match(
     content,
     /e2e-verifier[\s\S]{0,120}Playwright RED[\s\S]{0,80}E2E evidence[\s\S]{0,80}(diagnosis|diagnoses)/i,
     "AGENTS.md must assign Playwright RED, E2E evidence, and diagnosis to e2e-verifier",
-  );
-  assert.match(
-    content,
-    /exactly one test author[\s\S]{0,100}functional PR[\s\S]{0,180}(must not|never)[\s\S]{0,100}same test scope/i,
-    "AGENTS.md must select one test author per functional PR and prohibit overlapping ownership",
   );
 });
 

@@ -44,21 +44,21 @@ For behavior changes, write a deterministic failing test first, then the minimum
 
 The main agent is orchestration-only: it reads requirements, decomposes work, delegates bounded tasks, resolves conflicts, waits for results, and decides the next step. The main agent must not edit or write product code or tests, run acceptance, or perform Git and GitHub release operations.
 
-- Sol is reserved for main orchestration. Every subagent must use only `gpt-5.6-luna` or `gpt-5.6-terra`; all product-code and test-writing roles use Terra.
+- Sol is reserved for main orchestration. Every subagent must use only `gpt-5.6-luna` or `gpt-5.6-terra`; all product-code and test-writing roles use Terra. Default routing is Luna/medium for scouting and documentation, Luna/high for release records, and Terra/high for implementation, tests, E2E, and independent review. Escalate an individual assignment only when its evidence shows the default is insufficient.
 - At most one write-capable subagent may work at a time. Read-only scouts and reviewers may run concurrently within `.codex/config.toml` limits.
 - Child agents must not spawn further child agents; `agents.max_depth = 1` enforces direct-child delegation.
 - Each subagent stays within the ownership defined in its `.codex/agents/*.toml` file.
 
-## 6. TDD and Sequential PRs
+## 6. Risk-Scaled Delivery
 
-For each functional PR:
+Every Goal Card records these fixed fields: goal, changed boundary, risk tier and rationale, owner, required tests/evidence, independent RED/review decision, and exit condition.
 
-1. Choose exactly one test author for each functional PR according to the required test type; the two roles must not write the same test scope. `test-author` owns unit, integration, and system RED work. `e2e-verifier` owns Playwright RED work, E2E evidence, and failure diagnosis.
-2. The selected test author writes and records deterministic failing tests.
-3. The owning implementation agent makes those tests pass without changing their intent.
-4. `verifier-reviewer` independently runs focused and full checks and reviews scope.
-5. `release-manager` updates requirement-to-test-to-evidence traceability and manages the PR.
-6. Merge only after required checks pass; base the next PR on the latest `main`.
+- A small, single-boundary change may use one implementation agent that writes the necessary deterministic tests and verifies them.
+- Persistence, migrations, concurrency, recovery, security, or cross-boundary changes require independent RED work and an independent `verifier-reviewer`. `test-author` owns unit, integration, and system RED; `e2e-verifier` owns Playwright RED, E2E evidence, and failure diagnosis. The implementation owner must not weaken the independent test intent.
+- `release-manager` updates requirement-to-test-to-evidence traceability and manages release work. PR automation runs typecheck plus `test:fast`; database, Compose, browser, evidence, and release-tool checks remain release-only unless a task explicitly asks for them.
+- Merge only after the Goal Card exit condition and the required checks pass; base the next PR on the latest `main`.
+
+Use `pnpm test:changed -- <paths...>` or pipe changed paths to it to obtain a deterministic suggested risk tier and commands. It is advisory; only `make verify-m0` is release acceptance. `make install-hooks` explicitly enables the repository pre-push hook, which runs only typecheck and `test:fast`.
 
 Do not mask a defect by rerunning CI. Fix merged defects through a new PR.
 

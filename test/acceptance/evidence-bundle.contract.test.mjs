@@ -217,10 +217,12 @@ test("acceptance validation failure after sealing ends REWORK and retains a vali
   writeFileSync(screenshot, "acceptance screenshot\n");
   writeExecutable(path.join(bin, "docker"), `#!/bin/sh
 case "$*" in
+  *compose*) exit 42 ;;
   *postgres*) printf 'sha256:%064d\\n' 7 ;;
   *) printf 'sha256:%064d\\n' 6 ;;
 esac
 `);
+  writeExecutable(path.join(bin, "pnpm"), "#!/bin/sh\nexit 0\n");
 
   const supportWrapper = path.join(workspace, "support-wrapper.mjs");
   writeFileSync(supportWrapper, `
@@ -266,7 +268,15 @@ process.exit(result.status ?? 1);
       "--seal", sealEvidence,
       "--validate", validateWrapper,
     ];
-    for (let index = 0; index < 10; index += 1) args.push("--test", "true");
+    for (const command of [
+      "pnpm test:fast",
+      "pnpm test:integration",
+      "pnpm test:release-tools",
+      "test/bootstrap/system-bootstrap.sh",
+      "test/runtime/async-happy-path.system.sh",
+      "test/failure/failure-crash-restart.system.sh",
+      "pnpm test:e2e",
+    ]) args.push("--test", command);
     const result = spawnSync(process.execPath, args, {
       cwd: root,
       env: {

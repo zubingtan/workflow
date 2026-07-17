@@ -11,12 +11,9 @@ const blockingIds = [
   "M0-T07E", "M0-T08", "M0-T09", "M0-T10", "M0-T11", "M0-T12",
 ];
 const layers = [
-  "npm test",
-  "pnpm test:definition",
-  "pnpm test:runtime-contract",
-  "pnpm test:runtime",
-  "pnpm test:failure:unit",
-  "pnpm test:failure:pg",
+  "pnpm test:fast",
+  "pnpm test:integration",
+  "pnpm test:release-tools",
   "test/bootstrap/system-bootstrap.sh",
   "test/runtime/async-happy-path.system.sh",
   "test/failure/failure-crash-restart.system.sh",
@@ -75,6 +72,17 @@ test("smoke-test targets an already-running stack and verify-m0 invokes every la
     assert.equal(lines.length, 1, `${command} must run exactly once`);
     assert.match(lines[0], new RegExp(callerEvidence), `${command} must use caller EVIDENCE_DIR`);
   }
+});
+
+test("M0 acceptance aggregates seven grouped layers with integration database and blocking mappings", () => {
+  const runner = file("scripts/acceptance/m0-acceptance.mjs");
+  assert.match(runner, /commands\.length\s*!==\s*7/);
+  assert.match(runner, /const needsDatabase = command === "pnpm test:integration"/);
+  assert.match(runner, /\["pnpm test:fast", \["M0-T02"\]\]/);
+  assert.match(runner, /\["pnpm test:integration", \["M0-T03", "M0-T04", "M0-T05", "M0-T06", "M0-T07", "M0-T07E", "M0-T08", "M0-T09", "M0-T11"\]\]/);
+  assert.match(runner, /\["pnpm test:release-tools", \["M0-T12"\]\]/);
+  assert.match(runner, /\["test\/bootstrap\/system-bootstrap\.sh", \["M0-T01"\]\]/);
+  assert.match(runner, /\["pnpm test:e2e", \["M0-T10"\]\]/);
 });
 
 test("system harnesses preserve a caller-owned EVIDENCE_DIR even when execution fails", () => {

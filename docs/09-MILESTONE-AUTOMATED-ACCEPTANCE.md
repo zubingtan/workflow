@@ -6,6 +6,8 @@
 
 ## 1. 目的
 
+PR Gate 只验证类型检查和快速产品契约，不启动 PostgreSQL、Docker 或 Chromium，也不上传 artifact。`make verify-m0` 是 release-only 的完整 M0 验收入口，继续执行 integration、release-tools、Compose system、E2E 与 sealed evidence。
+
 验收用于确认用户能力和风险边界，而不是强迫每个实现步骤先建设测试基础设施。
 
 本规范取代此前“所有里程碑一开始就要求完整 Evidence Bundle、全量矩阵和连续多次 clean verification”的方式。

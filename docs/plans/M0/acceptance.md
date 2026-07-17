@@ -1,8 +1,10 @@
 # M0 Acceptance Plan
 
+> Historical M0 plan: `make verify-m0` is release-only. Pull requests run typecheck and the no-database, no-browser `test:fast` suite.
+
 ## Decision Rule
 
-`make verify-m0` is the single local and CI M0 acceptance command. It runs every required layer exactly once. Any failed blocking case or evidence-integrity check produces a nonzero exit and `REWORK`; only all thirteen blocking cases plus a valid sealed bundle produce `PASS` / `GO`.
+`make verify-m0` is the release-only M0 acceptance command. It runs every required layer exactly once when preparing release evidence. Pull requests run `pnpm typecheck` and `pnpm test:fast` only. Any failed blocking case or evidence-integrity check produces a nonzero exit and `REWORK`; only all thirteen blocking cases plus a valid sealed bundle produce `PASS` / `GO`.
 
 ## Blocking Coverage
 

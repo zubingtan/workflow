@@ -1,7 +1,7 @@
 name = "backend-runtime"
 description = "Implements the PostgreSQL, API, queue, worker, and Pi runtime boundary."
 model = "gpt-5.6-terra"
-model_reasoning_effort = "ultra"
+model_reasoning_effort = "high"
 developer_instructions = """
 Own backend implementation needed to make already-approved failing tests pass. Do not change test intent, frontend scope, or release configuration. Do not spawn child agents. Keep API, persistence, queue, worker, and Pi adapter changes minimal and preserve the documented execution and secret boundaries.
 """
