@@ -1,9 +1,9 @@
 # Roadmap：从 Walking Skeleton 到可信 Oncall Platform
 
 - **版本**：v0.6
-- **状态**：M1-B Functional Gate Verified
+- **状态**：M1 Complete / Stable
 - **日期**：2026-07-17
-- **当前阶段**：M1-B Functional Gate 已验证；本 Goal 停止，不自动进入 M1-C、M2 或 FlowGram Authoring
+- **当前阶段**：M1 已完成并达到 Stable；下一独立 Goal 为 M2，不自动开始
 
 ## 1. Roadmap 设计
 
@@ -166,21 +166,27 @@ Definition
 
 验证记录：2026-07-17 在分支 `codex/m1b-persistent-history`、实现基线 `e20cbbd2e7e99e44c863b1fd3cfc60a6335c18ac` 上通过。持久化基础能力不是本次重做范围；最小修复让 Run Detail 直接使用该 Run 不可变的 `WorkflowDefinitionVersion.definition` 渲染 Board，消除后续导入 v2 时历史 v1 Run 显示 v2 节点的漂移。未新增 schema、migration 或 endpoint。
 
-### M1-C：Execution Events
+### M1-C：Execution Events（Verified）
 
-- append-only ExecutionEvent；
-- Run timeline；
-- SSE 或可靠 polling；
-- cursor/resume 可延后到 M2；
-- Artifact metadata。
+#### Functional Gate
 
-### M1 Hardening Gate
+- [x] append-only `ExecutionEvent` 投影为按 sequence 排序的 Run Timeline；
+- [x] 采用可靠 polling；一次临时 Detail 请求失败后自动恢复，未提前引入 SSE；
+- [x] `artifact.created` 只保存 Output Markdown 的安全 metadata reference（source、SHA-256、media type、字节数、sensitivity、retention policy），不复制 Markdown、Prompt、Provider 或 Secret；
+- [x] metadata 从实际 Output Node ID 派生，不假设 seed 的 `result` ID；
+- [x] cursor/resume 仍留在 M2。
 
-- Definition、Board、Run 引用一致；
-- migration 可重复；
-- 关键历史查询有 integration test；
-- Secret 和错误脱敏；
-- 真实 Run 不依赖浏览器生命周期。
+验证记录：2026-07-17 在分支 `codex/m1c-events-hardening`、实现基线 `585b7a6e7fe3ae570cae95bfef03b751871dc5e7` 上通过。成功 Run 产生 12 条持久化 Timeline 事件，其中 `artifact.created` 引用 canonical PostgreSQL Markdown Output；Timeline 只投影安全字段。真实 Compose Chromium E2E 覆盖离开页面后 Run 仍完成、一次 polling 失败后的恢复，以及非默认 Output Node ID，3/3 通过。
+
+### M1 Hardening Gate（Stable）
+
+- [x] Definition、Board、Run 的不可变引用保持一致，M1-B History 回归继续通过；
+- [x] migration ledger 记录并跳过已应用迁移；`005_execution_events_timeline.sql` 在 artifact Run 后重复执行 Compose migrate 仍成功；
+- [x] 关键 Run History / Timeline 查询由 runtime、crash/restart 与浏览器回归覆盖；
+- [x] Timeline、artifact metadata、错误与 provider snapshot 不泄漏 Prompt、Markdown、Provider 配置、Secret 或内部执行 ID；
+- [x] 真实 Run 可在浏览器离开页面后由 Worker 完成，再从 History 打开并读取 Output 与 Timeline。
+
+验证汇总：`pnpm typecheck` PASS；`pnpm test:e2e -- test/e2e/m1c-events-hardening.spec.ts` 3 passed；`test/runtime/async-happy-path.system.sh` PASS；`test/failure/failure-crash-restart.system.sh` PASS；`pnpm test:e2e -- test/e2e/m1b-persistent-history.spec.ts` 1 passed；`pnpm test:e2e -- test/e2e/m1a-flowgram-board.spec.ts` 2 passed；`git diff --check` PASS。in-app Browser 手工验收未完成：两个 isolated Codex agent runtimes 均返回 `iab unavailable/list []`，因此没有 IAB screenshot；此处仅声明真实 Compose Chromium E2E 已通过，不将其表述为 IAB 验收。
 
 ## 5. M2：Durable Execution
 
@@ -351,11 +357,10 @@ Feishu Trigger
 
 ## 10. 当前下一目标
 
-M1-B Functional Gate 已验证完成；当前 Goal 到此停止。下一独立 Goal 可为 M1-C：Execution Events，不自动开始。
+M1 已完成并达到 Stable；当前 Goal 到此停止。下一独立 Goal 为 M2：Durable Execution，不自动开始。
 
-在 M1-C Goal 明确开始前，不推进：
+在 M2 Goal 明确开始前，不推进：
 
-- M1-C Event；
 - Durable Runtime / M2；
 - FlowGram Authoring；
 - 全量文档同步；
