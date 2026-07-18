@@ -25,6 +25,8 @@ COPY --from=builder --chown=node:node /app/.next/standalone ./
 COPY --from=builder --chown=node:node /app/.next/static ./.next/static
 COPY --from=builder --chown=node:node /app/scripts ./scripts
 COPY --from=builder --chown=node:node /app/config ./config
+# The worker runs outside Next's standalone bundle and imports this pure helper directly.
+COPY --from=builder --chown=node:node /app/src/lib/runs/final-output.mjs ./src/lib/runs/final-output.mjs
 COPY --from=dependencies --chown=node:node /app/node_modules/.pnpm ./node_modules/.pnpm
 COPY --from=dependencies --chown=node:node /app/node_modules/@mariozechner ./node_modules/@mariozechner
 COPY --from=dependencies --chown=node:node /app/node_modules/postgres ./node_modules/postgres

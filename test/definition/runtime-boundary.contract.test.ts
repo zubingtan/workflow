@@ -46,4 +46,14 @@ describe("M1 workflow runtime boundary", () => {
     expect(worker.match(/await writeWithLease\(job, async \(transaction\) =>/gu)).toHaveLength(6);
     expect(worker).toContain("if (error instanceof LeaseLostError) return;");
   });
+
+  test("packages the worker's pure final-output helper outside the standalone app bundle", async () => {
+    const [dockerfile, worker] = await Promise.all([
+      source("Dockerfile"),
+      source("scripts/worker.mjs"),
+    ]);
+
+    expect(worker).toContain('import { selectFinalOutput } from "../src/lib/runs/final-output.mjs"');
+    expect(dockerfile).toMatch(/COPY --from=builder --chown=node:node \/app\/src\/lib\/runs\/final-output\.mjs \.\/src\/lib\/runs\/final-output\.mjs/u);
+  });
 });
