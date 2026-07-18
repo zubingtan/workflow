@@ -72,6 +72,28 @@ function promptText(payload) {
     .join("\n");
 }
 
+function systemText(payload) {
+  if (!Array.isArray(payload?.messages)) return "";
+  return payload.messages
+    .filter((message) => message?.role === "system")
+    .map((message) => {
+      if (typeof message.content === "string") return message.content;
+      if (!Array.isArray(message.content)) return "";
+      return message.content
+        .filter((part) => part?.type === "text" && typeof part.text === "string")
+        .map((part) => part.text)
+        .join("");
+    })
+    .join("\n");
+}
+
+function completionContent(payload) {
+  const system = systemText(payload);
+  if (system.includes("Use Skill A.")) return "Agent A output";
+  if (system.includes("Use Skill B.")) return "Agent B output";
+  return "Fake provider response";
+}
+
 function matchingControl(payload) {
   const prompt = promptText(payload);
   for (const [correlationId, control] of controls) {
@@ -113,7 +135,7 @@ async function handleCompletion(request, response) {
     streamCompletion(response, "   \n");
     return;
   }
-  streamCompletion(response);
+  streamCompletion(response, completionContent(payload));
 }
 
 createServer(async (request, response) => {

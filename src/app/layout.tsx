@@ -5,7 +5,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Workflow",
-  description: "M0 on-call workflow runtime",
+  description: "Versioned workflow builder and runtime",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {

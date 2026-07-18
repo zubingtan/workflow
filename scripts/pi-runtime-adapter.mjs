@@ -27,11 +27,16 @@ function providerError(message) {
 
 export async function runPiAgent({
   prompt,
+  systemPrompt = "",
+  messages = [],
+  tools = [],
+  events,
+  abort,
   provider,
   baseUrl,
   apiKey,
   model: modelId,
-  parameters,
+  parameters = {},
   timeoutMs = 30_000,
 }) {
   const model = {
@@ -48,11 +53,11 @@ export async function runPiAgent({
   };
   const agent = new Agent({
     initialState: {
-      systemPrompt: "",
+      systemPrompt,
       model,
       thinkingLevel: "off",
-      tools: [],
-      messages: [],
+      tools,
+      messages,
     },
     getApiKey: () => apiKey,
     streamFn: (streamModel, context, options) => streamSimple(streamModel, context, {
@@ -67,18 +72,25 @@ export async function runPiAgent({
     },
   });
 
-  await agent.prompt(prompt);
-  const message = agent.state.messages.findLast((candidate) => candidate.role === "assistant");
-  if (!message || message.role !== "assistant") throw new Error("Pi did not return an assistant message");
-  if (message.stopReason === "error" || message.stopReason === "aborted") {
-    throw providerError(message.errorMessage ?? "");
+  if (abort?.aborted) throw new ProviderRuntimeError("provider_timeout");
+  const unsubscribe = events ? agent.subscribe(events) : undefined;
+  const onAbort = () => agent.abort();
+  abort?.addEventListener?.("abort", onAbort, { once: true });
+  try {
+    await agent.prompt(prompt);
+    const message = agent.state.messages.findLast((candidate) => candidate.role === "assistant");
+    if (!message || message.role !== "assistant") throw new Error("Pi did not return an assistant message");
+    if (message.stopReason === "error" || message.stopReason === "aborted") {
+      throw providerError(message.errorMessage ?? "");
+    }
+    const output = message.content
+      .filter((content) => content.type === "text")
+      .map((content) => content.text)
+      .join("");
+    if (output.trim().length === 0) throw new ProviderRuntimeError("provider_empty_output");
+    return output;
+  } finally {
+    abort?.removeEventListener?.("abort", onAbort);
+    unsubscribe?.();
   }
-  const output = message.content
-    .filter((content) => content.type === "text")
-    .map((content) => content.text)
-    .join("");
-  if (output.trim().length === 0) {
-    throw new ProviderRuntimeError("provider_empty_output");
-  }
-  return output;
 }

@@ -1,67 +1,42 @@
-.PHONY: help setup doctor up down logs smoke-test support-bundle install-hooks test-fast test-integration test-release-tools verify-m0
-
-EVIDENCE_DIR ?= artifacts/acceptance/M0/$(shell date -u +%Y%m%dT%H%M%SZ)-$(shell node -e 'process.stdout.write(crypto.randomUUID())')
+.PHONY: help doctor setup dev dev-build dev-real up down logs test-unit test-e2e
 
 help:
-	@echo "setup       Install dependencies and create a local environment file"
-	@echo "doctor      Check local bootstrap prerequisites"
-	@echo "up          Build and start the local stack"
+	@echo "doctor      Check local prerequisites and safe defaults"
+	@echo "setup       Install dependencies and prepare images (one time)"
+	@echo "dev         Start the warm local Fake Provider stack (<=30s)"
+	@echo "dev-build   Rebuild and start the local Fake Provider stack"
+	@echo "dev-real    Start with ignored real-provider overrides"
 	@echo "down        Stop the local stack"
 	@echo "logs        Follow local stack logs"
-	@echo "smoke-test  Check the running app readiness endpoint"
-	@echo "support-bundle  Generate a redacted diagnostic bundle"
-	@echo "install-hooks  Explicitly enable the repository pre-push hook"
-	@echo "test-fast   Run no-database, no-browser product contracts"
-	@echo "test-integration  Run database-backed workflow and runtime integrations"
-	@echo "test-release-tools  Run bootstrap, release, evidence, and governance static tests"
-	@echo "verify-m0   Run the complete M0 acceptance gate"
-
-setup:
-	npm install --global pnpm@11.13.0
-	pnpm install --frozen-lockfile
-	@test -f .env || cp .env.example .env
+	@echo "test-unit   Run focused unit contracts"
+	@echo "test-e2e    Run the Playwright end-to-end test"
 
 doctor:
-	node --env-file-if-exists=.env scripts/doctor.mjs
+	pnpm doctor
+
+setup:
+	pnpm setup
+
+dev:
+	pnpm dev
+
+dev-build:
+	pnpm dev:build
+
+dev-real:
+	pnpm dev:real
 
 up:
-	docker compose --env-file .env up --build -d
+	pnpm dev
 
 down:
-	docker compose --env-file .env down --remove-orphans
+	pnpm down
 
 logs:
-	docker compose --env-file .env logs --follow
+	pnpm logs
 
-smoke-test:
-	node scripts/acceptance/smoke-test.mjs http://localhost:$${APP_PORT:-3000}/api/health/ready
+test-unit:
+	pnpm test:unit
 
-support-bundle:
-	node scripts/acceptance/support-bundle.mjs --evidence-dir "$(EVIDENCE_DIR)"
-
-install-hooks:
-	git config core.hooksPath .githooks
-
-test-fast:
-	pnpm test:fast
-
-test-integration:
-	pnpm test:integration
-
-test-release-tools:
-	pnpm test:release-tools
-
-verify-m0:
-	node scripts/acceptance/m0-acceptance.mjs \
-		--evidence-dir "$(EVIDENCE_DIR)" \
-		--generate scripts/acceptance/generate-evidence.mjs --generate-dir "$(EVIDENCE_DIR)" \
-		--test "pnpm test:fast" \
-		--test "pnpm test:integration" \
-		--test "pnpm test:release-tools" \
-		--test "test/bootstrap/system-bootstrap.sh" \
-		--test "test/runtime/async-happy-path.system.sh" \
-		--test "test/failure/failure-crash-restart.system.sh" \
-		--test "pnpm test:e2e" \
-		--support scripts/acceptance/support-bundle.mjs --support-dir "$(EVIDENCE_DIR)" \
-		--seal scripts/acceptance/seal-evidence.mjs --seal-dir "$(EVIDENCE_DIR)" \
-		--validate scripts/acceptance/validate-evidence.mjs --validate-dir "$(EVIDENCE_DIR)"
+test-e2e:
+	pnpm test:e2e

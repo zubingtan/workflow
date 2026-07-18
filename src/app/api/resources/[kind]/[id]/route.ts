@@ -1,0 +1,6 @@
+import { archiveResource, updateResource } from "../../../../../lib/resources/repository";
+import { WorkflowValidationError } from "../../../../../lib/workflows/compiler";
+
+export const dynamic = "force-dynamic";
+export async function PUT(request: Request, context: { params: Promise<{ kind: string; id: string }> }) { const { kind, id } = await context.params; try { const resource = await updateResource(kind, id, await request.json()); return resource ? Response.json(resource) : Response.json({ code: "not_found", message: "Resource not found" }, { status: 404 }); } catch (error) { return error instanceof WorkflowValidationError ? Response.json({ code: error.code, message: error.message, path: error.path, nodeId: error.nodeId }, { status: 400 }) : Response.json({ code: "internal_error", message: "The server could not process the request" }, { status: 500 }); } }
+export async function DELETE(_request: Request, context: { params: Promise<{ kind: string; id: string }> }) { const { kind, id } = await context.params; const archived = await archiveResource(kind, id); return archived ? new Response(null, { status: 204 }) : Response.json({ code: "not_found", message: "Resource not found" }, { status: 404 }); }

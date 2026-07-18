@@ -15,7 +15,6 @@ export type VisualWorkflowNode = {
     productNodeId: string;
     productNodeType: WorkflowNodeDefinition["type"];
     providerBindingRef: string | null;
-    agentVersionRef: string | null;
   };
   meta: { position: { x: number; y: number } };
 };
@@ -44,7 +43,8 @@ export type RuntimeOverlayNode = {
 
 const nodeTitles: Record<WorkflowNodeDefinition["type"], string> = {
   "input.prompt": "Input prompt",
-  "process.agent": "Agent analysis",
+  "task.agent": "Agent",
+  "logic.condition": "Condition",
   "output.markdown": "Markdown output",
 };
 
@@ -80,8 +80,7 @@ export function projectVisualWorkflow(definition: unknown): VisualWorkflowDocume
         title: nodeTitles[node.type],
         productNodeId: node.id,
         productNodeType: node.type,
-        providerBindingRef: node.config.providerBindingRef ?? null,
-        agentVersionRef: node.config.agentVersionRef ?? null,
+        providerBindingRef: "providerBindingRef" in node.config ? node.config.providerBindingRef ?? null : null,
       },
       meta: { position: { x: 180 + (index * 270), y: 92 } },
     })),
