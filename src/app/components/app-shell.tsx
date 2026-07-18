@@ -13,7 +13,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </span>
           <span>Workflow</span>
         </Link>
-        <span className="milestone">M0</span>
+        <Link className="topbar-resources" href="/resources">Resources</Link>
       </header>
       {children}
     </div>

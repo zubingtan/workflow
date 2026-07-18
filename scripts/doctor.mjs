@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import process from "node:process";
 
+const realMode = process.argv.includes("--real");
 let failed = false;
 
 function pass(label) {
@@ -16,26 +17,54 @@ function fail(label, action) {
 function probe(command, args, check, label, action) {
   const result = spawnSync(command, args, { encoding: "utf8" });
   const value = result.status === 0 ? result.stdout.trim() : "";
-  if (result.status === 0 && check(value)) {
-    pass(label);
-  } else {
-    fail(label, action);
-  }
+  if (result.status === 0 && check(value)) pass(label);
+  else fail(label, action);
 }
 
 function supportedComposeVersion(value) {
   const match = /(?:^|\s)v?(\d+)\.(\d+)\.(\d+)(?:\D|$)/u.exec(value);
   if (!match) return false;
-  const version = match.slice(1).map(Number);
+  const current = match.slice(1).map(Number);
   const minimum = [2, 24, 0];
   for (let index = 0; index < minimum.length; index += 1) {
-    if (version[index] > minimum[index]) return true;
-    if (version[index] < minimum[index]) return false;
+    if (current[index] > minimum[index]) return true;
+    if (current[index] < minimum[index]) return false;
   }
   return true;
 }
 
-probe("node", ["--version"], (value) => /^v22\./.test(value), "Node.js 22", "install Node.js 22");
+function readEnvironment(file) {
+  const values = {};
+  for (const rawLine of readFileSync(file, "utf8").split(/\r?\n/u)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const separator = line.indexOf("=");
+    if (separator < 1) throw new Error("invalid environment assignment");
+    const key = line.slice(0, separator).trim();
+    let value = line.slice(separator + 1).trim();
+    if ((value.startsWith('"') && value.endsWith('"'))
+      || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    values[key] = value;
+  }
+  return values;
+}
+
+function readBindings(file) {
+  const document = JSON.parse(readFileSync(file, "utf8"));
+  const entries = Object.entries(document.bindings ?? {});
+  if (entries.length === 0) throw new Error("no bindings");
+  for (const [, binding] of entries) {
+    if (!binding || typeof binding !== "object"
+      || !binding.provider || !binding.baseUrl || !binding.apiKeyEnv || !binding.model) {
+      throw new Error("invalid binding");
+    }
+  }
+  return entries;
+}
+
+probe("node", ["--version"], (value) => /^v22\./u.test(value), "Node.js 22", "install Node.js 22");
 probe("pnpm", ["--version"], (value) => value === "11.13.0", "pnpm 11.13.0", "install pnpm 11.13.0");
 probe(
   "docker",
@@ -44,46 +73,37 @@ probe(
   "Docker Compose 2.24.0+",
   "install Docker Compose 2.24.0 or newer",
 );
+probe("docker", ["info", "--format", "{{.ServerVersion}}"], Boolean, "Docker daemon", "start Docker Desktop");
 
-if (process.env.DATABASE_URL) {
-  pass("DATABASE_URL configured");
-} else {
-  fail("database", "set DATABASE_URL");
+try {
+  const defaults = readEnvironment(".env.example");
+  const bindings = readBindings("config/provider-bindings.fake.json");
+  const fakeBinding = bindings.find(([name]) => name === "fake-default")?.[1];
+  if (defaults.PROVIDER_BINDINGS_FILE !== "config/provider-bindings.fake.json"
+    || defaults.FAKE_PROVIDER_API_KEY !== "fake-provider-local"
+    || fakeBinding?.apiKeyEnv !== "FAKE_PROVIDER_API_KEY") {
+    throw new Error("unsafe defaults");
+  }
+  pass("checked-in Fake Provider defaults");
+} catch {
+  fail("Fake Provider defaults", "restore .env.example and config/provider-bindings.fake.json");
 }
 
-const bindingFile = process.env.PROVIDER_BINDINGS_FILE;
-if (!bindingFile) {
-  fail("provider binding", "set PROVIDER_BINDINGS_FILE");
-} else {
+if (realMode) {
   try {
-    const document = JSON.parse(readFileSync(bindingFile, "utf8"));
-    const bindings = Object.values(document.bindings ?? {});
-    if (bindings.length === 0) {
-      fail("provider binding", "configure at least one binding");
-    } else {
-      let bindingValid = true;
-      for (const binding of bindings) {
-        if (!binding.provider || !binding.baseUrl || !binding.apiKeyEnv || !binding.model) {
-          bindingValid = false;
-          fail("provider binding", "configure provider, baseUrl, apiKeyEnv, and model");
-          continue;
-        }
-        if (!process.env[binding.apiKeyEnv]) {
-          bindingValid = false;
-          fail("provider credential", `set ${binding.apiKeyEnv}`);
-        }
-      }
-      if (bindingValid) {
-        pass("provider bindings configured");
-      }
-    }
+    const overrides = readEnvironment(".env.local");
+    const bindings = readBindings("config/provider-bindings.local.json");
+    const missingCredential = bindings.some(([, binding]) =>
+      binding.apiKeyEnv !== "REAL_PROVIDER_API_KEY" || !overrides.REAL_PROVIDER_API_KEY);
+    if (missingCredential) throw new Error("missing credential");
+    pass("ignored real-provider overrides");
   } catch {
-    fail("provider binding", "provide a readable JSON file");
+    fail(
+      "real-provider overrides",
+      "copy config/provider-bindings.example.json to config/provider-bindings.local.json and set REAL_PROVIDER_API_KEY in .env.local",
+    );
   }
 }
 
-if (failed) {
-  process.exitCode = 1;
-} else {
-  console.log("Bootstrap is ready");
-}
+if (failed) process.exitCode = 1;
+else console.log(realMode ? "Real-provider startup is ready" : "Local startup is ready");

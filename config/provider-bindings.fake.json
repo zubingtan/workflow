@@ -2,9 +2,9 @@
   "bindings": {
     "fake-default": {
       "provider": "openai-compatible",
-      "baseUrl": "https://provider.example.com/v1",
-      "apiKeyEnv": "REAL_PROVIDER_API_KEY",
-      "model": "replace-with-provider-model",
+      "baseUrl": "http://fake-provider:4010/v1",
+      "apiKeyEnv": "FAKE_PROVIDER_API_KEY",
+      "model": "fake-m0",
       "parameters": {
         "temperature": 0
       }

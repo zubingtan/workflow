@@ -21,16 +21,19 @@ services:
   worker:
     image: workflow-m0:${WORKFLOW_IMAGE_TAG:-local}
     command: ["node", "scripts/worker.mjs"]
-    env_file:
-      - path: ${WORKFLOW_ENV_FILE:-.env}
-        required: false
     environment:
       DATABASE_URL: ${DATABASE_URL}
-      PROVIDER_BINDINGS_FILE: ${PROVIDER_BINDINGS_FILE}
+      PROVIDER_BINDINGS_FILE: /app/config/provider-bindings.runtime.json
       FAKE_PROVIDER_API_KEY: ${FAKE_PROVIDER_API_KEY}
+      REAL_PROVIDER_API_KEY: ${REAL_PROVIDER_API_KEY:-}
       WORKER_PROVIDER_TIMEOUT_MS: ${WORKER_PROVIDER_TIMEOUT_MS:-30000}
       WORKER_LEASE_MS: ${WORKER_LEASE_MS:-300000}
       WORKER_FAULT_HOOK: ${WORKER_FAULT_HOOK:-}
+    volumes:
+      - type: bind
+        source: ${PROVIDER_BINDINGS_HOST_FILE:-./config/provider-bindings.fake.json}
+        target: /app/config/provider-bindings.runtime.json
+        read_only: true
     depends_on:
       migrate:
         condition: service_completed_successfully

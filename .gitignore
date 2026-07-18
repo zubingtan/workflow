@@ -1,4 +1,6 @@
 .env
+.env.local
+config/provider-bindings.local.json
 .next/
 node_modules/
 /playwright-report/

@@ -15,6 +15,8 @@ export default function WorkflowsPage() {
   const [json, setJson] = useState("");
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState<ApiError | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState("");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -58,16 +60,43 @@ export default function WorkflowsPage() {
     }
   }
 
+  async function createWorkflow() {
+    if (creating) return;
+    setCreating(true);
+    setCreateError("");
+    try {
+      const response = await fetch("/api/workflows", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: "Untitled workflow" }),
+      });
+      const body = await response.json() as ApiError & { workflow?: { id: string } };
+      if (!response.ok || !body.workflow?.id) {
+        setCreateError(body.message ?? "The workflow could not be created");
+        return;
+      }
+      router.push(`/workflows/${body.workflow.id}`);
+    } catch {
+      setCreateError("The workflow could not be created");
+    } finally {
+      setCreating(false);
+    }
+  }
+
   return (
     <AppShell>
       <main className="page page-list">
         <div className="page-heading">
           <div>
             <h1>Workflows</h1>
-            <p>Immutable definitions available to run on this local M0 stack.</p>
+            <p>Design, save, and run versioned workflows.</p>
           </div>
-          <button className="button primary" type="button" onClick={() => setOpen(true)}>Import workflow</button>
+          <div className="page-heading-actions">
+            <button className="button secondary" type="button" onClick={() => setOpen(true)}>Import workflow</button>
+            <button className="button primary" type="button" onClick={() => void createWorkflow()} disabled={creating}>{creating ? "Creating…" : "New workflow"}</button>
+          </div>
         </div>
+        {createError ? <p className="form-error" role="alert">{createError}</p> : null}
         <section className="workflow-list" aria-label="Workflow list">
           {loading ? <p className="empty-state">Loading workflows…</p> : null}
           {loadError ? <p className="form-error" role="alert">{loadError}</p> : null}

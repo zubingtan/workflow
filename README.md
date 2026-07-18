@@ -1,106 +1,87 @@
-# Workflow M0
+# Workflow editor
 
-Workflow M0 is a local, Pi Agent-based workflow platform for one fixed executable path:
+This repository contains the minimal read/write workflow editor for the
+`workflow/v1alpha1` contract. A workflow is a versioned JSON document with a
+visual editor and a JSON authoring view.
+
+The editor supports exactly four node types:
 
 ```text
-input.prompt -> process.agent -> output.markdown
+input.prompt -> task.agent -> output.markdown
 ```
 
-It imports immutable JSON Workflow Definitions, creates Runs asynchronously, executes the Agent node in a separate worker, persists history and Markdown in PostgreSQL, and exposes a temporary read-only Web shell.
+`logic.condition` may route a run into branches; its selected branch can lead
+to an Agent or directly to Markdown output.
 
-## Quick start
+## Local development
 
-Prerequisites: Node.js 22, Docker with Compose, GNU Make, and a local checkout of this repository.
+Fresh checkout preparation installs dependencies and builds the application
+image, so it may exceed 30 seconds:
 
 ```bash
-make setup
-make doctor
-make up
+pnpm doctor
+pnpm setup
 ```
 
-Open <http://localhost:3000>. The seeded Workflow is ready to use with the deterministic Fake Provider. To import another Definition, choose **Import workflow** on the Workflow List. Open a Workflow Detail page, choose **Run workflow**, and enter the Prompt in the right-side **Run Sheet**. Run Detail polls the persisted projection and History reopens the original Run and Definition Version.
-
-Stop the stack when finished:
+After setup, this is the only warm daily startup command. It uses the
+checked-in Fake Provider configuration, does not rebuild, and applies one
+30-second deadline to Compose startup and the final readiness request:
 
 ```bash
-make down
+pnpm dev
 ```
 
-## Provider Bindings
+Open <http://127.0.0.1:3000>. Readiness is
+<http://127.0.0.1:3000/api/health/ready>. `pnpm dev` prints the exact URL when
+the stack is ready. Use `pnpm logs` to follow services and `pnpm down` to stop
+them. Run `pnpm dev:build` only after application or dependency changes require
+a new image; rebuilding may exceed 30 seconds.
 
-There is no global Provider. Every `process.agent` node stores its own immutable `agentVersionRef` and `providerBindingRef`; the worker resolves that alias from a server-side JSON file. Definitions never contain a Provider URL, credential, model override, or runtime parameters.
-
-The committed Fake Provider example is deterministic and is the configuration used by CI:
-
-```json
-{
-  "bindings": {
-    "fake-default": {
-      "provider": "openai-compatible",
-      "baseUrl": "http://fake-provider:4010/v1",
-      "apiKeyEnv": "FAKE_PROVIDER_API_KEY",
-      "model": "fake-m0",
-      "parameters": {
-        "temperature": 0
-      }
-    }
-  }
-}
-```
-
-For an HTTPS OpenAI-compatible endpoint, copy `config/provider-bindings.example.json` to an untracked local file such as `config/provider-bindings.local.json`, replace its contents with only the allowlisted fields below, and do not stage that file:
-
-```json
-{
-  "bindings": {
-    "primary-model": {
-      "provider": "openai-compatible",
-      "baseUrl": "https://api.example.com/v1",
-      "apiKeyEnv": "MODEL_PROVIDER_API_KEY",
-      "model": "provider-model",
-      "parameters": {
-        "temperature": 0
-      }
-    }
-  }
-}
-```
-
-Set `PROVIDER_BINDINGS_FILE=config/provider-bindings.local.json` in the ignored `.env` file. Keep `WORKFLOW_ENV_FILE=.env`, and add the credential there using this placeholder until replacing it on your own machine:
+The default path reads `.env.example` and
+`config/provider-bindings.fake.json`; it never reads `.env` or `.env.local`.
+For a real OpenAI-compatible provider, copy the non-secret binding template and
+create the ignored credential override:
 
 ```bash
-MODEL_PROVIDER_API_KEY=<your-provider-api-key>
+cp config/provider-bindings.example.json config/provider-bindings.local.json
+printf 'REAL_PROVIDER_API_KEY=replace-me\n' > .env.local
+pnpm dev:real
 ```
 
-Provider credentials are resolved from the worker's `WORKFLOW_ENV_FILE`. Compose passes no provider credential to the app container, and the browser, Definition, Run projection, database snapshots, ordinary logs, and evidence bundles retain no credential value, `apiKeyEnv`, or Provider Base URL. Never commit the local binding or environment files.
+Edit the local JSON with the provider base URL and model. Keep
+`apiKeyEnv: "REAL_PROVIDER_API_KEY"`; never put credentials in JSON. Real mode
+loads `.env.example` first and `.env.local` second, then mounts the local JSON
+read-only. Both local files are git-ignored. `pnpm dev:real` validates them
+without printing credential values.
 
-The M0 blocking suite always uses the Fake Provider. A dedicated `ModelProvider` interface, a DeepSeek adapter, and opt-in live-model evaluation are follow-up work after `m0-v0.1.0`; live calls will remain separate from deterministic CI.
+The UI lists workflows, creates and versions
+definitions, edits the visual graph or JSON, and starts a read-only test run.
+The repository has one PR Gate: typecheck → focused unit contracts → one
+Playwright E2E. The E2E covers the editor-to-run path on the normal Compose
+stack, including PostgreSQL, the Fake Provider, and Chromium; these are part
+of the ordinary PR Gate.
 
-## Commands and operations
+## Definition shape
 
-```bash
-make setup          # pin/install dependencies and create .env from the fake fixture
-make doctor         # validate local tools, database settings, binding, and credential presence
-make up             # build and start app, worker, PostgreSQL, migration, and Fake Provider
-make down           # stop the stack
-make logs           # follow service logs
-make smoke-test     # check the running readiness endpoint
-make support-bundle # create a redacted diagnostic bundle under artifacts/acceptance/M0
-make verify-m0      # run all 13 blocking M0 cases and seal acceptance evidence
-```
+Every definition has `apiVersion: "workflow/v1alpha1"`, `kind: "Workflow"`,
+metadata, nodes, and edges. Nodes are `input.prompt`, `task.agent`,
+`logic.condition`, or `output.markdown`. Edges carry explicit mappings and a
+condition edge carries `sourcePort`.
 
-`make support-bundle` and `make verify-m0` write to a fresh `EVIDENCE_DIR`; they refuse to overwrite owned evidence. A complete acceptance bundle contains human- and machine-readable reports, the runtime requirement matrix, versions, container identities/digests, test results, logs, screenshots/traces, support diagnostics, `MANIFEST`, and `SHA256SUMS`.
+Agent nodes reference immutable Agent, Skill, and MCP versions. Authoring
+captures those references as a snapshot boundary. The Pi adapter receives the
+Agent system prompt and Skill snapshot; MCP definitions are metadata only and
+are not executed as Pi tools. Provider credentials remain outside definitions.
 
-## Web experience
+## Runtime semantics
 
-The Web shell provides Workflow List, JSON Import, a neutral read-only three-node Board, the right-side Run Sheet, status-text History, Run Detail, Markdown Output, and failure explanations. Each Agent card displays its own Provider Binding and configured model; Run Detail adds the effective model captured at execution. The interface uses an Apple-like minimal light treatment, system dark-mode tokens, and a narrow responsive layout.
+Runs are evaluated in graph order. A condition evaluates its branches
+recursively (AND/OR groups and leaf clauses), selects the first matching
+branch, and marks other branch descendants `skipped` with
+`not_selected`. A node waits for every incoming dependency before joining;
+unavailable or failed inputs prevent downstream execution. Successful nodes
+become `selected` for downstream routing and the Markdown node emits the
+final result.
 
-`Run again` pre-fills the original Prompt and creates a new Run pinned to the original Definition Version. It is not Retry. Provider failures and worker loss show the affected Agent, the skipped downstream Output, the safe error code, and the next operator action.
-
-## M0 limits and security
-
-M0 deliberately excludes Builder editing, Retry/Cancel, SSE, Replay/Compare, Feishu, Human Interaction, Logic/Loop, Tool Gateway, Memory, product-level Subagents, arbitrary code, multi-user/RBAC, Temporal, and a product Evidence/Artifact browser.
-
-Each Run has one Attempt per executed node. A worker loss before dispatch becomes `worker_lost`; an uncertain post-dispatch outcome becomes `outcome_unknown`. Neither condition automatically repeats a model call. Secrets remain worker-only and acceptance scans API, DOM, database/event exports, logs, browser evidence, and nested support artifacts before a bundle can pass.
-
-The authoritative M0 contracts and closeout records are under [`docs/plans/M0`](docs/plans/M0), while the thirteen v0.4 source artifacts remain byte-for-byte preserved under [`docs/source/v0.4`](docs/source/v0.4).
+See [docs/README.md](docs/README.md) for the compact contract, API summary,
+architecture decisions, and requirement-to-test-to-evidence map.

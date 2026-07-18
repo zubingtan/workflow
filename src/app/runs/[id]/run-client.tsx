@@ -6,6 +6,7 @@ import { AppShell } from "../../components/app-shell";
 import { RunDialog } from "../../components/run-dialog";
 import { WorkflowBoard } from "../../components/workflow-board";
 import type { Run } from "../../client-types";
+import { projectRuntimeOverlay } from "../../../lib/workflows/visual-projection";
 
 const terminalStatuses = new Set(["succeeded", "failed"]);
 
@@ -75,6 +76,7 @@ export function RunClient({
   }, [id]);
 
   const output = run?.nodes.find((node) => node.type === "output.markdown")?.output?.markdown;
+  const runtimeNodes = run ? projectRuntimeOverlay(run) : undefined;
 
   return (
     <AppShell>
@@ -102,7 +104,13 @@ export function RunClient({
             <WorkflowBoard
               configuredModels={configuredModels}
               definition={run.workflowDefinitionVersion.definition}
-              run={run}
+              authoring={{}}
+              resources={{ agents: { resources: [] }, skills: { resources: [] }, mcps: { resources: [] } }}
+              validationError={null}
+              onChange={() => {}}
+              onTestRun={() => setRunOpen(true)}
+              onAgentDirty={() => {}}
+              runtimeNodes={runtimeNodes}
             />
             <section className="timeline-panel" aria-label="Timeline">
               <div className="section-heading"><h2>Timeline</h2></div>
@@ -147,7 +155,7 @@ export function RunClient({
                 <dl>
                   <div><dt>Affected node</dt><dd>{run.error.nodeId}</dd></div>
                   <div><dt>Why downstream was skipped</dt><dd>The Markdown output depends on the failed Agent result.</dd></div>
-                  <div><dt>M0 does not support Retry</dt><dd>A new Run avoids repeating an unknown provider outcome.</dd></div>
+                  <div><dt>Retry policy</dt><dd>A new Run avoids repeating an unknown provider outcome.</dd></div>
                   <div><dt>Next step</dt><dd>Check the provider binding, then use Run again to create a separate Run.</dd></div>
                 </dl>
               </section>

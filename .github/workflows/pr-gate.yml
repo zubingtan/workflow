@@ -7,8 +7,8 @@ permissions:
   contents: read
 
 jobs:
-  fast-check:
-    name: Typecheck and fast contracts
+  gate:
+    name: Typecheck, unit contracts, and Playwright E2E
     runs-on: ubuntu-24.04
     steps:
       - name: Check out pull request head
@@ -27,5 +27,9 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Typecheck
         run: pnpm typecheck
-      - name: Run fast contracts
-        run: pnpm test:fast
+      - name: Run focused unit contracts
+        run: pnpm test:unit
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run Playwright E2E against PostgreSQL and Fake Provider
+        run: pnpm test:e2e
