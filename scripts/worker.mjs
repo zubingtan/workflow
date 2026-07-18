@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import postgres from "postgres";
 import { runPiAgent } from "./pi-runtime-adapter.mjs";
+import { selectFinalOutput } from "../src/lib/runs/final-output.mjs";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL is required");
@@ -90,8 +91,8 @@ async function execute(job) {
       await writeWithLease(job, async (transaction) => { await transaction`UPDATE node_runs SET status='succeeded',output=${transaction.json(output)},completed_at=now() WHERE id=${nodeRun.id}`; await addEvent(transaction, job.workflow_run_id, sequence++, "node.run.succeeded", nodeRun.id); });
       statuses.set(node.id, "succeeded");
     }
-    const outputNode = ordered(definition).find((node) => node.type === "output.markdown"); const result = outputNode ? outputs.get(outputNode.id)?.markdown : undefined;
-    await writeWithLease(job, async (transaction) => { await transaction`UPDATE workflow_runs SET status='succeeded',output=${transaction.json({ markdown: result })},completed_at=now() WHERE id=${job.workflow_run_id}`; await transaction`UPDATE queue_jobs SET status='completed',completed_at=now() WHERE id=${job.id} AND lease_owner=${owner}`; await addEvent(transaction, job.workflow_run_id, sequence++, "workflow.run.succeeded"); });
+    const result = selectFinalOutput(ordered(definition).map((node) => ({ node, status: statuses.get(node.id), output: outputs.get(node.id) })));
+    await writeWithLease(job, async (transaction) => { await transaction`UPDATE workflow_runs SET status='succeeded',output=${transaction.json(result)},completed_at=now() WHERE id=${job.workflow_run_id}`; await transaction`UPDATE queue_jobs SET status='completed',completed_at=now() WHERE id=${job.id} AND lease_owner=${owner}`; await addEvent(transaction, job.workflow_run_id, sequence++, "workflow.run.succeeded"); });
   } catch (error) {
     if (error instanceof LeaseLostError) return;
     const message = error instanceof Error ? error.message : "Worker execution failed";

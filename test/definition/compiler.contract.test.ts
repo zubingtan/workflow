@@ -46,6 +46,7 @@ function definition(): WorkflowDefinition {
         { from: "prompt", to: "route", mapping: [{ source: "prompt", target: "prompt" }] },
         { from: "route", sourcePort: "if-a", to: "agent-a", mapping: [{ source: "input.prompt", target: "prompt" }] },
         { from: "route", sourcePort: "else-if-b", to: "agent-b", mapping: [{ source: "input.prompt", target: "prompt" }] },
+        { from: "route", sourcePort: "else", to: "agent-b", mapping: [{ source: "input.prompt", target: "prompt" }] },
         { from: "agent-a", to: "result", mapping: [{ source: "output", target: "output" }] },
         { from: "agent-b", to: "result", mapping: [{ source: "output", target: "output" }] },
       ],
@@ -118,14 +119,85 @@ describe("workflow/v1alpha1 compiler", () => {
     });
   });
 
-  test("rejects disconnected nodes and multiple terminal nodes", async () => {
+  test("rejects disconnected nodes", async () => {
     const disconnected = definition();
     disconnected.spec.nodes.push({ id: "orphan", type: "task.agent", config: { systemPrompt: "orphan", skillVersionRefs: [], mcpServerVersionRefs: [], providerBindingRef: "fake-default", agentVersionRef: null } });
     await expect(compileWorkflowDefinition(disconnected)).rejects.toMatchObject({ path: "spec.edges" });
+  });
 
-    const multipleOutputs = definition();
-    multipleOutputs.spec.nodes.push({ id: "result-2", type: "output.markdown", config: {} });
-    await expect(compileWorkflowDefinition(multipleOutputs)).rejects.toMatchObject({ path: "spec.nodes" });
+  test("accepts distinct terminal Markdown outputs for condition branches", async () => {
+    const value: WorkflowDefinition = {
+      apiVersion: "workflow/v1alpha1",
+      kind: "Workflow",
+      metadata: { name: "branch outputs" },
+      spec: {
+        nodes: [
+          { id: "prompt", type: "input.prompt", config: {} },
+          { id: "route", type: "logic.condition", config: { branches: [{ id: "match", condition: { left: { ref: "input.prompt" }, operator: "contains", right: { literal: "match" } } }, { id: "else" }] } },
+          { id: "matched", type: "output.markdown", config: {} },
+          { id: "fallback", type: "output.markdown", config: {} },
+        ],
+        edges: [
+          { from: "prompt", to: "route", mapping: [{ source: "prompt", target: "prompt" }] },
+          { from: "route", sourcePort: "match", to: "matched", mapping: [{ source: "input.prompt", target: "output" }] },
+          { from: "route", sourcePort: "else", to: "fallback", mapping: [{ source: "input.prompt", target: "output" }] },
+        ],
+      },
+    };
+
+    await expect(compileWorkflowDefinition(value)).resolves.toMatchObject({ definition: value });
+  });
+
+  test("rejects parallel non-Condition paths that could execute two Markdown outputs", async () => {
+    const value: WorkflowDefinition = {
+      apiVersion: "workflow/v1alpha1",
+      kind: "Workflow",
+      metadata: { name: "parallel outputs" },
+      spec: {
+        nodes: [
+          { id: "prompt", type: "input.prompt", config: {} },
+          { id: "agent", type: "task.agent", config: { systemPrompt: "respond", skillVersionRefs: [], mcpServerVersionRefs: [], providerBindingRef: "fake-default", agentVersionRef: null } },
+          { id: "first", type: "output.markdown", config: {} },
+          { id: "second", type: "output.markdown", config: {} },
+        ],
+        edges: [
+          { from: "prompt", to: "agent", mapping: [{ source: "prompt", target: "prompt" }] },
+          { from: "agent", to: "first", mapping: [{ source: "output", target: "output" }] },
+          { from: "agent", to: "second", mapping: [{ source: "output", target: "output" }] },
+        ],
+      },
+    };
+
+    await expect(compileWorkflowDefinition(value)).rejects.toMatchObject({
+      code: "validation_error",
+      path: "spec.edges",
+    });
+  });
+
+  test("requires exactly one Input and at least one Markdown output", async () => {
+    const duplicateInput = definition();
+    duplicateInput.spec.nodes.push({ id: "prompt-2", type: "input.prompt", config: {} });
+    await expect(compileWorkflowDefinition(duplicateInput)).rejects.toMatchObject({ path: "spec.nodes" });
+
+    const noOutput = definition();
+    noOutput.spec.nodes = noOutput.spec.nodes.filter((node) => node.type !== "output.markdown");
+    noOutput.spec.edges = noOutput.spec.edges.filter((edge) => edge.to !== "result");
+    await expect(compileWorkflowDefinition(noOutput)).rejects.toMatchObject({ path: "spec.nodes" });
+  });
+
+  test("rejects any reachable terminal path that does not end at a Markdown output", async () => {
+    const value = definition();
+    value.spec.edges = value.spec.edges.filter((edge) => edge.sourcePort !== "else");
+
+    await expect(compileWorkflowDefinition(value)).rejects.toMatchObject({ path: "spec.edges" });
+  });
+
+  test("rejects Markdown outputs with outgoing edges", async () => {
+    const value = definition();
+    value.spec.nodes.push({ id: "after-output", type: "task.agent", config: { systemPrompt: "after", skillVersionRefs: [], mcpServerVersionRefs: [], providerBindingRef: "fake-default", agentVersionRef: null } });
+    value.spec.edges.push({ from: "result", to: "after-output", mapping: [{ source: "markdown", target: "prompt" }] });
+
+    await expect(compileWorkflowDefinition(value)).rejects.toMatchObject({ path: "spec.edges[6].from", nodeId: "result" });
   });
 
   test("evaluates nested AND/OR conditions without coercion", () => {

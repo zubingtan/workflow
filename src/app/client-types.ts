@@ -28,7 +28,7 @@ export type ResourceList = { resources: Resource[] };
 
 export type RuntimeError = { code: string; message: string; nodeId: string };
 export type ProviderSnapshot = { bindingAlias: string; effectiveProvider: string; effectiveModel: string; parameters: Record<string, unknown> };
-export type NodeOutput = { markdown?: string; [key: string]: unknown };
+export type NodeOutput = { markdown?: string; outputNodeId?: string; [key: string]: unknown };
 export type RunNode = {
   id: string;
   nodeId: string;

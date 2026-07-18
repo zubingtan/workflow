@@ -124,19 +124,20 @@ function validateEdge(value: unknown, path: string): WorkflowEdge {
   return { from: edge.from as string, to: edge.to as string, ...(sourcePort ? { sourcePort } : {}), ...(targetPort ? { targetPort } : {}), mapping };
 }
 
-function sourcePorts(node: WorkflowNode) { if (node.type === "input.prompt") return ["prompt"]; if (node.type === "task.agent") return ["output"]; if (node.type === "logic.condition") return node.config.branches.map((branch) => branch.id); return ["markdown"]; }
+function sourcePorts(node: WorkflowNode) { if (node.type === "input.prompt") return ["prompt"]; if (node.type === "task.agent") return ["output"]; if (node.type === "logic.condition") return node.config.branches.map((branch) => branch.id); return []; }
 function targetPorts(node: WorkflowNode) { return node.type === "output.markdown" ? ["output"] : node.type === "input.prompt" ? [] : ["prompt", "output"]; }
 function validateGraph(definition: WorkflowDefinition) {
   const nodes = new Map<string, WorkflowNode>();
   definition.spec.nodes.forEach((node, index) => { if (nodes.has(node.id)) invalid(`spec.nodes[${index}].id`, node.id); nodes.set(node.id, node); });
   const inputs = [...nodes.values()].filter((node) => node.type === "input.prompt");
   const outputs = [...nodes.values()].filter((node) => node.type === "output.markdown");
-  if (inputs.length !== 1 || outputs.length !== 1) invalid("spec.nodes");
+  if (inputs.length !== 1 || outputs.length === 0) invalid("spec.nodes");
   const incoming = new Map<string, number>(); const outgoing = new Map<string, string[]>(); const reverse = new Map<string, string[]>();
   for (const id of nodes.keys()) { incoming.set(id, 0); outgoing.set(id, []); reverse.set(id, []); }
   definition.spec.edges.forEach((edge, index) => {
     const source = nodes.get(edge.from); const target = nodes.get(edge.to);
     if (!source) invalid(`spec.edges[${index}].from`); if (!target) invalid(`spec.edges[${index}].to`);
+    if (source!.type === "output.markdown") invalid(`spec.edges[${index}].from`, source!.id);
     if (source!.type === "logic.condition") { if (!edge.sourcePort || !sourcePorts(source!).includes(edge.sourcePort)) invalid(`spec.edges[${index}].sourcePort`); }
     else if (edge.sourcePort !== undefined && !sourcePorts(source!).includes(edge.sourcePort)) invalid(`spec.edges[${index}].sourcePort`);
     if (edge.targetPort !== undefined && !targetPorts(target!).includes(edge.targetPort)) invalid(`spec.edges[${index}].targetPort`);
@@ -147,6 +148,12 @@ function validateGraph(definition: WorkflowDefinition) {
     });
     incoming.set(target!.id, incoming.get(target!.id)! + 1); outgoing.get(source!.id)!.push(target!.id); reverse.get(target!.id)!.push(source!.id);
   });
+  definition.spec.nodes.forEach((node, index) => {
+    if (node.type !== "logic.condition") return;
+    for (const branch of node.config.branches) {
+      if (!definition.spec.edges.some((edge) => edge.from === node.id && edge.sourcePort === branch.id)) invalid("spec.edges", node.id);
+    }
+  });
   const ready = [...nodes.keys()].filter((id) => incoming.get(id) === 0); let seen = 0;
   while (ready.length) { const id = ready.pop()!; seen += 1; for (const next of outgoing.get(id)!) { incoming.set(next, incoming.get(next)! - 1); if (incoming.get(next) === 0) ready.push(next); } }
   if (seen !== nodes.size) invalid("spec.edges");
@@ -155,7 +162,41 @@ function validateGraph(definition: WorkflowDefinition) {
     while (pending.length) { const id = pending.pop()!; if (reachable.has(id)) continue; reachable.add(id); pending.push(...graph.get(id)!); }
     return reachable;
   };
-  if (visit(inputs[0].id, outgoing).size !== nodes.size || visit(outputs[0].id, reverse).size !== nodes.size) invalid("spec.edges");
+  const reachableFromInput = visit(inputs[0].id, outgoing);
+  const reachesAnOutput = new Set(outputs.flatMap((node) => [...visit(node.id, reverse)]));
+  if (reachableFromInput.size !== nodes.size || reachesAnOutput.size !== nodes.size) invalid("spec.edges");
+  for (const nodeId of reachableFromInput) if (outgoing.get(nodeId)!.length === 0 && nodes.get(nodeId)!.type !== "output.markdown") invalid("spec.edges");
+
+  const edgesFrom = new Map<string, WorkflowEdge[]>();
+  definition.spec.edges.forEach((edge) => edgesFrom.set(edge.from, [...(edgesFrom.get(edge.from) ?? []), edge]));
+  const terminalSignatures = new Map<string, Set<string>>();
+  const signature = (nodeId: string): Set<string> => {
+    const cached = terminalSignatures.get(nodeId);
+    if (cached) return cached;
+    const node = nodes.get(nodeId)!;
+    if (node.type === "output.markdown") {
+      const result = new Set([node.id]);
+      terminalSignatures.set(nodeId, result);
+      return result;
+    }
+    const outgoingEdges = edgesFrom.get(nodeId) ?? [];
+    if (node.type === "logic.condition") {
+      for (const branch of node.config.branches) {
+        const branchSignatures = new Set<string>();
+        for (const edge of outgoingEdges) if (edge.sourcePort === branch.id) for (const output of signature(edge.to)) branchSignatures.add(output);
+        if (branchSignatures.size > 1) invalid("spec.edges", node.id);
+      }
+      const result = new Set([`condition:${node.id}`]);
+      terminalSignatures.set(nodeId, result);
+      return result;
+    }
+    const result = new Set<string>();
+    for (const edge of outgoingEdges) for (const output of signature(edge.to)) result.add(output);
+    if (result.size > 1) invalid("spec.edges", node.id);
+    terminalSignatures.set(nodeId, result);
+    return result;
+  };
+  signature(inputs[0].id);
 }
 
 function validateReference(reference: string, path: string, nodeId: string, nodes: Map<string, WorkflowNode>) {

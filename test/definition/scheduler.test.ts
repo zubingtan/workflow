@@ -32,7 +32,7 @@ describe("workflow/v1alpha1 condition scheduler", () => {
     expect(edgeIsSelected(definition.spec.edges[2], conditionNode, "a")).toBe(false);
   });
 
-  test("waits for both inputs at a DAG join and maps nested source data without coercion", () => {
+  test("maps nested source data without coercion", () => {
     const definition: WorkflowDefinition = {
       apiVersion: "workflow/v1alpha1",
       kind: "Workflow",
@@ -40,14 +40,14 @@ describe("workflow/v1alpha1 condition scheduler", () => {
       spec: {
         nodes: [
           { id: "prompt", type: "input.prompt", config: {} },
-          { id: "left", type: "output.markdown", config: {} },
-          { id: "right", type: "output.markdown", config: {} },
-          { id: "join", type: "output.markdown", config: {} },
+          { id: "left", type: "task.agent", config: { systemPrompt: "left", skillVersionRefs: [], mcpServerVersionRefs: [], providerBindingRef: "fake-default", agentVersionRef: null } },
+          { id: "right", type: "task.agent", config: { systemPrompt: "right", skillVersionRefs: [], mcpServerVersionRefs: [], providerBindingRef: "fake-default", agentVersionRef: null } },
+          { id: "join", type: "task.agent", config: { systemPrompt: "join", skillVersionRefs: [], mcpServerVersionRefs: [], providerBindingRef: "fake-default", agentVersionRef: null } },
         ],
         edges: [
-          { from: "prompt", to: "left", mapping: [{ source: "prompt", target: "output" }] },
-          { from: "prompt", to: "right", mapping: [{ source: "prompt", target: "output" }] },
-          { from: "left", to: "join", mapping: [{ source: "output.markdown", target: "output" }] },
+          { from: "prompt", to: "left", mapping: [{ source: "prompt", target: "prompt" }] },
+          { from: "prompt", to: "right", mapping: [{ source: "prompt", target: "prompt" }] },
+          { from: "left", to: "join", mapping: [{ source: "output", target: "prompt" }] },
           { from: "right", to: "join", mapping: [{ source: "result.answer", target: "output" }] },
         ],
       },

@@ -75,7 +75,7 @@ export function RunClient({
     };
   }, [id]);
 
-  const output = run?.nodes.find((node) => node.type === "output.markdown")?.output?.markdown;
+  const output = run?.output?.outputNodeId && typeof run.output.markdown === "string" ? run.output.markdown : undefined;
   const runtimeNodes = run ? projectRuntimeOverlay(run) : undefined;
 
   return (
@@ -167,7 +167,7 @@ export function RunClient({
               )}
             </section>
             <div className="run-history-link">
-              <Link href={`/workflows/${run.workflow.id}#history`}>History</Link>
+              <Link href={`/workflows/${run.workflow.id}`}>History</Link>
             </div>
             {runOpen ? (
               <RunDialog

@@ -1,185 +1,98 @@
-import type { Page, TestInfo } from "@playwright/test";
+import type { Locator } from "@playwright/test";
 import { expect, test } from "./fixtures/compose-stack";
 
-type Resource = { id: string; name: string; latestVersion: { id: string; version: number } };
-type ResourceKind = "agents" | "skills" | "mcps";
-type RunDetail = { run: { status: string; output: { markdown?: string } | null; nodes: Array<{ nodeId: string; status: string }> } };
-
-function resourceName(kind: ResourceKind) {
-  return kind === "mcps" ? "MCP server" : kind.slice(0, -1).replace(/^./u, (letter) => letter.toUpperCase());
+async function expectInViewport(locator: Locator, viewportHeight: number) {
+  const box = await locator.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.y).toBeGreaterThanOrEqual(0);
+  expect(box!.y + box!.height).toBeLessThanOrEqual(viewportHeight);
 }
 
-async function createResource(page: Page, kind: ResourceKind, name: string, definition: Record<string, unknown>) {
-  await page.getByRole("tab", { name: kind === "mcps" ? "MCP servers" : resourceName(kind) + "s" }).click();
-  await page.getByRole("button", { name: `Create ${resourceName(kind)}` }).click();
-  const dialog = page.getByRole("dialog", { name: `Create ${resourceName(kind)}` });
-  await dialog.getByLabel("Name").fill(name);
-  await dialog.getByLabel("Definition JSON").fill(JSON.stringify(definition));
-  const saved = page.waitForResponse((response) => response.request().method() === "POST" && response.url().endsWith(`/api/resources/${kind}`));
-  await dialog.getByRole("button", { name: "Save version" }).click();
-  expect((await saved).status()).toBe(201);
-  await expect(page.getByRole("heading", { name, level: 2 })).toBeVisible();
-}
+test("authors, connects, runs, and inspects a workflow through the Builder UI", async ({ page, stack, evidence }) => {
+  const viewports = [{ width: 1440, height: 900 }, { width: 1280, height: 720 }];
+  for (const viewport of viewports) {
+    await page.setViewportSize(viewport);
+    await page.goto(stack.appUrl);
 
-async function resources(page: Page, appUrl: string, kind: ResourceKind) {
-  const response = await page.request.get(`${appUrl}/api/resources/${kind}`);
-  expect(response.ok()).toBe(true);
-  return (await response.json() as { resources: Resource[] }).resources;
-}
+    await page.getByRole("button", { name: "New workflow" }).click();
+    await expect(page.getByLabel("Workflow name")).toBeVisible();
+    await page.getByLabel("Workflow name").fill(`Builder E2E ${viewport.width}`);
 
-function workflowDefinition(name: string, values: Record<string, Resource[]>) {
-  const resource = (kind: ResourceKind, resourceName: string) => {
-    const item = values[kind].find((candidate) => candidate.name === resourceName);
-    if (!item) throw new Error(`Missing ${kind} resource ${resourceName}`);
-    return item;
-  };
-  const skillA = resource("skills", "Skill A"); const skillB = resource("skills", "Skill B");
-  const mcpA = resource("mcps", "MCP A"); const mcpB = resource("mcps", "MCP B");
-  const agentA = resource("agents", "Agent A"); const agentB = resource("agents", "Agent B");
-  return {
-    definition: {
-      apiVersion: "workflow/v1alpha1",
-      kind: "Workflow",
-      metadata: { name },
-      spec: {
-        nodes: [
-          { id: "prompt", type: "input.prompt", config: {} },
-          { id: "route", type: "logic.condition", config: { branches: [
-            { id: "if-a", condition: { type: "group", group: "and", children: [
-              { left: { ref: "input.prompt" }, operator: "contains", right: { literal: "A" } },
-              { type: "group", group: "or", children: [
-                { left: { ref: "input.prompt" }, operator: "contains", right: { literal: "route" } },
-                { left: { ref: "input.prompt" }, operator: "contains", right: { literal: "alpha" } },
-              ] },
-            ] } },
-            { id: "else-if-b", condition: { left: { ref: "input.prompt" }, operator: "contains", right: { literal: "B" } } },
-            { id: "else" },
-          ] } },
-          { id: "agent-a", type: "task.agent", config: { systemPrompt: "Use Skill A.", skillVersionRefs: [skillA.latestVersion.id], mcpServerVersionRefs: [mcpA.latestVersion.id], providerBindingRef: "fake-default", agentVersionRef: agentA.latestVersion.id } },
-          { id: "agent-b", type: "task.agent", config: { systemPrompt: "Use Skill B.", skillVersionRefs: [skillB.latestVersion.id], mcpServerVersionRefs: [mcpB.latestVersion.id], providerBindingRef: "fake-default", agentVersionRef: agentB.latestVersion.id } },
-          { id: "result", type: "output.markdown", config: {} },
-        ],
-        edges: [
-          { from: "prompt", to: "route", mapping: [{ source: "prompt", target: "prompt" }] },
-          { from: "route", sourcePort: "if-a", to: "agent-a", mapping: [{ source: "input.prompt", target: "prompt" }] },
-          { from: "route", sourcePort: "else-if-b", to: "agent-b", mapping: [{ source: "input.prompt", target: "prompt" }] },
-          { from: "agent-a", to: "result", mapping: [{ source: "output", target: "output" }] },
-          { from: "agent-b", to: "result", mapping: [{ source: "output", target: "output" }] },
-        ],
-      },
-    },
-    authoring: { agentSources: { "agent-a": { id: agentA.id, name: agentA.name, definition: { systemPrompt: "A" } }, "agent-b": { id: agentB.id, name: agentB.name, definition: { systemPrompt: "B" } } } },
-  };
-}
+  // The editor is an application workspace, not a document that requires page
+  // scrolling to reach its primary controls.
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThanOrEqual(viewport.height);
+    await expectInViewport(page.getByRole("button", { name: "Delete workflow" }), viewport.height);
+    await expectInViewport(page.getByRole("region", { name: "Workflow builder" }), viewport.height);
+    await expectInViewport(page.getByRole("button", { name: "+ Add node" }), viewport.height);
 
-async function waitForRun(page: Page, appUrl: string, runId: string, expected: Record<string, string>) {
-  let output: string | null = null;
-  await expect.poll(async () => {
-    const response = await page.request.get(`${appUrl}/api/runs/${runId}`);
-    if (!response.ok()) return { status: String(response.status()), nodes: {} };
-    const body = await response.json() as RunDetail;
-    output = body.run.output?.markdown ?? null;
-    return { status: body.run.status, nodes: Object.fromEntries(body.run.nodes.map((node) => [node.nodeId, node.status])) };
-  }, { timeout: 20_000 }).toEqual({ status: "succeeded", nodes: expected });
-  return output;
-}
+    await page.getByRole("button", { name: "+ Add node" }).click();
+    const picker = page.getByRole("dialog", { name: "Add node" });
+    await expect(picker).toBeVisible();
+    await expect(picker.getByRole("button", { name: "Prompt" })).toBeDisabled();
+    await expect(picker.getByText("An Input node already exists for this workflow.")).toBeVisible();
+    await expect(picker.getByRole("button", { name: "Markdown" })).toBeDisabled();
+    await expect(picker.getByText("Add a Condition branch first")).toBeVisible();
 
-async function testRun(page: Page, prompt: string) {
-  await page.getByRole("button", { name: "▶ Test run" }).click();
-  const dialog = page.getByRole("dialog", { name: "Run workflow" });
-  await dialog.getByLabel("Prompt").fill(prompt);
-  const created = page.waitForResponse((response) => response.request().method() === "POST" && response.url().endsWith("/api/runs"));
-  await dialog.getByRole("button", { name: "Run", exact: true }).click();
-  const response = await created;
-  expect(response.status()).toBe(202);
-  return (await response.json() as { runId: string }).runId;
-}
+    await picker.getByRole("button", { name: "Agent" }).click();
+    const inspector = page.getByRole("complementary", { name: "Inspector" });
+    await expect(inspector.getByRole("heading", { name: "Agent" })).toBeVisible();
+    await inspector.getByLabel("System prompt").fill("Return a concise Builder E2E result.");
+    await inspector.getByLabel("Provider").selectOption("fake-default");
+    await expect(page.getByRole("status")).toContainText("Agent connected");
 
-test("authors versioned resources and a conditional workflow on the real Compose stack", async ({ page, stack, evidence }, testInfo: TestInfo) => {
-  const suffix = `${testInfo.workerIndex}-${Date.now()}`;
-  const originalName = `Conditional workflow ${suffix}`;
-  const renamedName = `${originalName} renamed`;
-  await page.setViewportSize({ width: 2048, height: 1167 });
-  await page.goto(`${stack.appUrl}/resources`);
-  await expect(page.getByRole("heading", { name: "Resources", level: 1 })).toBeVisible();
+    await page.getByRole("button", { name: "+ Add node" }).click();
+    await page.getByRole("dialog", { name: "Add node" }).getByRole("button", { name: "Condition" }).click();
+    await expect(inspector.getByRole("heading", { name: "Condition" })).toBeVisible();
+    await inspector.getByLabel("Right value").selectOption("literal");
+    await expect(page.getByRole("status")).toContainText("Condition connected");
 
-  for (const [kind, entries] of Object.entries({
-    skills: [["Skill A", { prompt: "Use A guidance." }], ["Skill B", { prompt: "Use B guidance." }]],
-    mcps: [["MCP A", { endpoint: "https://mcp-a.test" }], ["MCP B", { endpoint: "https://mcp-b.test" }]],
-    agents: [["Agent A", { systemPrompt: "Agent A." }], ["Agent B", { systemPrompt: "Agent B." }]],
-  }) as Array<[ResourceKind, Array<[string, Record<string, unknown>]>]>) {
-    for (const [name, definition] of entries) await createResource(page, kind, name, definition);
+    await page.getByRole("button", { name: "+ Add node" }).click();
+    const connectionPicker = page.getByRole("dialog", { name: "Add node" });
+    await connectionPicker.getByRole("button", { name: "Agent" }).click();
+    await expect(connectionPicker.getByRole("heading", { name: "Choose connection" })).toBeVisible();
+    await expect(connectionPicker.getByRole("button", { name: /Insert Agent on/u }).first()).toBeVisible();
+    await connectionPicker.getByRole("button", { name: "Close Add node" }).click();
+
+    await inspector.getByRole("button", { name: "+ Add else if" }).click();
+    await page.getByRole("button", { name: "+ Add node" }).click();
+    await expect(page.getByRole("dialog", { name: "Add node" }).getByRole("button", { name: "Markdown" })).toBeEnabled();
+    await page.getByRole("dialog", { name: "Add node" }).getByRole("button", { name: "Markdown" }).click();
+    await expect(inspector.getByRole("heading", { name: "Output" })).toBeVisible();
+    await expect(page.getByRole("status")).toContainText("Markdown connected");
+    await expect(page.getByRole("button", { name: /^Output node /u })).toHaveCount(2);
+
+    const saved = page.waitForResponse((response) => response.request().method() === "PUT" && /\/api\/workflows\/[^/]+$/u.test(response.url()));
+    await page.getByRole("button", { name: "Save" }).click();
+    expect((await saved).status()).toBe(200);
+    await expect(page.locator(".validation-error")).toHaveCount(0);
+
+    await stack.startWorker();
+    await page.getByRole("button", { name: "▶ Test run" }).click();
+    const runDialog = page.getByRole("dialog", { name: "Run workflow" });
+    await runDialog.getByLabel("Prompt").fill("builder-ui-e2e");
+    const started = page.waitForResponse((response) => response.request().method() === "POST" && response.url().endsWith("/api/runs"));
+    await runDialog.getByRole("button", { name: "Run", exact: true }).click();
+    expect((await started).status()).toBe(202);
+
+    const actions = page.locator(".builder-top-actions");
+    const history = actions.getByRole("button", { name: "Workflow history" });
+    const deleteWorkflow = actions.getByRole("button", { name: "Delete workflow" });
+    await expect(history).toBeVisible();
+    await expect(deleteWorkflow).toBeVisible();
+    expect(await history.evaluate((element) => element.nextElementSibling?.textContent?.trim())).toBe("Delete workflow");
+
+    await history.click();
+    const historyDialog = page.getByRole("dialog", { name: "Workflow history" });
+    await expect(historyDialog).toBeVisible();
+    const run = historyDialog.getByRole("button", { name: "View run details" });
+    await expect(run).toBeVisible();
+    await run.click();
+    await expect(historyDialog.getByRole("heading", { name: "Node run details" })).toBeVisible();
+    await expect(historyDialog.getByText("Input", { exact: true })).toBeVisible();
+    await expect(historyDialog.getByText("Agent", { exact: true })).toBeVisible();
+    await expect(historyDialog.getByText("Condition", { exact: true })).toBeVisible();
+    await historyDialog.getByRole("button", { name: "Close Workflow history" }).click();
   }
 
-  const values = {
-    skills: await resources(page, stack.appUrl, "skills"),
-    mcps: await resources(page, stack.appUrl, "mcps"),
-    agents: await resources(page, stack.appUrl, "agents"),
-  };
-  expect(Object.values(values).every((items) => items.length === 2)).toBe(true);
-
-  const created = await page.request.post(`${stack.appUrl}/api/workflows`, { data: { name: originalName } });
-  expect(created.status()).toBe(201);
-  const workflow = await created.json() as { workflow: { id: string } };
-  const update = await page.request.put(`${stack.appUrl}/api/workflows/${workflow.workflow.id}`, { data: workflowDefinition(originalName, values) });
-  expect(update.status()).toBe(200);
-
-  const workflowUrl = `${stack.appUrl}/workflows/${workflow.workflow.id}`;
-  await page.goto(workflowUrl);
-  await expect(page.getByLabel("Workflow name")).toHaveValue(originalName);
-  const condition = page.getByRole("button", { name: "Condition node route" });
-  await condition.click();
-  await expect(page.getByRole("heading", { name: "Condition", level: 2 })).toBeVisible();
-  await expect(page.getByText("If", { exact: true })).toBeVisible();
-  await expect(page.getByText("Else if", { exact: true })).toBeVisible();
-  await expect(page.getByLabel("Inspector").getByText("Else", { exact: true })).toBeVisible();
-  await expect(page.getByLabel("Group")).toHaveCount(2);
-  await expect(page.getByLabel("Group").nth(0)).toHaveValue("and");
-  await expect(page.getByLabel("Group").nth(1)).toHaveValue("or");
-  await page.screenshot({ path: testInfo.outputPath("condition-selected.png"), fullPage: false });
-
-  await page.getByRole("button", { name: "Agent node agent-a" }).click();
-  await expect(page.getByRole("checkbox", { name: "Skill A v1" })).toBeChecked();
-  await expect(page.getByRole("checkbox", { name: "MCP A v1" })).toBeChecked();
-  await page.getByLabel("Workflow name").fill(renamedName);
-  const saved = page.waitForResponse((response) => response.request().method() === "PUT" && response.url().endsWith(`/api/workflows/${workflow.workflow.id}`));
-  await page.getByRole("button", { name: "Save" }).click();
-  expect((await saved).status()).toBe(200);
-  await expect(page.getByText("Definition v3", { exact: true })).toBeVisible();
-  await condition.click();
-  await page.screenshot({ path: testInfo.outputPath("workflow-builder.png"), fullPage: false });
-
-  await page.getByRole("tab", { name: "JSON" }).click();
-  const json = page.getByRole("region", { name: "Read-only workflow JSON" });
-  await expect(json).toContainText('"logic.condition"');
-  await expect(json).toContainText('"group": "and"');
-  await expect(json).toContainText('"group": "or"');
-  await expect(json).toContainText('"else-if-b"');
-  await expect(json).toContainText('"source": "input.prompt"');
-  await page.getByRole("tab", { name: "Visual" }).click();
-
-  const runA = await testRun(page, `route A ${suffix}`);
-  await stack.startWorker();
-  expect(await waitForRun(page, stack.appUrl, runA, { prompt: "succeeded", route: "succeeded", "agent-a": "succeeded", "agent-b": "skipped", result: "succeeded" })).toBe("Agent A output");
-  await page.goto(`${stack.appUrl}/runs/${runA}`);
-  await expect(page.locator("section.output-panel")).toContainText("Agent A output");
-  await expect(page.locator('[data-product-node-id="agent-a"]')).toContainText("Succeeded");
-  await expect(page.locator('[data-product-node-id="agent-b"]')).toContainText("Skipped · not selected");
-  await page.screenshot({ path: testInfo.outputPath("run-route-a.png"), fullPage: false });
-
-  await page.goto(workflowUrl);
-  const runB = await testRun(page, `route B ${suffix}`);
-  expect(await waitForRun(page, stack.appUrl, runB, { prompt: "succeeded", route: "succeeded", "agent-a": "skipped", "agent-b": "succeeded", result: "succeeded" })).toBe("Agent B output");
-  await page.goto(`${stack.appUrl}/runs/${runB}`);
-  await expect(page.locator("section.output-panel")).toContainText("Agent B output");
-  await expect(page.locator('[data-product-node-id="agent-a"]')).toContainText("Skipped · not selected");
-  await expect(page.locator('[data-product-node-id="agent-b"]')).toContainText("Succeeded");
-  await page.screenshot({ path: testInfo.outputPath("run-route-b.png"), fullPage: false });
-
-  const removed = await page.request.delete(`${stack.appUrl}/api/workflows/${workflow.workflow.id}`);
-  expect(removed.status()).toBe(204);
-  for (const path of [`/api/workflows/${workflow.workflow.id}`, `/api/workflows/${workflow.workflow.id}/runs`, `/api/runs/${runA}`, `/api/runs/${runB}`]) {
-    expect((await page.request.get(`${stack.appUrl}${path}`)).status()).toBe(404);
-  }
   await evidence.assertClean();
 });

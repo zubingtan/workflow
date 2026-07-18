@@ -67,8 +67,6 @@ export default function WorkflowsPage() {
     try {
       const response = await fetch("/api/workflows", {
         method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: "Untitled workflow" }),
       });
       const body = await response.json() as ApiError & { workflow?: { id: string } };
       if (!response.ok || !body.workflow?.id) {

@@ -1,9 +1,10 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import type { ApiError, ResourceList, WorkflowAuthoringDocument, WorkflowDefinitionDocument, WorkflowNodeDefinition } from "../client-types";
-import type { ConditionExpression, JsonValue, WorkflowNode } from "../../lib/workflows/contracts";
+import { addNodeChoices, insertNodeOnSelectedEdge } from "../../lib/workflows/authoring";
+import type { ConditionExpression, JsonValue, WorkflowEdge, WorkflowNode } from "../../lib/workflows/contracts";
 import type { RuntimeOverlayNode } from "../../lib/workflows/visual-projection";
 
 const FlowGramEditor = dynamic(() => import("./flowgram-editor").then((module) => module.FlowGramEditor), { ssr: false });
@@ -30,7 +31,7 @@ const nodeChoices: Array<{ type: WorkflowNode["type"]; group: string; label: str
 function createId(type: string) { return `${type.split(".")[1]}-${globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2, 10)}`; }
 function newNode(type: WorkflowNode["type"]): WorkflowNode {
   const id = createId(type);
-  if (type === "task.agent") return { id, type, config: { systemPrompt: "You are a helpful workflow agent.", skillVersionRefs: [], mcpServerVersionRefs: [], providerBindingRef: "default", agentVersionRef: null } };
+  if (type === "task.agent") return { id, type, config: { systemPrompt: "You are a helpful workflow agent.", skillVersionRefs: [], mcpServerVersionRefs: [], providerBindingRef: "fake-default", agentVersionRef: null } };
   if (type === "logic.condition") return { id, type, config: { branches: [{ id: "if", condition: clause() }, { id: "else" }] } };
   return { id, type, config: {} };
 }
@@ -38,18 +39,82 @@ function clause(): ConditionExpression { return { type: "clause", left: { ref: "
 function group(): ConditionExpression { return { type: "group", group: "and", children: [clause()] }; }
 function updateAt<T>(items: T[], index: number, value: T) { return items.map((item, itemIndex) => itemIndex === index ? value : item); }
 function nodeLabel(node: WorkflowNodeDefinition) { return node.type === "input.prompt" ? "Input" : node.type === "task.agent" ? "Agent" : node.type === "logic.condition" ? "Condition" : "Output"; }
+function edgeLabel(definition: WorkflowDefinitionDocument, edge: WorkflowEdge) {
+  const source = definition.spec.nodes.find((node) => node.id === edge.from);
+  const target = definition.spec.nodes.find((node) => node.id === edge.to);
+  return `${source ? nodeLabel(source) : edge.from}${edge.sourcePort ? ` · ${edge.sourcePort}` : ""} → ${target ? nodeLabel(target) : edge.to}`;
+}
 
 export function WorkflowBoard({ definition, authoring, resources, configuredModels, validationError, onChange, onTestRun, onAgentDirty, runtimeNodes }: BuilderProps) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(definition.spec.nodes[0]?.id ?? null);
   const [addOpen, setAddOpen] = useState(false);
+  const [pendingAddType, setPendingAddType] = useState<Extract<WorkflowNode["type"], "task.agent" | "logic.condition"> | null>(null);
+  const [authoringStatus, setAuthoringStatus] = useState("");
   const [zoom, setZoom] = useState(100);
   const selected = definition.spec.nodes.find((node) => node.id === selectedNodeId) ?? null;
-  const groupedChoices = useMemo(() => Object.groupBy(nodeChoices, (choice) => choice.group), []);
+  const markdownBranch = selected?.type === "logic.condition"
+    ? [...selected.config.branches].reverse().find((branch) => !definition.spec.edges.some((edge) => edge.from === selected.id && edge.sourcePort === branch.id))
+    : undefined;
+  const choices = addNodeChoices(definition).map((choice) => choice.type === "output.markdown" && !markdownBranch
+    ? { ...choice, disabled: true, reason: "Add a Condition branch first" }
+    : choice);
+  const choiceByType = new Map(choices.map((choice) => [choice.type, choice]));
+  const candidateEdges = pendingAddType
+    ? definition.spec.edges.filter((edge) => definition.spec.nodes.find((node) => node.id === edge.from)?.type !== "output.markdown")
+    : [];
+
+  useEffect(() => {
+    if (!addOpen) return;
+    function closeOnEscape(event: KeyboardEvent) { if (event.key === "Escape") { setAddOpen(false); setPendingAddType(null); } }
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [addOpen]);
+
   function setNode(nextNode: WorkflowNode) { onChange({ ...definition, spec: { ...definition.spec, nodes: definition.spec.nodes.map((node) => node.id === nextNode.id ? nextNode : node) } }, authoring); }
-  function addNode(type: WorkflowNode["type"]) {
+  function authoringFor(node: WorkflowNode) {
+    return { ...authoring, nodes: { ...authoring.nodes, [node.id]: { position: { x: 220 + definition.spec.nodes.length * 40, y: 190 + definition.spec.nodes.length * 40 } } } };
+  }
+  function addMarkdown(node: Extract<WorkflowNode, { type: "output.markdown" }>) {
+    if (selected?.type !== "logic.condition" || !markdownBranch) {
+      setAuthoringStatus("Markdown needs connection. Add a Condition branch first.");
+      return;
+    }
+    onChange({ ...definition, spec: { ...definition.spec, nodes: [...definition.spec.nodes, node], edges: [...definition.spec.edges, { from: selected.id, sourcePort: markdownBranch.id, to: node.id, targetPort: "output", mapping: [{ source: "input.prompt", target: "output" }] }] } }, authoringFor(node));
+    setAuthoringStatus(`Markdown connected to the ${markdownBranch.condition ? "If" : "Else"} branch.`);
+  }
+  function addNode(type: WorkflowNode["type"], selectedEdge?: WorkflowEdge) {
     const node = newNode(type);
-    onChange({ ...definition, spec: { ...definition.spec, nodes: [...definition.spec.nodes, node] } }, { ...authoring, nodes: { ...authoring.nodes, [node.id]: { position: { x: 220 + definition.spec.nodes.length * 40, y: 190 + definition.spec.nodes.length * 40 } } } });
-    setSelectedNodeId(node.id); setAddOpen(false);
+    if (node.type === "output.markdown") addMarkdown(node);
+    else if (node.type === "input.prompt") return;
+    else {
+      const inserted = insertNodeOnSelectedEdge(definition, selectedEdge ?? selectedEdgeForNode(), node);
+      if (inserted.status === "inserted") {
+        onChange(inserted.definition, authoringFor(node));
+        setAuthoringStatus(`${nodeLabel(node)} connected to the selected path.`);
+      } else {
+        setAuthoringStatus(`${nodeLabel(node)} needs connection. ${inserted.message}`);
+        setPendingAddType(node.type);
+        return;
+      }
+    }
+    setSelectedNodeId(node.id);
+    setAddOpen(false);
+    setPendingAddType(null);
+  }
+  function selectedEdgeForNode() {
+    const outgoing = selected ? definition.spec.edges.filter((edge) => edge.from === selected.id) : [];
+    if (outgoing.length === 1) return outgoing[0];
+    return definition.spec.edges.length === 1 ? definition.spec.edges[0] : undefined;
+  }
+  function requestAddNode(type: WorkflowNode["type"]) {
+    if (choiceByType.get(type)?.disabled) return;
+    if (type === "input.prompt") return;
+    if (type === "output.markdown" || selectedEdgeForNode()) {
+      addNode(type, selectedEdgeForNode());
+      return;
+    }
+    setPendingAddType(type);
+    setAuthoringStatus(`${type === "task.agent" ? "Agent" : "Condition"} needs connection. Choose a connection below.`);
   }
   function deleteNode() {
     if (!selected) return;
@@ -63,7 +128,7 @@ export function WorkflowBoard({ definition, authoring, resources, configuredMode
       </div>
       <div className="builder-bottom-bar" aria-label="Canvas controls">
         <label>Zoom <select value={zoom} onChange={(event) => setZoom(Number(event.target.value))}><option value={75}>75%</option><option value={100}>100%</option><option value={125}>125%</option></select></label>
-        {!runtimeNodes ? <div className="add-node-menu"><button className="button secondary" type="button" aria-expanded={addOpen} onClick={() => setAddOpen((open) => !open)}>+ Add node</button>{addOpen ? <div className="add-node-popover">{Object.entries(groupedChoices).map(([title, choices]) => <div key={title}><strong>{title}</strong>{choices?.map((choice) => <button key={choice.type} type="button" onClick={() => addNode(choice.type)}>{choice.label}</button>)}</div>)}</div> : null}</div> : null}
+        {!runtimeNodes ? <button className="button secondary" type="button" aria-haspopup="dialog" aria-expanded={addOpen} onClick={() => { setAddOpen(true); setPendingAddType(null); }}>+ Add node</button> : null}
         <button className="button primary test-run" type="button" onClick={onTestRun}>▶ Test run</button>
       </div>
     </div>
@@ -75,6 +140,8 @@ export function WorkflowBoard({ definition, authoring, resources, configuredMode
       {selected?.type === "task.agent" ? <AgentInspector node={selected} resources={resources} configuredModels={configuredModels} authoring={authoring} onChange={setNode} onUpdate={(nextNode, nextAuthoring) => onChange({ ...definition, spec: { ...definition.spec, nodes: definition.spec.nodes.map((item) => item.id === nextNode.id ? nextNode : item) } }, nextAuthoring)} onDirty={() => onAgentDirty(selected.id)} /> : null}
       {selected?.type === "logic.condition" ? <ConditionInspector node={selected} onChange={setNode} /> : null}
     </aside>
+    {authoringStatus ? <p className="builder-status" role="status">{authoringStatus}</p> : null}
+    {addOpen ? <div className="add-node-layer" onMouseDown={(event) => { if (event.target === event.currentTarget) { setAddOpen(false); setPendingAddType(null); } }}><section className="add-node-dialog" role="dialog" aria-modal="true" aria-labelledby="add-node-title"><div className="add-node-dialog-header"><div><h2 id="add-node-title">Add node</h2><p>Add a node to the selected workflow path.</p></div><button className="icon-button" type="button" aria-label="Close Add node" onClick={() => { setAddOpen(false); setPendingAddType(null); }}>×</button></div>{pendingAddType ? <div className="connection-picker" aria-labelledby="connection-picker-title"><h3 id="connection-picker-title">Choose connection</h3><p>Select the existing edge where the new {pendingAddType === "task.agent" ? "Agent" : "Condition"} should be inserted.</p>{candidateEdges.length === 0 ? <p className="connection-picker-empty" role="alert">No compatible connection is available. Select a connected node first.</p> : <div className="connection-picker-list">{candidateEdges.map((edge, index) => <button key={`${edge.from}-${edge.sourcePort ?? ""}-${edge.to}-${index}`} type="button" onClick={() => addNode(pendingAddType, edge)}>Insert {pendingAddType === "task.agent" ? "Agent" : "Condition"} on {edgeLabel(definition, edge)}</button>)}</div>}<button className="button secondary connection-picker-back" type="button" onClick={() => setPendingAddType(null)}>Back to node types</button></div> : <div className="add-node-dialog-content">{nodeChoices.map((choice) => { const availability = choiceByType.get(choice.type)!; return <section key={choice.type}><strong>{choice.group}</strong><button type="button" className="add-node-choice" disabled={availability.disabled} onClick={() => requestAddNode(choice.type)}>{choice.label}</button>{availability.reason ? <p>{availability.reason}</p> : null}</section>; })}</div>}</section></div> : null}
   </section>;
 }
 
@@ -83,7 +150,7 @@ function OutputInspector() { return <div className="inspector-section"><p>Return
 
 function AgentInspector({ node, resources, configuredModels, authoring, onChange, onUpdate, onDirty }: { node: Extract<WorkflowNode, { type: "task.agent" }>; resources: BuilderProps["resources"]; configuredModels: Record<string, string | null>; authoring: WorkflowAuthoringDocument; onChange: (node: WorkflowNode) => void; onUpdate: (node: WorkflowNode, authoring: WorkflowAuthoringDocument) => void; onDirty: () => void }) {
   const source = authoring.agentSources?.[node.id];
-  const aliases = Object.keys(configuredModels).length ? Object.keys(configuredModels) : ["default"];
+  const aliases = Object.keys(configuredModels).length ? Object.keys(configuredModels) : ["fake-default"];
   function setConfig(change: Partial<typeof node.config>, marksSourceDirty = false) { onChange({ ...node, config: { ...node.config, ...change } }); if (marksSourceDirty) onDirty(); }
   function sourceChange(value: string) {
     if (value === "workflow") { onUpdate({ ...node, config: { ...node.config, agentVersionRef: null } }, { ...authoring, agentSources: { ...authoring.agentSources, [node.id]: { name: `${node.id} agent`, definition: { systemPrompt: node.config.systemPrompt }, agentVersionRef: null } } }); onDirty(); return; }
@@ -126,5 +193,5 @@ function ExpressionEditor({ value, onChange }: { value: ConditionExpression; onC
   const right = value.right;
   const rightRef = "ref" in right;
   const rightValue = rightRef ? right.ref : typeof right.literal === "string" ? right.literal : JSON.stringify(right.literal);
-  return <div className="expression-clause"><label>Left ref<input value={value.left.ref} onChange={(event) => onChange({ ...value, left: { ref: event.target.value } })} /></label><label>Operator<select value={value.operator} onChange={(event) => onChange({ ...value, operator: event.target.value as typeof value.operator })}><option value="strict_equals">equals</option><option value="contains">contains</option><option value="regex">regex</option></select></label><label>Right<select value={rightRef ? "ref" : "literal"} onChange={(event) => onChange({ ...value, right: event.target.value === "ref" ? { ref: "" } : { literal: "" } })}><option value="literal">Literal</option><option value="ref">Reference</option></select><input value={rightValue} onChange={(event) => onChange({ ...value, right: rightRef ? { ref: event.target.value } : { literal: event.target.value } })} /></label></div>;
+  return <div className="expression-clause"><label>Left ref<input value={value.left.ref} onChange={(event) => onChange({ ...value, left: { ref: event.target.value } })} /></label><label>Operator<select value={value.operator} onChange={(event) => onChange({ ...value, operator: event.target.value as typeof value.operator })}><option value="strict_equals">equals</option><option value="contains">contains</option><option value="regex">regex</option></select></label><label>Right value<select value={rightRef ? "ref" : "literal"} onChange={(event) => onChange({ ...value, right: event.target.value === "ref" ? { ref: "" } : { literal: "" } })}><option value="literal">Literal</option><option value="ref">Reference</option></select><input value={rightValue} onChange={(event) => onChange({ ...value, right: rightRef ? { ref: event.target.value } : { literal: event.target.value } })} /></label></div>;
 }

@@ -17,6 +17,24 @@ export function defaultWorkflow(name = "Untitled workflow"): WorkflowDefinition 
   };
 }
 
+export function isWorkflowNameConflict(error: unknown) {
+  return !!error
+    && typeof error === "object"
+    && (error as { code?: unknown }).code === "23505"
+    && (error as { constraint?: unknown }).constraint === "workflows_name_key";
+}
+
+export async function createDefaultWorkflow<T>(create: (name: string) => Promise<T>): Promise<T> {
+  for (let index = 1; ; index += 1) {
+    const name = index === 1 ? "Untitled workflow" : `Untitled workflow ${index}`;
+    try {
+      return await create(name);
+    } catch (error) {
+      if (!isWorkflowNameConflict(error)) throw error;
+    }
+  }
+}
+
 function authoring(value: unknown): WorkflowAuthoring {
   if (value === undefined) return {};
   if (value === null || typeof value !== "object" || Array.isArray(value)) throw new WorkflowValidationError("authoring");
@@ -63,13 +81,14 @@ export async function createWorkflow(value: unknown) {
   const body = value === undefined ? {} : (value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null);
   if (!body) throw new WorkflowValidationError("");
   if (Object.keys(body).some((key) => !["name"].includes(key))) throw new WorkflowValidationError(Object.keys(body).find((key) => key !== "name")!);
-  const name = body.name === undefined ? "Untitled workflow" : typeof body.name === "string" && body.name ? body.name : (() => { throw new WorkflowValidationError("name"); })();
+  const requestedName = body.name === undefined ? undefined : typeof body.name === "string" && body.name ? body.name : (() => { throw new WorkflowValidationError("name"); })();
   const sql = getDatabase();
-  return sql.begin(async (transaction) => {
+  const create = (name: string) => sql.begin(async (transaction) => {
     const [workflow] = await transaction`INSERT INTO workflows (id, name) VALUES (${`workflow-${randomUUID()}`}, ${name}) RETURNING id, name`;
     const version = await persistDefinition(transaction, workflow.id, defaultWorkflow(name), {});
     return { workflow: { id: workflow.id, name: workflow.name }, workflowDefinitionVersion: { id: version.id, version: version.version, hash: version.hash, definition: version.definition, authoring: version.authoring } };
   });
+  return requestedName === undefined ? createDefaultWorkflow(create) : create(requestedName);
 }
 
 export async function listWorkflowDefinitions() {

@@ -1,6 +1,6 @@
 # Design QA
 
-Screenshot acceptance checklist for the workflow editor.
+Rendered layout and content acceptance checklist for the workflow editor.
 
 - [x] Workflow list has a clear create/open action and readable version state.
 - [x] Visual editor shows Input, Agent, Condition, and Markdown node labels.
@@ -13,27 +13,20 @@ Screenshot acceptance checklist for the workflow editor.
 - [x] Keyboard focus, contrast, and responsive layout are usable.
 - [x] Browser console has no product errors during the journey.
 
-## Compared evidence
+## Rendered evidence
 
-- Viewport: 2048×1167, Chromium on the real Compose stack.
-- `condition-selected.png` shows the Input → Condition → Agent → Agent →
-  Output layout, selected Condition styling, ordered branch summary, and the
-  recursive condition inspector (`and`/`or`, references, operators, and
-  literals).
-- `workflow-builder.png` shows the saved workflow editor state with the same
-  stable canvas layout, node labels, version header, Visual/JSON tabs, and
-  right-hand Inspector boundary.
-- `run-route-a.png` shows the runtime projection for the first selected branch:
-  `agent-a` succeeded, `agent-b` was skipped, and Markdown output is visible.
-- `run-route-b.png` shows the complementary runtime projection: `agent-a` was
-  skipped, `agent-b` succeeded, and Markdown output is visible.
-- Evidence files:
-  - `test-results/workflow-builder-authors-v-a9103-w-on-the-real-Compose-stack-chromium/condition-selected.png`
-  - `test-results/workflow-builder-authors-v-a9103-w-on-the-real-Compose-stack-chromium/workflow-builder.png`
-  - `test-results/workflow-builder-authors-v-a9103-w-on-the-real-Compose-stack-chromium/run-route-a.png`
-  - `test-results/workflow-builder-authors-v-a9103-w-on-the-real-Compose-stack-chromium/run-route-b.png`
+- The Builder journey checks actual content and geometry at 1440×900 and
+  1280×720 in Chromium.
+- At both viewports, the body remains within the viewport and the topbar,
+  tabs, canvas, Inspector, and Add node controls are visible without page
+  scrolling. Long canvas, Inspector, dialog, and History content may scroll
+  internally.
+- The same UI-only journey manually opens Add node, chooses Agent/Condition/
+  Markdown, edits Inspector values, saves, runs, and opens History details.
+- No screenshot-pixel comparison or fixed reference resolution is part of this
+  acceptance. Screenshots may be used as supplemental visual evidence only.
 
 ## Final result
 
-`passed` — the screenshots above were compared against the checklist at the
-recorded viewport; the listed layout points matched.
+`pending` — review the rendered journey evidence and console health before
+marking this checklist complete.
