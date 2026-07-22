@@ -42,3 +42,14 @@ export const useProblemPanel = () => {
 
   return { open, close };
 };
+
+export const useSessionPanel = () => {
+  const panelManager = usePanelManager();
+
+  const open = () => {
+    panelManager.open(PanelType.SessionPanel, 'docked-right');
+  };
+  const close = () => panelManager.close(PanelType.SessionPanel);
+
+  return { open, close };
+};

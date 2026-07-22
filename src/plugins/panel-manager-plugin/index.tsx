@@ -14,6 +14,7 @@ import {
   TestRunSidePanelProps,
 } from '../../components/testrun/testrun-panel/test-run-panel';
 import { NodeFormPanel, NodeFormPanelProps } from '../../components/sidebar/node-form-panel';
+import { SessionPanel, SessionPanelProps } from '../../components/session';
 import { ProblemPanel } from '../../components/problem-panel/problem-panel';
 import { PanelType } from './constants';
 
@@ -37,9 +38,20 @@ const problemPanelFactory: PanelFactory<void> = {
   render: () => <ProblemPanel />,
 };
 
+const sessionPanelFactory: PanelFactory<SessionPanelProps> = {
+  key: PanelType.SessionPanel,
+  defaultSize: 400,
+  render: () => <SessionPanel />,
+};
+
 export const createPanelManagerPlugin = () =>
   create({
-    factories: [nodeFormPanelFactory, testRunPanelFactory, problemPanelFactory],
+    factories: [
+      nodeFormPanelFactory,
+      testRunPanelFactory,
+      problemPanelFactory,
+      sessionPanelFactory,
+    ],
     layerProps: {
       children: <DemoTools />,
     },

@@ -11,6 +11,7 @@ import { Tooltip, IconButton, Divider } from '@douyinfe/semi-ui';
 import { IconUndo, IconRedo } from '@douyinfe/semi-icons';
 
 import { TestRunButton } from '../testrun/testrun-button';
+import { SessionButton } from '../session/session-button';
 import { AddNode } from '../add-node';
 import { ZoomSelect } from './zoom-select';
 import { SwitchLine } from './switch-line';
@@ -80,6 +81,7 @@ export const DemoTools = () => {
         <AddNode disabled={playground.config.readonly} />
         <Divider layout="vertical" style={{ height: '16px' }} margin={3} />
         <TestRunButton disabled={playground.config.readonly} />
+        <SessionButton />
       </ToolSection>
     </ToolContainer>
   );
