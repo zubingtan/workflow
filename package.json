@@ -90,7 +90,7 @@
   },
   "packageManager": "pnpm@11.13.0",
   "lint-staged": {
-    "*.{ts,tsx,js,jsx,mjs}": "eslint --fix",
+    "src/**/*.{ts,tsx,js,jsx}": "eslint --fix",
     "*.{ts,tsx,js,jsx,json,less,css,md,yml,yaml}": "prettier --write"
   }
 }
