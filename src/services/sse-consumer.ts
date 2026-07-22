@@ -115,34 +115,36 @@ export async function consumeLLMStream(params: SSEConsumerParams): Promise<void>
     headers.Authorization = `Bearer ${apiKey}`;
   }
 
-  const response = await fetch(`${apiHost}/chat/completions`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      model,
-      messages,
-      stream: true,
-      temperature,
-    }),
-    signal,
-  });
-
-  if (!response.ok) {
-    sessionManager.error(sessionId, `HTTP ${response.status}: ${response.statusText}`);
-    return;
-  }
-
-  if (!response.body) {
-    sessionManager.error(sessionId, 'Response body is empty');
-    return;
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let fullContent = '';
+  let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
 
   try {
+    const response = await fetch(`${apiHost}/chat/completions`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model,
+        messages,
+        stream: true,
+        temperature,
+      }),
+      signal,
+    });
+
+    if (!response.ok) {
+      sessionManager.error(sessionId, `HTTP ${response.status}: ${response.statusText}`);
+      return;
+    }
+
+    if (!response.body) {
+      sessionManager.error(sessionId, 'Response body is empty');
+      return;
+    }
+
+    reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let fullContent = '';
+
     while (true) {
       const { done, value } = await reader.read();
       if (done) {
@@ -211,6 +213,8 @@ export async function consumeLLMStream(params: SSEConsumerParams): Promise<void>
       sessionManager.error(sessionId, err instanceof Error ? err.message : String(err));
     }
   } finally {
-    reader.releaseLock();
+    if (reader) {
+      reader.releaseLock();
+    }
   }
 }
