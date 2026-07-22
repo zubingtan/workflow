@@ -141,6 +141,11 @@ GitHub has no native issue blocking. The sub-issue relationship (parent → chil
 is for map hierarchy, not blocking — a sub-issue can be unblocked while another
 sub-issue of the same map is blocked.
 
+## PR merge
+
+This repo only allows **rebase merges** (`gh pr merge --rebase`). Merge
+commits and squash merges are disabled — don't attempt them.
+
 ## Scope and simplicity
 
 - Make the smallest change that satisfies the request.
