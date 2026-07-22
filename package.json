@@ -57,6 +57,8 @@
     "concurrently": "^10.0.3",
     "cross-env": "~7.0.3",
     "eslint": "^9.0.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.1.0",
     "prettier": "^2.8.8",
     "typescript": "^5.8.3"
   },
@@ -83,7 +85,12 @@
     "fake-provider": "node --env-file=.env scripts/fake-provider.mjs",
     "dev:all": "concurrently -n fake,server,web -c green,blue,magenta \"pnpm fake-provider\" \"pnpm server\" \"pnpm dev\"",
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,less,css,md}\"",
-    "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,json,less,css,md}\""
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,json,less,css,md}\"",
+    "prepare": "husky"
   },
-  "packageManager": "pnpm@11.13.0"
+  "packageManager": "pnpm@11.13.0",
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx,mjs}": "eslint --fix",
+    "*.{ts,tsx,js,jsx,json,less,css,md,yml,yaml}": "prettier --write"
+  }
 }
