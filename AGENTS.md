@@ -162,3 +162,17 @@ Full decision log, SSE streaming protocol, and pi SDK migration notes live in
 adapter, worker, contracts) at `/home/zubingtan/projects/wayfinder/reference/`.
 Old repo full clone backup at `/home/zubingtan/projects/wayfinder/old-clone-backup/`.
 Consult MAP.md before non-trivial architecture work.
+
+## Agent skills
+
+### Issue tracker
+
+Issues are tracked in GitHub Issues (`zubingtan/workflow`) via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five-role vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context layout — one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
