@@ -42,8 +42,11 @@ Real provider: edit `config/provider-bindings.json` (`baseUrl` / `apiKeyEnv` /
    `@flowgram.ai/runtime-js` (`LLMExecutor` → `ChatOpenAI.invoke` →
    `${apiHost}/chat/completions`); the demo itself has no LLM call code.
 2. **Hono backend (Node)** — `server/index.mjs`. `POST /chat/completions`
-   (OpenAI-compatible, **non-streaming** for now) wraps `runPiAgent` from
-   `server/pi-runtime-adapter.mjs`. CORS is enabled.
+   (OpenAI-compatible, dual-mode: `stream: true` → SSE via `streamSSE`, else →
+   JSON) wraps `runPiAgent` from `server/pi-runtime-adapter.mjs` (non-streaming)
+   or `createPiBackend` + `mapAgentEventToSse` (streaming). CORS is enabled
+   (`Access-Control-Allow-Origin: *`; SSE responses also set
+   `X-Accel-Buffering: no`).
 3. **pi agent SDK → provider** — `runPiAgent` uses `new Agent` + `streamSimple`
    against an OpenAI-compatible endpoint described by `config/provider-bindings.json`.
    Credentials resolve via `apiKeyEnv` (env var name in JSON; key never in JSON).
@@ -95,6 +98,48 @@ pnpm lint             # eslint ./src --cache
 - `.env.example` — `FAKE_PROVIDER_API_KEY` / `SERVER_PORT` / `FAKE_PROVIDER_PORT` / `PROVIDER_BINDINGS_FILE`.
 - `rsbuild.config.ts` — Rsbuild config.
 - `pnpm-workspace.yaml` — `onlyBuiltDependencies`.
+
+## Wayfinder tracker operations
+
+This repo uses GitHub Issues as the wayfinder tracker (map issue + child
+tickets). The map is #17. Two gotchas when creating/linking tickets:
+
+**Sub-issues API requires `X-GitHub-Api-Version: 2026-03-10` + database ID
+(not issue number).** `gh api` defaults to API version `2022-11-28`, which
+returns 404. And `-f` sends strings, but `sub_issue_id` must be an integer.
+
+```bash
+# 1. Get the database ID for a child issue (e.g. #22)
+child_id=$(gh api repos/zubingtan/workflow/issues/22 --jq '.id')
+
+# 2. Link it as a sub-issue of the map (#17)
+echo "{\"sub_issue_id\": $child_id}" | gh api \
+  repos/zubingtan/workflow/issues/17/sub_issues \
+  --input - \
+  -H "X-GitHub-Api-Version: 2026-03-10" \
+  -H "Accept: application/vnd.github+json"
+
+# 3. Verify
+gh api repos/zubingtan/workflow/issues/17/sub_issues \
+  -H "X-GitHub-Api-Version: 2026-03-10" \
+  --jq '.[] | "#\(.number) \(.title) [\(.state)]"'
+```
+
+**Ticket creation checklist** (run in this order):
+
+1. `gh issue create` with `--label "wayfinder:<type>"` (`research` / `grilling`
+   / `task`) and `## Blocked by` section in body listing parent issue numbers.
+2. Fetch each new issue's database ID: `gh api repos/zubingtan/workflow/issues/<N> --jq '.id'`.
+3. Link as sub-issue of the map (#17) using the API call above.
+4. Update the map's `## Open tickets (frontier)` section with title + link +
+   blocking status.
+5. Claim a ticket by `gh issue edit <N> --add-assignee zubingtan` before
+   starting work.
+
+**Blocking relationships** use body convention (`## Blocked by: #NN`) since
+GitHub has no native issue blocking. The sub-issue relationship (parent → child)
+is for map hierarchy, not blocking — a sub-issue can be unblocked while another
+sub-issue of the same map is blocked.
 
 ## Scope and simplicity
 
