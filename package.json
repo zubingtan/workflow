@@ -57,6 +57,7 @@
     "concurrently": "^10.0.3",
     "cross-env": "~7.0.3",
     "eslint": "^9.0.0",
+    "prettier": "^2.8.8",
     "typescript": "^5.8.3"
   },
   "publishConfig": {
@@ -80,7 +81,9 @@
     "watch": "exit 0",
     "server": "node --env-file=.env server/index.mjs",
     "fake-provider": "node --env-file=.env scripts/fake-provider.mjs",
-    "dev:all": "concurrently -n fake,server,web -c green,blue,magenta \"pnpm fake-provider\" \"pnpm server\" \"pnpm dev\""
+    "dev:all": "concurrently -n fake,server,web -c green,blue,magenta \"pnpm fake-provider\" \"pnpm server\" \"pnpm dev\"",
+    "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,less,css,md}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,json,less,css,md}\""
   },
   "packageManager": "pnpm@11.13.0"
 }

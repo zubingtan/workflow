@@ -23,7 +23,7 @@ import { CodeNodeRegistry } from './code';
 import { BreakNodeRegistry } from './break';
 import { BlockStartNodeRegistry } from './block-start';
 import { BlockEndNodeRegistry } from './block-end';
-import { MultiConditionNodeRegistry } from "./multi-condition";
+import { MultiConditionNodeRegistry } from './multi-condition';
 export { WorkflowNodeType } from './constants';
 
 export const nodeRegistries: FlowNodeRegistry[] = [
