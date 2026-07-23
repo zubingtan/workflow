@@ -81,7 +81,7 @@
     "lint:fix": "eslint ./src --fix",
     "ts-check": "tsc --noEmit",
     "start": "cross-env NODE_ENV=development rsbuild dev --open",
-    "test": "exit",
+    "test": "node --test",
     "test:cov": "exit",
     "watch": "exit 0",
     "server": "node --env-file=.env server/index.mjs",
