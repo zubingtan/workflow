@@ -6,9 +6,10 @@ architecture below, stop and surface the ambiguity before editing.
 ## Project
 
 FlowGram free-layout workflow editor (demo-free-layout, 13 node types) + a Hono
-backend that wraps the pi agent SDK as an OpenAI-compatible `/chat/completions`
-facade. The frontend is the canvas; the backend runs pi; pi calls an
-OpenAI-compatible provider (fake-provider for dev, real provider for prod).
+backend that runs LLM nodes as **pi-coding-agent sessions**. The frontend is the
+canvas plus a management shell (Workflows / Agents); the backend persists agents
+and workflows in SQLite and executes agent sessions against an OpenAI-compatible
+provider (fake-provider for dev, real provider for prod).
 
 ## Quick start
 
@@ -28,52 +29,57 @@ cp .env.example .env
 pnpm dev:all        # concurrently: fake-provider(4010) + Hono server(4001) + rsbuild dev(3000)
 ```
 
-Open http://localhost:3000. Drag an LLM node onto the canvas, click Test Run —
-it returns `Fake provider response` (canvas → Hono → pi → fake-provider).
+Open http://localhost:3000. The left sidebar manages Workflows and Agents; the
+canvas edits a workflow. An LLM node references an **agent** (by id) plus a
+prompt; Test Run executes the node through the backend agent session.
 
-Real provider: edit `config/provider-bindings.json` (`baseUrl` / `apiKeyEnv` /
-`model`), set the env var, restart `pnpm server`. Never put credentials in JSON.
+Real provider: create an Agent in the UI (or seed one) with the provider
+`baseUrl`, `model`, and the **name** of an env var holding the API key
+(`provider_api_key_env`). Set that env var, restart `pnpm server`. The key
+itself is never stored — only the env var name.
 
 ## Architecture (three layers, do not collapse)
 
-1. **FlowGram canvas (browser)** — `src/`, Rsbuild + React 18 + Inversify. All
-   node UI/registration. The LLM node (`src/nodes/llm/index.ts`) defaults
-   `apiHost` to `http://localhost:4001`. Execution happens in
-   `@flowgram.ai/runtime-js` (`LLMExecutor` → `ChatOpenAI.invoke` →
-   `${apiHost}/chat/completions`); the demo itself has no LLM call code.
-2. **Hono backend (Node)** — `server/index.mjs`. `POST /chat/completions`
-   (OpenAI-compatible, dual-mode: `stream: true` → SSE via `streamSSE`, else →
-   JSON) wraps `runPiAgent` from `server/pi-runtime-adapter.mjs` (non-streaming)
-   or `createPiBackend` + `mapAgentEventToSse` (streaming). CORS is enabled
-   (`Access-Control-Allow-Origin: *`; SSE responses also set
-   `X-Accel-Buffering: no`).
-3. **pi agent SDK → provider** — `runPiAgent` uses `new Agent` + `streamSimple`
-   against an OpenAI-compatible endpoint described by `config/provider-bindings.json`.
-   Credentials resolve via `apiKeyEnv` (env var name in JSON; key never in JSON).
+1. **FlowGram canvas + management shell (browser)** — `src/`, Rsbuild + React 18
+   - Inversify. `src/app.tsx` is the shell (sidebar: Workflows / Agents; editor
+     view). `src/manage.tsx` renders the CRUD managers. `src/api.ts` is the only
+     HTTP client to the backend. The LLM node (`src/nodes/llm/`) stores
+     `agentId` + `prompt` and renders agent output via the backend run endpoint.
+2. **Hono backend (Node)** — `server/index.mjs`. Single source of truth for
+   persistence and execution: agents + workflows CRUD (SQLite), and
+   `POST /agents/:id/run` / `POST /agents/test` which stream **generic SSE
+   events** (`content_delta` / `tool_start` / `tool_end` / `finish` / `error`).
+   CORS is enabled for the dev origin; `GET /env/vars` (autocomplete helper) is
+   restricted to localhost origins.
+3. **pi-coding-agent → provider** — each run creates an agent session
+   (`createAgentSession`) with an in-memory session/settings manager and a
+   dynamically registered provider pointing at the agent's `provider_base_url`.
+   The API key is resolved from `process.env[agent.provider_api_key_env]` at
+   call time.
 
 ```
-canvas LLM node → ChatOpenAI → localhost:4001/chat/completions (Hono)
-  → runPiAgent (pi Agent) → streamSimple → provider baseUrl (fake-provider:4010 or real)
+canvas LLM node → localhost:4001/agents/:id/run (Hono, SSE)
+  → createAgentSession (pi-coding-agent) → provider baseUrl (fake-provider:4010 or real)
 ```
 
 ## Critical conventions
 
-- **pi import**: `streamSimple` is NOT a top-level export of
-  `@earendil-works/pi-ai` (moved in 0.80.x). Import it from the per-API stable
-  module: `import { streamSimple } from "@earendil-works/pi-ai/api/openai-completions";`.
-  Do NOT use `@earendil-works/pi-ai/compat` (deprecated, marked for deletion).
-  The `Agent` API (`streamFn` / `initialState` / `getApiKey` / `onPayload` /
-  `subscribe` / `prompt` / `state`) is unchanged.
-- **Credentials**: JSON stores `apiKeyEnv` (env var name), never the key. Backend
-  resolves `process.env[binding.apiKeyEnv]` at call time.
+- **Persistence lives in `~/.config/workflow/`** — `workflow.db` (SQLite, WAL)
+  and `agents/` (agent workspace). Nothing deployment-specific is stored inside
+  the repo. Tables are created with `CREATE TABLE IF NOT EXISTS` (no migration
+  machinery by design).
+- **Credentials**: an agent record stores `provider_api_key_env` (env var name),
+  never the key. The backend resolves `process.env[...]` at call time.
 - **Do not run pi in the browser** — it is Node-only (`fs` / `process` / HTTP;
   CORS + key exposure). The frontend never imports pi; it only calls the Hono
   backend.
 - **`.env` is gitignored**; `.env.example` is the committed template. `cp` it
-  before running.
+  before running. `PUBLIC_SERVER_URL` is inlined into the client bundle by
+  RSBuild (frontend → backend URL).
 - **pnpm only** (not npm/yarn). `packageManager: pnpm@11.13.0`. Build-script
   allowlist lives in `pnpm-workspace.yaml` (`onlyBuiltDependencies`), NOT in
-  `package.json`'s `pnpm` field (pnpm 11 ignores that field).
+  `package.json`'s `pnpm` field (pnpm 11 ignores that field). `better-sqlite3`
+  must be listed there so its native binding builds.
 
 ## Commands
 
@@ -89,13 +95,13 @@ pnpm lint             # eslint ./src --cache
 
 ## Key files
 
-- `src/nodes/llm/index.ts` — LLM node registry; `onAdd()` sets `apiHost` default.
-- `server/index.mjs` — Hono app; `POST /chat/completions` + CORS + `/health/live`.
-- `server/pi-runtime-adapter.mjs` — pi wrapper (`runPiAgent`, `ProviderRuntimeError`).
-- `config/provider-bindings.json` — active provider binding (fake-default).
-- `config/provider-bindings.example.json` — real-provider template (create as needed).
+- `src/app.tsx` — app shell: sidebar (Workflows / Agents), editor view, Save Workflow.
+- `src/manage.tsx` — Workflow / Agent CRUD managers + agent form (env-var autocomplete, Test).
+- `src/api.ts` — HTTP client to the backend (`SERVER_URL`).
+- `src/nodes/llm/index.ts` + `form-meta.tsx` — LLM node registry and form (agentId + prompt).
+- `server/index.mjs` — Hono app: agents/workflows CRUD, agent run/test SSE, `/env/vars`, `/health/live`.
 - `scripts/fake-provider.mjs` — OpenAI-compatible fake (port 4010, SSE + test control).
-- `.env.example` — `FAKE_PROVIDER_API_KEY` / `SERVER_PORT` / `FAKE_PROVIDER_PORT` / `PROVIDER_BINDINGS_FILE`.
+- `.env.example` — `FAKE_PROVIDER_API_KEY` / `SERVER_PORT` / `FAKE_PROVIDER_PORT` / `PUBLIC_SERVER_URL`.
 - `rsbuild.config.ts` — Rsbuild config.
 - `pnpm-workspace.yaml` — `onlyBuiltDependencies`.
 

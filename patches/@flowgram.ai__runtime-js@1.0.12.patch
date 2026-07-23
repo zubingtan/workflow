@@ -1,0 +1,74 @@
+diff --git a/dist/esm/index.js b/dist/esm/index.js
+index 51c0433fbae8ebd8ef3af2a6ec26be97b07216f6..3705a0fa694fdc012c8a48545393e7ce8fd33ea1 100644
+--- a/dist/esm/index.js
++++ b/dist/esm/index.js
+@@ -3246,12 +3246,18 @@ var WorkflowRuntimeAPIs = {
+   [FlowGramAPIName.TaskCancel]: TaskCancelAPI,
+   [FlowGramAPIName.TaskValidate]: TaskValidateAPI
+ };
++function registerNodeExecutor(executor) {
++  var container = WorkflowRuntimeContainer.instance;
++  var executorInstance = container.get(IExecutor);
++  executorInstance.register(executor);
++}
+ export {
+   TaskCancelAPI,
+   TaskReportAPI,
+   TaskResultAPI,
+   TaskRunAPI,
+   TaskValidateAPI,
+-  WorkflowRuntimeAPIs
++  WorkflowRuntimeAPIs,
++  registerNodeExecutor
+ };
+ //# sourceMappingURL=index.js.map
+\ No newline at end of file
+diff --git a/dist/index.d.cts b/dist/index.d.cts
+index 41b0cc498a8c1e21e79c88d799f44af326ae6b85..c9789d11c27789a73ef8ceccec831150a14fdfb1 100644
+--- a/dist/index.d.cts
++++ b/dist/index.d.cts
+@@ -201,4 +201,6 @@ declare const TaskCancelAPI: (input: TaskCancelInput) => Promise<TaskCancelOutpu
+ 
+ declare const WorkflowRuntimeAPIs: Record<FlowGramAPIName, (i: any) => any>;
+ 
+-export { TaskCancelAPI, TaskReportAPI, TaskResultAPI, TaskRunAPI, TaskValidateAPI, WorkflowRuntimeAPIs };
++declare function registerNodeExecutor(executor: { type: string; execute: (context: any) => Promise<{ outputs: any; branch?: string }> }): void;
++
++export { TaskCancelAPI, TaskReportAPI, TaskResultAPI, TaskRunAPI, TaskValidateAPI, WorkflowRuntimeAPIs, registerNodeExecutor };
+diff --git a/dist/index.d.ts b/dist/index.d.ts
+index 41b0cc498a8c1e21e79c88d799f44af326ae6b85..c9789d11c27789a73ef8ceccec831150a14fdfb1 100644
+--- a/dist/index.d.ts
++++ b/dist/index.d.ts
+@@ -201,4 +201,6 @@ declare const TaskCancelAPI: (input: TaskCancelInput) => Promise<TaskCancelOutpu
+ 
+ declare const WorkflowRuntimeAPIs: Record<FlowGramAPIName, (i: any) => any>;
+ 
+-export { TaskCancelAPI, TaskReportAPI, TaskResultAPI, TaskRunAPI, TaskValidateAPI, WorkflowRuntimeAPIs };
++declare function registerNodeExecutor(executor: { type: string; execute: (context: any) => Promise<{ outputs: any; branch?: string }> }): void;
++
++export { TaskCancelAPI, TaskReportAPI, TaskResultAPI, TaskRunAPI, TaskValidateAPI, WorkflowRuntimeAPIs, registerNodeExecutor };
+diff --git a/dist/index.js b/dist/index.js
+index 3c8b340c49028c61612954bd5cfc836a8a8cd21e..d7605778c0934cf4936ca5da945fbf614e5e2ad4 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -3287,6 +3287,11 @@ var WorkflowRuntimeAPIs = {
+   [FlowGramAPIName.TaskCancel]: TaskCancelAPI,
+   [FlowGramAPIName.TaskValidate]: TaskValidateAPI
+ };
++function registerNodeExecutor(executor) {
++  var container = WorkflowRuntimeContainer.instance;
++  var executorInstance = container.get(IExecutor);
++  executorInstance.register(executor);
++}
+ // Annotate the CommonJS export names for ESM import in node:
+ 0 && (module.exports = {
+   TaskCancelAPI,
+@@ -3294,6 +3299,7 @@ var WorkflowRuntimeAPIs = {
+   TaskResultAPI,
+   TaskRunAPI,
+   TaskValidateAPI,
+-  WorkflowRuntimeAPIs
++  WorkflowRuntimeAPIs,
++  registerNodeExecutor
+ });
+ //# sourceMappingURL=index.js.map

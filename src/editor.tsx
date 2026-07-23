@@ -8,12 +8,20 @@ import { EditorRenderer, FreeLayoutEditorProvider } from '@flowgram.ai/free-layo
 
 import '@flowgram.ai/free-layout-editor/index.css';
 import './styles/index.css';
+import { FlowDocumentJSON } from './typings';
 import { nodeRegistries } from './nodes';
-import { initialData } from './initial-data';
 import { useEditorProps } from './hooks';
 
-export const Editor = () => {
-  const editorProps = useEditorProps(initialData, nodeRegistries);
+export const Editor = ({
+  data,
+  ctxRef,
+  onDirty,
+}: {
+  data: FlowDocumentJSON;
+  ctxRef?: { current: any };
+  onDirty?: () => void;
+}) => {
+  const editorProps = useEditorProps(data, nodeRegistries, ctxRef, onDirty);
   return (
     <div className="doc-free-feature-overview">
       <FreeLayoutEditorProvider {...editorProps}>

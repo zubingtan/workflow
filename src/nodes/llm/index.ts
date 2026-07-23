@@ -1,54 +1,34 @@
-/**
- * Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
- * SPDX-License-Identifier: MIT
- */
-
 import { nanoid } from 'nanoid';
 
 import { WorkflowNodeType } from '../constants';
 import { FlowNodeRegistry } from '../../typings';
 import iconLLM from '../../assets/icon-llm.jpg';
+import { LLMFormMeta } from './form-meta';
 
 let index = 0;
 export const LLMNodeRegistry: FlowNodeRegistry = {
   type: WorkflowNodeType.LLM,
   info: {
     icon: iconLLM,
-    description:
-      'Call the large language model and use variables and prompt words to generate responses.',
+    description: 'Run an AI agent with a prompt and stream the response.',
   },
   meta: {
     size: {
       width: 360,
-      height: 390,
+      height: 420,
     },
   },
+  formMeta: LLMFormMeta,
   onAdd() {
     return {
       id: `llm_${nanoid(5)}`,
       type: 'llm',
       data: {
-        title: `LLM_${++index}`,
+        title: `Agent_${++index}`,
         inputsValues: {
-          modelName: {
+          agentId: {
             type: 'constant',
-            content: 'gpt-3.5-turbo',
-          },
-          apiKey: {
-            type: 'constant',
-            content: 'sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
-          },
-          apiHost: {
-            type: 'constant',
-            content: 'http://localhost:4001',
-          },
-          temperature: {
-            type: 'constant',
-            content: 0.5,
-          },
-          systemPrompt: {
-            type: 'template',
-            content: '# Role\nYou are an AI assistant.\n',
+            content: '',
           },
           prompt: {
             type: 'template',
@@ -57,24 +37,12 @@ export const LLMNodeRegistry: FlowNodeRegistry = {
         },
         inputs: {
           type: 'object',
-          required: ['modelName', 'apiKey', 'apiHost', 'temperature', 'prompt'],
+          required: ['agentId', 'prompt'],
           properties: {
-            modelName: {
-              type: 'string',
-            },
-            apiKey: {
-              type: 'string',
-            },
-            apiHost: {
-              type: 'string',
-            },
-            temperature: {
-              type: 'number',
-            },
-            systemPrompt: {
+            agentId: {
               type: 'string',
               extra: {
-                formComponent: 'prompt-editor',
+                formComponent: 'agent-select',
               },
             },
             prompt: {

@@ -1,7 +1,10 @@
-# Provider Bindings
+# Provider configuration
 
-- `provider-bindings.json` — the active binding loaded by the Hono backend at
-  startup. Contains `apiKeyEnv` (env var name), never the actual key.
-- `provider-bindings.example.json` — template for real-provider setup. Copy to
-  `provider-bindings.json`, edit `baseUrl` / `apiKeyEnv` / `model`, set the env
-  var, restart `pnpm server`. Never put credentials in JSON.
+Provider bindings are no longer file-based. Agent definitions (provider
+`baseUrl`, `model`, and `provider_api_key_env`) are stored in the SQLite
+database at `~/.config/workflow/workflow.db` and managed through the Agents UI
+(http://localhost:3000 → Agents). The API key itself is never stored — only the
+name of the env var that holds it.
+
+This directory is kept for historical reference only; no files here are loaded
+by the backend.

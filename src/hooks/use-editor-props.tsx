@@ -40,7 +40,9 @@ import { BaseNode, CommentRender, GroupNodeRender, LineAddButton, NodePanel } fr
 
 export function useEditorProps(
   initialData: FlowDocumentJSON,
-  nodeRegistries: FlowNodeRegistry[]
+  nodeRegistries: FlowNodeRegistry[],
+  ctxRef?: { current: FreeLayoutPluginContext | null },
+  onDirty?: () => void
 ): FreeLayoutProps {
   return useMemo<FreeLayoutProps>(
     () => ({
@@ -231,7 +233,8 @@ export function useEditorProps(
       onContentChange: debounce((ctx: FreeLayoutPluginContext, event) => {
         if (ctx.document.disposed) return;
 
-        console.log('Auto Save: ', event, {
+        onDirty?.();
+        console.log('Content changed: ', event, {
           ...ctx.document.toJSON(),
           globalVariable: ctx.get<GetGlobalVariableSchema>(GetGlobalVariableSchema)(),
         });
@@ -255,6 +258,9 @@ export function useEditorProps(
        * Playground init
        */
       onInit(ctx) {
+        if (ctxRef) {
+          ctxRef.current = ctx;
+        }
         console.log('--- Playground init ---');
       },
       /**
@@ -371,17 +377,15 @@ export function useEditorProps(
         createContextMenuPlugin({}),
         /**
          * Runtime plugin
-         * ⚠️ Browser mode is for demo only; for production, please deploy the server-side runtime
-         * https://flowgram.ai/guide/runtime/introduction.html
+         * Server mode: workflow execution runs on the Hono backend via FlowGram protocol
          */
         createRuntimePlugin({
-          mode: 'browser', // browser mode is for demo only!
-          // mode: 'server',
-          // serverConfig: {
-          //   domain: 'localhost',
-          //   port: 4000,
-          //   protocol: 'http',
-          // },
+          mode: 'server',
+          serverConfig: {
+            domain: 'localhost',
+            port: 4001,
+            protocol: 'http',
+          },
         }),
 
         /**
@@ -395,6 +399,9 @@ export function useEditorProps(
         createPanelManagerPlugin(),
       ],
     }),
+    // Empty deps is safe: `initialData`/`ctxRef` are stable per Editor mount —
+    // the Editor component is fully unmounted/remounted when switching workflows,
+    // so this memo re-runs with fresh values each time.
     []
   );
 }
