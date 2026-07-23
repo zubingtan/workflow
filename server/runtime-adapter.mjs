@@ -47,10 +47,17 @@ export async function createAgentSessionForAgent(agentConfig, apiKey, agentDir) 
 
 // --- AgentExecutor: replaces built-in LLMExecutor in runtime-js ---
 class AgentExecutor {
-  constructor(db, agentDir) {
+  constructor({
+    db,
+    agentDir,
+    createSession = createAgentSessionForAgent,
+    environment = process.env,
+  }) {
     this.type = "llm";
     this.db = db;
     this.agentDir = agentDir;
+    this.createSession = createSession;
+    this.environment = environment;
   }
 
   async execute(context) {
@@ -61,10 +68,18 @@ class AgentExecutor {
     const agent = this.db.prepare("SELECT * FROM agents WHERE id = ?").get(agentId);
     if (!agent) throw new Error(`agent not found: ${agentId}`);
 
-    const apiKey = process.env[agent.provider_api_key_env];
+    const apiKey = this.environment[agent.provider_api_key_env];
     if (!apiKey) throw new Error(`missing env var: ${agent.provider_api_key_env}`);
 
-    const session = await createAgentSessionForAgent(agent, apiKey, this.agentDir);
+    const session = await this.createSession(agent, apiKey, this.agentDir);
+    const abort = () => {
+      void session.abort?.();
+    };
+    if (context.signal?.aborted) {
+      abort();
+    } else {
+      context.signal?.addEventListener("abort", abort, { once: true });
+    }
 
     let fullText = "";
     const unsubscribe = session.subscribe((event) => {
@@ -78,6 +93,7 @@ class AgentExecutor {
       await session.prompt(prompt);
       await session.agent.waitForIdle();
     } finally {
+      context.signal?.removeEventListener("abort", abort);
       unsubscribe();
       session.dispose?.();
     }
@@ -86,9 +102,13 @@ class AgentExecutor {
   }
 }
 
+export function createAgentExecutor(options) {
+  return new AgentExecutor(options);
+}
+
 // --- Register the custom executor (must be called before any TaskRun) ---
 export function initRuntime(db, agentDir) {
-  registerNodeExecutor(new AgentExecutor(db, agentDir));
+  registerNodeExecutor(createAgentExecutor({ db, agentDir }));
 }
 
 export { TaskRunAPI, TaskReportAPI, TaskCancelAPI, TaskValidateAPI };

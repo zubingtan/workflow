@@ -2,6 +2,38 @@ diff --git a/dist/esm/index.js b/dist/esm/index.js
 index 51c0433fbae8ebd8ef3af2a6ec26be97b07216f6..3705a0fa694fdc012c8a48545393e7ce8fd33ea1 100644
 --- a/dist/esm/index.js
 +++ b/dist/esm/index.js
+@@ -1883,6 +1883,7 @@ var WorkflowRuntimeTask = class _WorkflowRuntimeTask {
+     this.processing = params.processing;
+   }
+   cancel() {
++    this.context.abortController.abort();
+     this.context.statusCenter.workflow.cancel();
+     const cancelNodeIDs = this.context.statusCenter.getStatusNodeIDs(WorkflowStatus.Processing);
+     cancelNodeIDs.forEach((nodeID) => {
+@@ -2842,6 +2843,7 @@ var WorkflowRuntimeContext = class _WorkflowRuntimeContext {
+   constructor(data) {
+     this.subContexts = [];
+     this.id = uuid();
++    this.abortController = data.abortController ?? new AbortController();
+     this.cache = data.cache;
+     this.document = data.document;
+     this.variableStore = data.variableStore;
+@@ -2894,6 +2896,7 @@ var WorkflowRuntimeContext = class _WorkflowRuntimeContext {
+       messageCenter: this.messageCenter,
+       reporter: this.reporter,
+       variableStore,
++      abortController: this.abortController,
+       state
+     };
+     const subContext = new _WorkflowRuntimeContext(contextData);
+@@ -2977,6 +2980,7 @@ var WorkflowRuntimeEngine = class {
+         node,
+         inputs,
+         runtime: context,
++        signal: context.abortController.signal,
+         container: WorkflowRuntimeContainer.instance,
+         snapshot
+       });
 @@ -3246,12 +3246,18 @@ var WorkflowRuntimeAPIs = {
    [FlowGramAPIName.TaskCancel]: TaskCancelAPI,
    [FlowGramAPIName.TaskValidate]: TaskValidateAPI
@@ -51,6 +83,38 @@ diff --git a/dist/index.js b/dist/index.js
 index 3c8b340c49028c61612954bd5cfc836a8a8cd21e..d7605778c0934cf4936ca5da945fbf614e5e2ad4 100644
 --- a/dist/index.js
 +++ b/dist/index.js
+@@ -1924,6 +1924,7 @@ var WorkflowRuntimeTask = class _WorkflowRuntimeTask {
+     this.processing = params.processing;
+   }
+   cancel() {
++    this.context.abortController.abort();
+     this.context.statusCenter.workflow.cancel();
+     const cancelNodeIDs = this.context.statusCenter.getStatusNodeIDs(WorkflowStatus.Processing);
+     cancelNodeIDs.forEach((nodeID) => {
+@@ -2885,6 +2886,7 @@ var WorkflowRuntimeContext = class _WorkflowRuntimeContext {
+   constructor(data) {
+     this.subContexts = [];
+     this.id = uuid();
++    this.abortController = data.abortController ?? new AbortController();
+     this.cache = data.cache;
+     this.document = data.document;
+     this.variableStore = data.variableStore;
+@@ -2937,6 +2939,7 @@ var WorkflowRuntimeContext = class _WorkflowRuntimeContext {
+       messageCenter: this.messageCenter,
+       reporter: this.reporter,
+       variableStore,
++      abortController: this.abortController,
+       state
+     };
+     const subContext = new _WorkflowRuntimeContext(contextData);
+@@ -3020,6 +3023,7 @@ var WorkflowRuntimeEngine = class {
+         node,
+         inputs,
+         runtime: context,
++        signal: context.abortController.signal,
+         container: WorkflowRuntimeContainer.instance,
+         snapshot
+       });
 @@ -3287,6 +3287,11 @@ var WorkflowRuntimeAPIs = {
    [FlowGramAPIName.TaskCancel]: TaskCancelAPI,
    [FlowGramAPIName.TaskValidate]: TaskValidateAPI
