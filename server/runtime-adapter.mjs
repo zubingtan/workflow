@@ -11,6 +11,7 @@
  */
 import { registerNodeExecutor, TaskRunAPI, TaskReportAPI, TaskCancelAPI, TaskValidateAPI, TaskResultAPI } from "@flowgram.ai/runtime-js";
 import { runAgentExecution as defaultRunAgentExecution } from "./agent-execution.mjs";
+import { getAgentById } from "./agent-catalog.mjs";
 
 // --- Shared agent session creation (reused by SSE adapter and injected into runAgentExecution) ---
 export async function createAgentSessionForAgent(agentConfig, apiKey, agentDir) {
@@ -93,7 +94,7 @@ class AgentExecutor {
       throw new AgentExecutionError({ kind: "agent_not_found", message: "prompt is required" });
     }
 
-    const agent = this.db.prepare("SELECT * FROM agents WHERE id = ?").get(agentId);
+    const agent = getAgentById(this.db, agentId);
     if (!agent) {
       throw new AgentExecutionError({ kind: "agent_not_found", message: `agent not found: ${agentId}` });
     }
