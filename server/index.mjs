@@ -17,6 +17,31 @@ import {
 } from "./runtime-adapter.mjs";
 import { runAgentExecution } from "./agent-execution.mjs";
 import { createRunAgentSse } from "./sse-adapter.mjs";
+import {
+  AgentCatalogError,
+  validateTemperature,
+  validateProviderApiKeyEnv,
+  listAgents,
+  getAgentById,
+  createAgent,
+  updateAgent,
+  deleteAgent,
+  copyAgent,
+  seedAgentIfEmpty,
+} from "./agent-catalog.mjs";
+
+/**
+ * Translate a thrown AgentCatalogError into a 400 JSON response. Non-catalog
+ * errors are rethrown so Hono's default 500 handler (or the task-error
+ * translation above) takes them. Collapses the 3× repeated try/catch blocks
+ * that POST/PUT /agents and /agents/test would otherwise each spell out.
+ */
+function catalogErrorResponse(err) {
+  if (err instanceof AgentCatalogError) {
+    return { body: { error: err.message, code: err.code }, status: 400 };
+  }
+  return null;
+}
 
 // --- Config ---
 const PORT = Number(process.env.SERVER_PORT ?? 4001);
@@ -208,21 +233,21 @@ app.post("/workflows/:id/copy", (c) => {
 
 // --- Agent copy ---
 app.post("/agents/:id/copy", (c) => {
-  const src = db.prepare("SELECT * FROM agents WHERE id = ?").get(c.req.param("id"));
-  if (!src) return c.json({ error: "not found" }, 404);
-  const id = nanoid(10);
-  db.prepare(`INSERT INTO agents (id, name, provider_base_url, provider_api_key_env, model, system_prompt, temperature)
-    VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
-    id, `${src.name} (copy)`, src.provider_base_url, src.provider_api_key_env, src.model, src.system_prompt, src.temperature
-  );
-  const row = db.prepare("SELECT * FROM agents WHERE id = ?").get(id);
-  return c.json(row, 201);
+  const copied = copyAgent(db, c.req.param("id"));
+  if (!copied) return c.json({ error: "not found" }, 404);
+  return c.json(copied, 201);
 });
 
 // --- Agent CRUD ---
 app.get("/agents", (c) => {
-  const agents = db.prepare("SELECT * FROM agents ORDER BY created_at DESC").all();
-  return c.json(agents);
+  return c.json(listAgents(db));
+});
+
+// #55 decision: new GET /agents/:id — single-agent fetch for the browser hook.
+app.get("/agents/:id", (c) => {
+  const agent = getAgentById(db, c.req.param("id"));
+  if (!agent) return c.json({ error: "not found" }, 404);
+  return c.json(agent);
 });
 
 app.post("/agents", async (c) => {
@@ -233,50 +258,35 @@ app.post("/agents", async (c) => {
   if (!name || !provider_base_url || !provider_api_key_env || !model) {
     return c.json({ error: "name, provider_base_url, provider_api_key_env, model are required" }, 400);
   }
-  if (!/^[A-Z][A-Z0-9_]*$/.test(provider_api_key_env)) {
-    return c.json({ error: "provider_api_key_env must be UPPER_SNAKE_CASE" }, 400);
+  try {
+    const agent = createAgent(db, { name, provider_base_url, provider_api_key_env, model, system_prompt, temperature });
+    return c.json(agent, 201);
+  } catch (err) {
+    const translated = catalogErrorResponse(err);
+    if (translated) return c.json(translated.body, translated.status);
+    throw err;
   }
-  const id = nanoid(10);
-  db.prepare(`
-    INSERT INTO agents (id, name, provider_base_url, provider_api_key_env, model, system_prompt, temperature)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(id, name, provider_base_url, provider_api_key_env, model, system_prompt ?? "", temperature ?? 0.7);
-  const agent = db.prepare("SELECT * FROM agents WHERE id = ?").get(id);
-  return c.json(agent, 201);
 });
 
 app.put("/agents/:id", async (c) => {
   const { id } = c.req.param();
-  const existing = db.prepare("SELECT * FROM agents WHERE id = ?").get(id);
-  if (!existing) return c.json({ error: "not found" }, 404);
-
   let body;
   try { body = await c.req.json(); } catch { return c.json({ error: "invalid JSON" }, 400); }
   if (!body || typeof body !== "object") return c.json({ error: "body must be an object" }, 400);
-  if (body.provider_api_key_env && !/^[A-Z][A-Z0-9_]*$/.test(body.provider_api_key_env)) {
-    return c.json({ error: "provider_api_key_env must be UPPER_SNAKE_CASE" }, 400);
+  try {
+    const agent = updateAgent(db, id, body);
+    if (!agent) return c.json({ error: "not found" }, 404);
+    return c.json(agent);
+  } catch (err) {
+    const translated = catalogErrorResponse(err);
+    if (translated) return c.json(translated.body, translated.status);
+    throw err;
   }
-  const fields = ["name", "provider_base_url", "provider_api_key_env", "model", "system_prompt", "temperature"];
-  const updates = [];
-  const values = [];
-  for (const f of fields) {
-    if (body[f] !== undefined && body[f] !== null) {
-      updates.push(`${f} = ?`);
-      values.push(body[f]);
-    }
-  }
-  if (updates.length === 0) return c.json(existing);
-  updates.push("updated_at = datetime('now')");
-  values.push(id);
-  db.prepare(`UPDATE agents SET ${updates.join(", ")} WHERE id = ?`).run(...values);
-  const agent = db.prepare("SELECT * FROM agents WHERE id = ?").get(id);
-  return c.json(agent);
 });
 
 app.delete("/agents/:id", (c) => {
-  const { id } = c.req.param();
-  const result = db.prepare("DELETE FROM agents WHERE id = ?").run(id);
-  if (result.changes === 0) return c.json({ error: "not found" }, 404);
+  const ok = deleteAgent(db, c.req.param("id"));
+  if (!ok) return c.json({ error: "not found" }, 404);
   return c.json({ ok: true });
 });
 
@@ -294,7 +304,7 @@ app.get("/env/vars", (c) => {
 
 // --- Agent Run (SSE) ---
 app.post("/agents/:id/run", async (c) => {
-  const agent = db.prepare("SELECT * FROM agents WHERE id = ?").get(c.req.param("id"));
+  const agent = getAgentById(db, c.req.param("id"));
   if (!agent) return c.json({ error: "agent not found" }, 404);
   let body;
   try { body = await c.req.json(); } catch { return c.json({ error: "invalid JSON" }, 400); }
@@ -303,25 +313,40 @@ app.post("/agents/:id/run", async (c) => {
 });
 
 // --- Agent Test (SSE) — test a config without saving ---
+// #55 decision: accepts the full agent fields (including temperature) so the
+// test reflects what would actually be persisted. Previously temperature was
+// dropped, masking provider behavior differences. Validation is owned by the
+// catalog (validateTemperature / validateProviderApiKeyEnv) — this route only
+// checks required-ness and translates catalog errors to 400s.
 app.post("/agents/test", async (c) => {
   let body;
   try { body = await c.req.json(); } catch { return c.json({ error: "invalid JSON" }, 400); }
-  const { name, provider_base_url, provider_api_key_env, model, system_prompt, prompt } = body ?? {};
+  const { name, provider_base_url, provider_api_key_env, model, system_prompt, temperature, prompt } = body ?? {};
   if (!provider_base_url || !provider_api_key_env || !model) {
     return c.json({ error: "provider_base_url, provider_api_key_env, model are required" }, 400);
   }
-  return runAgentSse(c, { name: name ?? "test", provider_base_url, provider_api_key_env, model, system_prompt }, prompt || "Say hello in one sentence.");
+  try {
+    validateTemperature(temperature);
+    validateProviderApiKeyEnv(provider_api_key_env);
+  } catch (err) {
+    const translated = catalogErrorResponse(err);
+    if (translated) return c.json(translated.body, translated.status);
+    throw err;
+  }
+  return runAgentSse(c, { name: name ?? "test", provider_base_url, provider_api_key_env, model, system_prompt, temperature: temperature ?? 0.7 }, prompt || "Say hello in one sentence.");
 });
 
 // --- Seed fake-provider agent if empty ---
-const agentCount = db.prepare("SELECT COUNT(*) as c FROM agents").get().c;
-if (agentCount === 0) {
-  db.prepare(`INSERT INTO agents (id, name, provider_base_url, provider_api_key_env, model, system_prompt, temperature)
-    VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
-    "fake-default", "Fake Provider", "http://localhost:4010/v1", "FAKE_PROVIDER_API_KEY", "fake-model", "You are a helpful assistant.", 0.7
-  );
-  console.log("  seeded fake-provider agent");
-}
+const seeded = seedAgentIfEmpty(db, {
+  id: "fake-default",
+  name: "Fake Provider",
+  provider_base_url: "http://localhost:4010/v1",
+  provider_api_key_env: "FAKE_PROVIDER_API_KEY",
+  model: "fake-model",
+  system_prompt: "You are a helpful assistant.",
+  temperature: 0.7,
+});
+if (seeded) console.log("  seeded fake-provider agent");
 
 // --- Init runtime (register AgentExecutor to replace built-in LLMExecutor) ---
 initRuntime(db, AGENT_DIR);
