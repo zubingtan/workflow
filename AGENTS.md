@@ -110,6 +110,29 @@ pnpm lint             # eslint ./src --cache
 This repo only allows **rebase merges** (`gh pr merge --rebase`). Merge
 commits and squash merges are disabled — don't attempt them.
 
+## Worktree policy
+
+All feature/fix/chore work must happen in a **git worktree**, not on a
+new branch checked out in the main working directory.
+
+- **Main working directory** (`/home/zubingtan/Projects/workflow`) stays
+  on `main` and is used only for: pulling latest `main`, running dev
+  servers for ad-hoc checks, and creating new worktrees. **Never** run
+  `git checkout -b <feature>` here.
+- **Create a worktree** for every piece of work:
+  ```bash
+  git worktree add -b <type>/<name> .worktrees/<name> main
+  ```
+  - `<type>` ∈ `feat` | `fix` | `chore` | `research` | `docs`
+  - `<name>` is kebab-case, short
+  - Worktrees live under `.worktrees/` (gitignored — see `.gitignore`)
+- **Work in the worktree**: edit, commit, push, open PR from there.
+- **Cleanup after merge**: `git worktree remove .worktrees/<name>` and
+  delete the branch (`git branch -D <type>/<name>`).
+- **Why**: keeps `main` working tree clean and always on `main` so the
+  dev server reflects the merged state; lets multiple work streams run
+  in parallel without stashing; avoids accidental commits to `main`.
+
 ## Scope and simplicity
 
 - Make the smallest change that satisfies the request.
@@ -140,3 +163,7 @@ Default five-role vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `
 ### Domain docs
 
 Single-context layout — one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+### Semi UI components
+
+When writing or modifying code that uses `@douyinfe/semi-ui` / `@douyinfe/semi-icons` (50+ files already import it), consult the `semi-design-guide` skill (files in `.agents/skills/semi-design/`). It covers component import conventions, theme customization (CSS variable override path, which `--semi-color-*` / `--semi-border-radius-*` variables exist), dark mode (`body[theme-mode="dark"]`), and the MCP-tool query workflow. If Semi MCP (`@douyinfe/semi-mcp`) is configured in the environment, prefer its `get_semi_document` / `get_component_file_list` / `get_file_code` / `get_function_code` tools (pass version `2.101.1`) for authoritative component knowledge; otherwise fall back to the skill's built-in guidance and the project-specific theme decisions recorded in issue #70 (D2).
