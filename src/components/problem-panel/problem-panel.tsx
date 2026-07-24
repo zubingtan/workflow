@@ -23,9 +23,10 @@ export const ProblemPanel = () => {
       style={{
         width: '100%',
         height: '100%',
-        borderRadius: '8px',
-        background: 'rgb(251, 251, 251)',
-        border: '1px solid rgba(82,100,154, 0.13)',
+        borderRadius: 'var(--app-radius-lg)',
+        background: 'var(--app-color-surface)',
+        border: '1px solid var(--app-color-border)',
+        boxShadow: 'var(--app-shadow-sm)',
       }}
     >
       <div
@@ -34,11 +35,20 @@ export const ProblemPanel = () => {
           height: '50px',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '0 12px',
+          padding: '0 var(--app-space-3)',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', columnGap: '4px', height: '100%' }}>
-          <Typography.Text strong>Problem</Typography.Text>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            columnGap: 'var(--app-space-1)',
+            height: '100%',
+          }}
+        >
+          <Typography.Text strong style={{ fontSize: 'var(--app-font-size-md)' }}>
+            Problem
+          </Typography.Text>
           {loading && <Spin size="small" style={{ lineHeight: '0' }} />}
         </div>
         <IconButton
@@ -48,16 +58,23 @@ export const ProblemPanel = () => {
           onClick={() => closePanel()}
         />
       </div>
-      <div style={{ padding: '12px', display: 'flex', flexDirection: 'column', rowGap: '4px' }}>
+      <div
+        style={{
+          padding: 'var(--app-space-3)',
+          display: 'flex',
+          flexDirection: 'column',
+          rowGap: 'var(--app-space-1)',
+        }}
+      >
         {results.map((i) => (
           <div
             key={i.node.id}
             style={{
               display: 'flex',
               alignItems: 'center',
-              border: '1px solid #999',
-              borderRadius: '4px',
-              padding: '0 4px',
+              border: '1px solid var(--app-color-border)',
+              borderRadius: 'var(--app-radius-md)',
+              padding: '0 var(--app-space-1)',
               cursor: 'pointer',
             }}
             onClick={() => {
@@ -71,10 +88,12 @@ export const ProblemPanel = () => {
               size="24px"
               shape="square"
             />
-            <div style={{ marginLeft: '8px' }}>
-              <Typography.Text>{i.node.form?.values.title}</Typography.Text>
+            <div style={{ marginLeft: 'var(--app-space-2)' }}>
+              <Typography.Text style={{ fontSize: 'var(--app-font-size-md)' }}>
+                {i.node.form?.values.title}
+              </Typography.Text>
               <br />
-              <Typography.Text type="danger">
+              <Typography.Text type="danger" style={{ fontSize: 'var(--app-font-size-xs)' }}>
                 {i.feedbacks.map((i) => i.feedbackText).join(', ')}
               </Typography.Text>
             </div>

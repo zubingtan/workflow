@@ -2,10 +2,24 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { createRoot } from 'react-dom/client';
 import { unstableSetCreateRoot } from '@flowgram.ai/form-materials';
-import { Button, Typography, Spin, Toast, Modal } from '@douyinfe/semi-ui';
-import { IconArrowLeft, IconSave } from '@douyinfe/semi-icons';
+import { Button, Typography, Spin, Toast, Modal, IconButton } from '@douyinfe/semi-ui';
+import { IconArrowLeft, IconSave, IconSun, IconMoon } from '@douyinfe/semi-icons';
+
+// D6 PROTOTYPE — theme layer. Order matters: semi.min.css first (D2 bug fix),
+// then semi-bridge override, then app tokens. Real implement will move these
+// into src/theme/index.ts per D1.
+//
+// NOTE: Semi 2.101.1's package.json `exports` field omits `./dist/css/*`, so a
+// bare `@douyinfe/semi-ui/dist/css/semi.min.css` import fails under rspack.
+// Reaching the file via a relative node_modules path bypasses `exports`.
+// This is a known Semi packaging gap — implement session should confirm the
+// canonical path (or switch to per-component CSS imports).
+import '@douyinfe/semi-ui/dist/css/semi.min.css';
+import './theme/semi-bridge.css';
+import './theme/tokens.css';
 
 import { FlowDocumentJSON } from './typings';
+import { ThemeMode, getStoredTheme, setStoredTheme } from './theme';
 import { GetGlobalVariableSchema } from './plugins/variable-panel-plugin';
 import { WorkflowManager, AgentManager } from './manage';
 import { initialData } from './initial-data';
@@ -35,6 +49,14 @@ function App() {
     action: (() => void) | null;
   }>({ visible: false, action: null });
   const ctxRef = useRef<any>(null);
+
+  // D6 PROTOTYPE — theme state. On mount, read stored theme (FOUC script in
+  // index.html already set body[theme-mode] before React; this keeps toggle UI
+  // in sync and re-applies in case the script didn't run).
+  const [theme, setTheme] = useState<ThemeMode>(() => getStoredTheme() ?? 'auto');
+  useEffect(() => {
+    setStoredTheme(theme);
+  }, [theme]);
 
   // Seed a default workflow on first launch
   useEffect(() => {
@@ -143,11 +165,11 @@ function App() {
         style={{
           width: 200,
           flexShrink: 0,
-          borderRight: '1px solid var(--semi-color-border)',
-          background: 'var(--semi-color-bg-1)',
+          borderRight: `1px solid var(--app-color-border)`,
+          background: 'var(--app-color-panel)',
           display: 'flex',
           flexDirection: 'column',
-          padding: '16px 0',
+          padding: 'var(--app-space-4) 0',
         }}
       >
         {NAV_ITEMS.map((item) => (
@@ -155,16 +177,29 @@ function App() {
             key={item.key}
             onClick={() => requestNavigation(() => setView(item.key))}
             style={{
-              padding: '10px 16px',
+              padding: '10px var(--app-space-4)',
               cursor: 'pointer',
-              fontWeight: view === item.key ? 700 : 400,
-              background: view === item.key ? 'var(--semi-color-fill-0)' : 'transparent',
-              color: view === item.key ? 'var(--semi-color-primary)' : 'var(--semi-color-text-0)',
+              fontWeight:
+                view === item.key
+                  ? 'var(--app-font-weight-strong)'
+                  : 'var(--app-font-weight-regular)',
+              background: view === item.key ? 'var(--app-color-fill-0)' : 'transparent',
+              color: view === item.key ? 'var(--app-color-primary)' : 'var(--app-color-text-1)',
+              fontSize: 'var(--app-font-size-md)',
             }}
           >
             {item.label}
           </div>
         ))}
+        {/* D6 PROTOTYPE — theme toggle (D3 spec: sidebar bottom, icon button) */}
+        <div style={{ marginTop: 'auto', padding: '0 var(--app-space-4)' }}>
+          <IconButton
+            theme="borderless"
+            icon={theme === 'dark' ? <IconSun /> : <IconMoon />}
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            aria-label="Toggle theme"
+          />
+        </div>
       </div>
 
       {/* Main area */}
@@ -173,7 +208,7 @@ function App() {
           flex: 1,
           overflow: 'auto',
           position: 'relative',
-          background: 'var(--semi-color-bg-1)',
+          background: 'var(--app-color-canvas)',
         }}
       >
         {!booted ? (
@@ -240,7 +275,7 @@ function App() {
               ) : workflowData ? (
                 <Editor data={workflowData} ctxRef={ctxRef} onDirty={() => setDirty(true)} />
               ) : (
-                <div style={{ padding: 24 }}>Failed to load workflow.</div>
+                <div style={{ padding: 'var(--app-space-6)' }}>Failed to load workflow.</div>
               )}
             </div>
           </div>

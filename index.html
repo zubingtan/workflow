@@ -6,7 +6,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Flow FreeLayoutEditor Demo</title>
   </head>
-  <body>
+  <body theme-mode="light">
+    <script>
+      // FOUC prevention (D3): apply stored theme before React mounts.
+      (function () {
+        try {
+          var v = localStorage.getItem('workflow-theme');
+          var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          var effective = v === 'dark' || v === 'light' ? v : (v === 'auto' && prefersDark ? 'dark' : 'light');
+          document.body.setAttribute('theme-mode', effective);
+        } catch (e) {}
+      })();
+    </script>
     <div id="root"></div>
   </body>
 </html>

@@ -1,0 +1,24 @@
+/* D6 PROTOTYPE — Semi primary family override (D2 + D4 §1).
+   Throwaway: implement session writes full semi-bridge.css. */
+
+:root body {
+  --semi-color-primary: #4d53e8;
+  --semi-color-primary-hover: #6366f1;
+  --semi-color-primary-active: #4338ca;
+  --semi-color-primary-disabled: #c7c9f5;
+  --semi-color-primary-light-default: rgba(77, 83, 232, 0.08);
+  --semi-color-primary-light-hover: rgba(77, 83, 232, 0.12);
+  --semi-color-primary-light-active: rgba(77, 83, 232, 0.16);
+  --semi-color-focus: rgba(77, 83, 232, 0.5);
+}
+
+body[theme-mode='dark'] {
+  --semi-color-primary: #8a8cff;
+  --semi-color-primary-hover: #a5acff;
+  --semi-color-primary-active: #6b7aff;
+  --semi-color-primary-disabled: #4a4f8a;
+  --semi-color-primary-light-default: rgba(138, 140, 255, 0.12);
+  --semi-color-primary-light-hover: rgba(138, 140, 255, 0.18);
+  --semi-color-primary-light-active: rgba(138, 140, 255, 0.24);
+  --semi-color-focus: rgba(138, 140, 255, 0.5);
+}
