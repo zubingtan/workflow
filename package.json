@@ -48,6 +48,7 @@
   "devDependencies": {
     "@flowgram.ai/eslint-config": "1.0.12",
     "@flowgram.ai/ts-config": "1.0.12",
+    "@playwright/test": "^1.61.1",
     "@rsbuild/core": "^1.2.16",
     "@rsbuild/plugin-less": "^1.1.1",
     "@rsbuild/plugin-react": "^1.1.1",
@@ -88,6 +89,7 @@
     "start": "cross-env NODE_ENV=development rsbuild dev --open",
     "test": "node --test",
     "test:cov": "exit",
+    "test:e2e": "playwright test",
     "watch": "exit 0",
     "server": "node --env-file=.env server/index.mjs",
     "fake-provider": "node --env-file=.env scripts/fake-provider.mjs",
