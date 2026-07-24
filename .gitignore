@@ -7,3 +7,12 @@ dist/
 .vscode/
 .idea/
 .worktrees/
+
+# Editor / IDE local data
+.qoder/
+
+# Local research notes (not part of the repo)
+research/
+
+# Tool caches
+.eslintcache
