@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState } from 'react';
 
 import { FormRenderProps, FormMeta, ValidateTrigger } from '@flowgram.ai/free-layout-editor';
 import { Field } from '@flowgram.ai/free-layout-editor';
@@ -9,31 +9,36 @@ import {
   syncVariableTitle,
 } from '@flowgram.ai/form-materials';
 import { Select, Button, Typography } from '@douyinfe/semi-ui';
+import { IconChevronDown, IconChevronRight } from '@douyinfe/semi-icons';
 
 import { FlowNodeJSON } from '../../typings';
 import { useNodeRenderContext, useIsSidebar } from '../../hooks';
 import { FormHeader, FormContent } from '../../form-components';
-import { SERVER_URL } from '../../api';
+import * as api from '../../api';
+import { useAgentExecution } from '../../agent-execution/use-agent-execution';
+import type { ToolEvent } from '../../agent-execution/types';
 
-interface AgentDef {
-  id: string;
-  name: string;
-  model: string;
-}
-
-/** Fetch agent list from backend */
+/** Fetch agent list from backend via the shared HTTP client (AGENTS.md). */
 function useAgents() {
-  const [agents, setAgents] = useState<AgentDef[]>([]);
+  const [agents, setAgents] = useState<api.AgentDef[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const controller = new AbortController();
-    fetch(`${SERVER_URL}/agents`, { signal: controller.signal })
-      .then((r) => r.json())
-      .then((data) => setAgents(data))
-      .catch(() => setAgents([]))
-      .finally(() => setLoading(false));
-    return () => controller.abort();
+    let cancelled = false;
+    api
+      .listAgents()
+      .then((rows) => {
+        if (!cancelled) setAgents(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setAgents([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return { agents, loading };
@@ -65,95 +70,87 @@ function AgentSelect({
   );
 }
 
-/** SSE streaming output display + run control */
+const PHASE_BADGE: Record<string, { text: string; color: string }> = {
+  succeeded: { text: '成功', color: 'var(--semi-color-success)' },
+  cancelled: { text: '已取消', color: 'var(--semi-color-tertiary)' },
+  failed: { text: '失败', color: 'var(--semi-color-danger)' },
+};
+
+/** Tool event row — collapsed detail by default (UX-B). */
+function ToolEventRow({ ev }: { ev: ToolEvent }) {
+  const [expanded, setExpanded] = useState(false);
+  const label = ev.type === 'tool_start' ? '调用' : '返回';
+  return (
+    <div style={{ marginTop: 4 }}>
+      <Button
+        size="small"
+        theme="borderless"
+        icon={expanded ? <IconChevronDown /> : <IconChevronRight />}
+        onClick={() => setExpanded((v) => !v)}
+        style={{ padding: '0 4px' }}
+      >
+        <Typography.Text size="small">
+          {label} {ev.toolName}
+        </Typography.Text>
+      </Button>
+      {expanded && (
+        <pre
+          style={{
+            margin: '4px 0 0 16px',
+            padding: 4,
+            background: 'var(--semi-color-fill-1)',
+            borderRadius: 4,
+            fontSize: 11,
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+          }}
+        >
+          {ev.type === 'tool_start'
+            ? JSON.stringify(ev.args ?? null, null, 2)
+            : JSON.stringify(ev.result ?? null, null, 2)}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+/** Agent Execution output display + run/cancel controls (#54). */
 function AgentOutput({ agentId, prompt }: { agentId: string; prompt: string }) {
-  const [output, setOutput] = useState('');
-  const [running, setRunning] = useState(false);
-  const [error, setError] = useState('');
-  const abortRef = useRef<AbortController | null>(null);
-
-  const run = useCallback(async () => {
-    if (!agentId || !prompt) return;
-    setRunning(true);
-    setOutput('');
-    setError('');
-    const controller = new AbortController();
-    abortRef.current = controller;
-
-    try {
-      const res = await fetch(`${SERVER_URL}/agents/${agentId}/run`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt }),
-        signal: controller.signal,
-      });
-
-      if (!res.ok || !res.body) {
-        setError(`HTTP ${res.status}`);
-        setRunning(false);
-        return;
-      }
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          const jsonStr = line.slice(6).trim();
-          if (!jsonStr) continue;
-          try {
-            const event = JSON.parse(jsonStr);
-            if (event.type === 'content_delta') {
-              setOutput((prev) => prev + event.content);
-            } else if (event.type === 'error') {
-              setError(event.message);
-            }
-          } catch {
-            // skip malformed
-          }
-        }
-      }
-    } catch (err: any) {
-      if (err.name !== 'AbortError') {
-        setError(err.message || 'Request failed');
-      }
-    } finally {
-      setRunning(false);
-      abortRef.current = null;
-    }
-  }, [agentId, prompt]);
-
-  const stop = useCallback(() => {
-    abortRef.current?.abort();
-  }, []);
+  const exec = useAgentExecution({ agentId, prompt });
+  const canRun = !!agentId && !!prompt;
+  // Show the panel whenever there's anything to show: streaming, terminal,
+  // or any content/error/tool events.
+  const showPanel = exec.phase !== 'idle';
 
   return (
     <div style={{ marginTop: 8 }}>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <Button size="small" theme="solid" onClick={run} disabled={running || !agentId || !prompt}>
-          {running ? 'Running...' : 'Run Agent'}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <Button
+          size="small"
+          theme="solid"
+          onClick={exec.run}
+          disabled={!canRun || exec.isRunning}
+          loading={exec.isRunning}
+        >
+          {exec.isRunning ? '执行中...' : '运行 Agent'}
         </Button>
-        {running && (
-          <Button size="small" theme="borderless" onClick={stop}>
-            Stop
+        {exec.isRunning && (
+          <Button size="small" theme="borderless" onClick={exec.cancel}>
+            取消
           </Button>
         )}
+        {PHASE_BADGE[exec.phase] && (
+          <Typography.Text size="small" style={{ color: PHASE_BADGE[exec.phase].color }}>
+            {PHASE_BADGE[exec.phase].text}
+          </Typography.Text>
+        )}
       </div>
-      {error && (
+      {exec.error && (
         <Typography.Text type="danger" size="small" style={{ display: 'block', marginTop: 4 }}>
-          {error}
+          {exec.error}
         </Typography.Text>
       )}
-      {output && (
+      {showPanel && (exec.content || exec.toolEvents.length > 0) && (
         <div
           style={{
             marginTop: 8,
@@ -163,11 +160,18 @@ function AgentOutput({ agentId, prompt }: { agentId: string; prompt: string }) {
             fontSize: 12,
             whiteSpace: 'pre-wrap',
             wordBreak: 'break-word',
-            maxHeight: 200,
+            maxHeight: 240,
             overflow: 'auto',
           }}
         >
-          {output}
+          {exec.content && <div>{exec.content}</div>}
+          {exec.toolEvents.length > 0 && (
+            <div style={{ marginTop: 4 }}>
+              {exec.toolEvents.map((ev, i) => (
+                <ToolEventRow key={i} ev={ev} />
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

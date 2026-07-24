@@ -92,5 +92,21 @@ export const testAgent = (config: Partial<AgentDef> & { prompt?: string }, signa
     signal,
   });
 
+// --- Agent run by id (LLM node path) ---
+// Returns the raw Response so the hook can parse the SSE body uniformly.
+// Sends only { prompt }; agentId is in the URL. The API key value never
+// crosses this boundary (resolved server-side via provider_api_key_env).
+export const runAgentById = (agentId: string, prompt: string, signal?: AbortSignal) =>
+  fetch(`${SERVER_URL}/agents/${agentId}/run`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt }),
+    signal,
+  });
+
+// --- Agent fetch by id (single-agent lookup; used by LLM node form) ---
+export const getAgent = (id: string) =>
+  fetch(`${SERVER_URL}/agents/${id}`).then((r) => json<AgentDef>(r));
+
 // --- Env vars (names only) ---
 export const getEnvVars = () => fetch(`${SERVER_URL}/env/vars`).then((r) => json<string[]>(r));
