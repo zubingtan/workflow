@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import {
   Button,
@@ -9,11 +9,17 @@ import {
   Typography,
   Space,
   Popconfirm,
-  Toast,
 } from '@douyinfe/semi-ui';
 import { IconCopy, IconDelete, IconEdit, IconPlus, IconPlay } from '@douyinfe/semi-icons';
 
 import * as api from './api';
+import { useAgentExecution } from './agent-execution/use-agent-execution';
+
+const PHASE_BADGE: Record<string, { text: string; color: string }> = {
+  succeeded: { text: '成功', color: 'var(--semi-color-success)' },
+  cancelled: { text: '已取消', color: 'var(--semi-color-tertiary)' },
+  failed: { text: '失败', color: 'var(--semi-color-danger)' },
+};
 
 // ---------- Agent list + CRUD ----------
 export function AgentManager() {
@@ -115,10 +121,10 @@ function AgentFormModal({
   });
   const [saving, setSaving] = useState(false);
   const [envVars, setEnvVars] = useState<string[]>([]);
-  const [testing, setTesting] = useState(false);
-  const [testOutput, setTestOutput] = useState('');
-  const [testError, setTestError] = useState('');
-  const abortRef = useRef<AbortController | null>(null);
+
+  // Agent Execution consumer (#54): the hook owns transport, SSE framing,
+  // cancellation, and the phase state machine. The modal keeps only rendering.
+  const exec = useAgentExecution({ config: form, prompt: undefined });
 
   useEffect(() => {
     api
@@ -142,59 +148,7 @@ function AgentFormModal({
     }
   };
 
-  const runTest = async () => {
-    setTesting(true);
-    setTestOutput('');
-    setTestError('');
-    const controller = new AbortController();
-    abortRef.current = controller;
-    try {
-      const res = await api.testAgent(form, controller.signal);
-      if (!res.ok || !res.body) {
-        const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-        const msg = err.error || `HTTP ${res.status}`;
-        setTestError(msg);
-        Toast.error(`Test failed: ${msg}`);
-        setTesting(false);
-        return;
-      }
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let gotError = false;
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-          try {
-            const ev = JSON.parse(line.slice(6).trim());
-            if (ev.type === 'content_delta') setTestOutput((p) => p + ev.content);
-            else if (ev.type === 'error') {
-              setTestError(ev.message);
-              Toast.error(`Test failed: ${ev.message}`);
-              gotError = true;
-            }
-          } catch {
-            // skip
-          }
-        }
-      }
-      if (!gotError) Toast.success('Test passed');
-    } catch (err: any) {
-      if (err.name !== 'AbortError') {
-        const msg = err.message || 'Test failed';
-        setTestError(msg);
-        Toast.error(`Test failed: ${msg}`);
-      }
-    } finally {
-      setTesting(false);
-      abortRef.current = null;
-    }
-  };
+  const canTest = !!form.provider_base_url && !!form.provider_api_key_env && !!form.model;
 
   return (
     <Modal
@@ -207,15 +161,27 @@ function AgentFormModal({
       style={{ width: 560 }}
       footer={
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <Button
-            icon={<IconPlay />}
-            theme="borderless"
-            loading={testing}
-            onClick={runTest}
-            disabled={!form.provider_base_url || !form.provider_api_key_env || !form.model}
-          >
-            {testing ? 'Testing...' : 'Test'}
-          </Button>
+          <Space>
+            <Button
+              icon={<IconPlay />}
+              theme="borderless"
+              loading={exec.isRunning}
+              onClick={exec.run}
+              disabled={!canTest || exec.isRunning}
+            >
+              {exec.isRunning ? '测试中...' : '测试'}
+            </Button>
+            {exec.isRunning && (
+              <Button theme="borderless" onClick={exec.cancel}>
+                取消
+              </Button>
+            )}
+            {PHASE_BADGE[exec.phase] && (
+              <Typography.Text size="small" style={{ color: PHASE_BADGE[exec.phase].color }}>
+                {PHASE_BADGE[exec.phase].text}
+              </Typography.Text>
+            )}
+          </Space>
           <Space>
             <Button theme="borderless" onClick={onClose}>
               Cancel
@@ -249,7 +215,7 @@ function AgentFormModal({
         <Form.TextArea field="system_prompt" label="System Prompt" rows={3} />
         <Form.InputNumber field="temperature" label="Temperature" min={0} max={2} step={0.1} />
       </Form>
-      {(testOutput || testError) && (
+      {exec.phase !== 'idle' && (exec.content || exec.error || exec.toolEvents.length > 0) && (
         <div
           style={{
             marginTop: 8,
@@ -262,8 +228,8 @@ function AgentFormModal({
             overflow: 'auto',
           }}
         >
-          {testError && <Typography.Text type="danger">{testError}</Typography.Text>}
-          {testOutput}
+          {exec.error && <Typography.Text type="danger">{exec.error}</Typography.Text>}
+          {exec.content}
         </div>
       )}
     </Modal>
