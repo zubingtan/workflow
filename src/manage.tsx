@@ -195,7 +195,7 @@ function AgentFormModal({
     >
       <Form
         layout="vertical"
-        onChange={(v) => setForm((prev) => ({ ...prev, ...v }))}
+        onValueChange={(values) => setForm((prev) => ({ ...prev, ...values }))}
         initValues={form}
       >
         <Form.Input field="name" label="Name" rules={[{ required: true }]} />

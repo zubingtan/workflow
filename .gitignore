@@ -16,3 +16,12 @@ research/
 
 # Tool caches
 .eslintcache
+
+# Playwright E2E artifacts
+/playwright-report/
+/test-results/
+/blob-report/
+/playwright/.cache/
+/e2e/.logs/
+# playwright-cli runtime snapshots/logs (NOT the .playwright/cli.config.json config)
+/.playwright-cli/

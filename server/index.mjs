@@ -3,7 +3,7 @@ import { serve } from "@hono/node-server";
 import { nanoid } from "nanoid";
 import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { homedir } from "node:os";
 import {
   initRuntime,
@@ -45,7 +45,11 @@ function catalogErrorResponse(err) {
 
 // --- Config ---
 const PORT = Number(process.env.SERVER_PORT ?? 4001);
-const DATA_DIR = join(homedir(), ".config", "workflow");
+// WORKFLOW_DATA_DIR overrides the default ~/.config/workflow/ data dir —
+// used by E2E tests to isolate SQLite state. Defaults to the canonical path.
+const DATA_DIR = process.env.WORKFLOW_DATA_DIR
+  ? resolve(process.env.WORKFLOW_DATA_DIR)
+  : join(homedir(), ".config", "workflow");
 const DB_PATH = join(DATA_DIR, "workflow.db");
 const AGENT_DIR = join(DATA_DIR, "agents");
 
