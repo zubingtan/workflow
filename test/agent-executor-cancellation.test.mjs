@@ -55,9 +55,16 @@ test('LLM executor aborts and disposes its Pi session when FlowGram cancels', as
   });
   await started;
   signal.abort();
-  await execution;
+  const result = await execution;
 
   assert.equal(aborts, 1);
   assert.equal(unsubscribed, true);
   assert.equal(disposed, true);
+  // #77: cancelled terminal projects to a normal return (NO throw) with _executionDetail.terminated:"cancelled"
+  assert.deepEqual(result, {
+    outputs: {
+      result: '',
+      _executionDetail: { toolEvents: [], terminated: 'cancelled' },
+    },
+  });
 });

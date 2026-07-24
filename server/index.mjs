@@ -1,12 +1,22 @@
 import { Hono } from "hono";
-import { streamSSE } from "hono/streaming";
 import { serve } from "@hono/node-server";
 import { nanoid } from "nanoid";
 import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { initRuntime, createAgentSessionForAgent, TaskRunAPI, TaskReportAPI, TaskCancelAPI, TaskValidateAPI } from "./runtime-adapter.mjs";
+import {
+  initRuntime,
+  createAgentSessionForAgent,
+  AgentExecutionError,
+  TaskRunAPI,
+  TaskReportAPI,
+  TaskCancelAPI,
+  TaskValidateAPI,
+  TaskResultAPI,
+} from "./runtime-adapter.mjs";
+import { runAgentExecution } from "./agent-execution.mjs";
+import { createRunAgentSse } from "./sse-adapter.mjs";
 
 // --- Config ---
 const PORT = Number(process.env.SERVER_PORT ?? 4001);
@@ -45,6 +55,93 @@ db.exec(`
 
 // --- Hono app ---
 const app = new Hono();
+
+// --- SSE adapter instance (bound to the shared Agent Execution module) ---
+// Credential boundary: the adapter resolves apiKey from process.env and binds
+// it into a createSession closure before calling runAgentExecution. The shared
+// module never resolves credentials (#66 rule, aligned by #76/#77 calibration).
+const runAgentSse = createRunAgentSse({
+  runAgentExecution,
+  createAgentSessionForAgent,
+  agentDir: AGENT_DIR,
+  environment: process.env,
+});
+
+// --- Per-workflow task mutex (#56 decision 4) ---
+// Keyed by workflow content hash so concurrent runs of the SAME workflow
+// definition get a 409, while different workflows run in parallel.
+//
+// TTL cleanup is two-phase (#78 item 3): when a task exceeds TASK_TTL_MS
+// without a terminal callback (e.g. server crash mid-run), phase 1 MARKS it
+// terminated — releases the workflow lock so new runs can start, but keeps the
+// runningTasks entry with a `terminatedAt` timestamp. Phase 2 SWEEPS the entry
+// ~60s later. This avoids a polling race where a client re-polls just as the
+// lock is cleared and sees an empty report.
+const runningTasks = new Map(); // taskID → { workflowHash, taskID, startedAt, terminatedAt? }
+const workflowLocks = new Map(); // workflowHash → taskID
+const TASK_TTL_MS = 5 * 60 * 1000; // 5 min: mark as terminated if no terminal callback
+const TASK_SWEEP_DELAY_MS = 60 * 1000; // 60s: remove marked entries after this grace window
+
+function workflowHashFromSchema(schema) {
+  // The schema is the serialized workflow definition. Hash it so structurally
+  // identical workflows collide (same nodes/edges/inputs → same hash).
+  // Simple non-crypto hash is fine: this is a mutex key, not security.
+  const s = typeof schema === "string" ? schema : JSON.stringify(schema);
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) {
+    h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  }
+  return `wf_${(h >>> 0).toString(36)}`;
+}
+
+/**
+ * Release a task's workflow lock immediately. Used when the task has a genuine
+ * terminal callback (report shows success/failed/cancelled, or cancel API
+ * succeeded) — in those cases the runtime confirmed termination, so there's no
+ * polling race and we can delete the entry outright.
+ */
+function releaseTaskLock(taskID) {
+  const entry = runningTasks.get(taskID);
+  if (!entry) return;
+  runningTasks.delete(taskID);
+  if (workflowLocks.get(entry.workflowHash) === taskID) {
+    workflowLocks.delete(entry.workflowHash);
+  }
+}
+
+/**
+ * Phase 1 of TTL cleanup: MARK a stale task as terminated. Releases the
+ * workflow lock (so new runs of the same workflow can proceed) but KEEPS the
+ * runningTasks entry with a `terminatedAt` timestamp so a subsequent sweep can
+ * remove it after the grace window (#78 item 3).
+ */
+function markTaskTerminated(taskID) {
+  const entry = runningTasks.get(taskID);
+  if (!entry || entry.terminatedAt) return;
+  entry.terminatedAt = Date.now();
+  if (workflowLocks.get(entry.workflowHash) === taskID) {
+    workflowLocks.delete(entry.workflowHash);
+  }
+}
+
+// Periodic sweep — runs both phases each tick:
+//   - Phase 1 (mark): entries past TASK_TTL_MS with no terminatedAt → mark
+//   - Phase 2 (sweep): entries whose terminatedAt is older than TASK_SWEEP_DELAY_MS → delete
+setInterval(() => {
+  const now = Date.now();
+  for (const [taskID, entry] of runningTasks) {
+    if (entry.terminatedAt) {
+      // Phase 2: sweep marked entries after the grace window.
+      if (now - entry.terminatedAt > TASK_SWEEP_DELAY_MS) {
+        runningTasks.delete(taskID);
+      }
+    } else if (now - entry.startedAt > TASK_TTL_MS) {
+      // Phase 1: mark stale entries as terminated (keeps the entry, releases
+      // the workflow lock).
+      markTaskTerminated(taskID);
+    }
+  }
+}, 60_000).unref?.();
 
 app.use("*", async (c, next) => {
   c.header("Access-Control-Allow-Origin", "*");
@@ -195,50 +292,6 @@ app.get("/env/vars", (c) => {
   return c.json(names);
 });
 
-// --- Shared agent execution (SSE) ---
-async function runAgentSse(c, agentConfig, prompt) {
-  const apiKey = process.env[agentConfig.provider_api_key_env];
-  if (!apiKey) {
-    return c.json({ error: `missing env var: ${agentConfig.provider_api_key_env}` }, 500);
-  }
-
-  c.header("X-Accel-Buffering", "no");
-
-  return streamSSE(c, async (stream) => {
-    let session;
-    let unsubscribe;
-    try {
-      session = await createAgentSessionForAgent(agentConfig, apiKey, AGENT_DIR);
-
-      stream.onAbort(() => { session?.agent?.abort?.(); });
-
-      unsubscribe = session.subscribe(async (event) => {
-        if (stream.aborted) return;
-        const mapped = mapEvent(event);
-        for (const msg of mapped) {
-          await stream.writeSSE({ data: JSON.stringify(msg) });
-        }
-      });
-
-      await session.prompt(prompt);
-      await session.agent.waitForIdle();
-
-      if (!stream.aborted) {
-        await stream.writeSSE({ data: JSON.stringify({ type: "finish" }) });
-      }
-    } catch (err) {
-      if (!stream.aborted) {
-        await stream.writeSSE({
-          data: JSON.stringify({ type: "error", message: err?.message ?? "internal error" }),
-        });
-      }
-    } finally {
-      unsubscribe?.();
-      session?.dispose?.();
-    }
-  });
-}
-
 // --- Agent Run (SSE) ---
 app.post("/agents/:id/run", async (c) => {
   const agent = db.prepare("SELECT * FROM agents WHERE id = ?").get(c.req.param("id"));
@@ -260,27 +313,6 @@ app.post("/agents/test", async (c) => {
   return runAgentSse(c, { name: name ?? "test", provider_base_url, provider_api_key_env, model, system_prompt }, prompt || "Say hello in one sentence.");
 });
 
-// --- Event mapping: pi AgentSessionEvent → generic SSE events ---
-function mapEvent(event) {
-  switch (event.type) {
-    case "message_update": {
-      const e = event.assistantMessageEvent;
-      if (e?.type === "text_delta" && e.delta) {
-        return [{ type: "content_delta", content: e.delta }];
-      }
-      return [];
-    }
-    case "tool_execution_start":
-      return [{ type: "tool_start", toolName: event.toolName, args: event.args }];
-    case "tool_execution_end":
-      return [{ type: "tool_end", toolName: event.toolName, result: event.result, isError: event.isError }];
-    case "agent_end":
-      return [];  // handled by finish after waitForIdle
-    default:
-      return [];
-  }
-}
-
 // --- Seed fake-provider agent if empty ---
 const agentCount = db.prepare("SELECT COUNT(*) as c FROM agents").get().c;
 if (agentCount === 0) {
@@ -295,6 +327,20 @@ if (agentCount === 0) {
 initRuntime(db, AGENT_DIR);
 
 // --- FlowGram server protocol endpoints (for browser Test Run via server mode) ---
+
+/**
+ * Translate a thrown error from the task layer into a {code, message} JSON
+ * response (#56 decision 3). AgentExecutionError carries a machine-readable
+ * `kind`; other errors get a generic internal_error code. `code` is always a
+ * string so the browser client's isError() check (code !== undefined) fires.
+ */
+function taskErrorResponse(err, fallback) {
+  if (err instanceof AgentExecutionError) {
+    return { code: err.kind, message: err.message, detail: err.detail };
+  }
+  return { code: "internal_error", message: err?.message ?? fallback };
+}
+
 app.post("/api/task/validate", async (c) => {
   let body;
   try { body = await c.req.json(); } catch { return c.json({ error: "invalid JSON" }, 400); }
@@ -304,7 +350,7 @@ app.post("/api/task/validate", async (c) => {
     const result = await TaskValidateAPI({ schema, inputs: body.inputs ?? {} });
     return c.json(result);
   } catch (err) {
-    return c.json({ code: -1, error: err?.message ?? "validate failed" }, 500);
+    return c.json(taskErrorResponse(err, "validate failed"), 500);
   }
 });
 
@@ -313,11 +359,36 @@ app.post("/api/task/run", async (c) => {
   try { body = await c.req.json(); } catch { return c.json({ error: "invalid JSON" }, 400); }
   if (!body?.schema) return c.json({ error: "schema is required" }, 400);
   const schema = typeof body.schema === "string" ? body.schema : JSON.stringify(body.schema);
+
+  // Per-workflow mutex (#56 decision 4): reject concurrent runs of the SAME
+  // workflow definition with 409. Different workflows run in parallel.
+  //
+  // Lock acquisition is SYNCHRONOUS before the await on TaskRunAPI to avoid a
+  // TOCTOU race: if the check-and-set happened after the await, two concurrent
+  // same-workflow requests would both pass the empty-check, both call TaskRunAPI,
+  // and the second set() would orphan the first task. We reserve the lock with
+  // a placeholder taskID, then patch in the real taskID once TaskRunAPI returns.
+  const wfHash = workflowHashFromSchema(schema);
+  const existingTaskID = workflowLocks.get(wfHash);
+  if (existingTaskID && runningTasks.has(existingTaskID)) {
+    return c.json({ code: "workflow_busy", message: "workflow already running", taskID: existingTaskID }, 409);
+  }
+  const placeholderID = `pending_${nanoid(10)}`;
+  runningTasks.set(placeholderID, { workflowHash: wfHash, taskID: placeholderID, startedAt: Date.now() });
+  workflowLocks.set(wfHash, placeholderID);
+
   try {
     const result = await TaskRunAPI({ schema, inputs: body.inputs ?? {} });
+    // Patch the placeholder with the real taskID. Released by cancel, by the
+    // TTL sweep, or by a subsequent run that finds the task gone.
+    runningTasks.delete(placeholderID);
+    runningTasks.set(result.taskID, { workflowHash: wfHash, taskID: result.taskID, startedAt: Date.now() });
+    workflowLocks.set(wfHash, result.taskID);
     return c.json(result);
   } catch (err) {
-    return c.json({ code: -1, error: err?.message ?? "task run failed" }, 500);
+    // TaskRunAPI failed — release the placeholder so the workflow isn't stuck.
+    releaseTaskLock(placeholderID);
+    return c.json(taskErrorResponse(err, "task run failed"), 500);
   }
 });
 
@@ -326,9 +397,27 @@ app.get("/api/task/report", async (c) => {
   if (!taskID) return c.json({ error: "taskID is required" }, 400);
   try {
     const report = await TaskReportAPI({ taskID });
+    // If the task has terminated, release its workflow lock (#56 decision 5).
+    if (report && (report.status === "success" || report.status === "failed" || report.status === "cancelled")) {
+      releaseTaskLock(taskID);
+    }
     return c.json(report);
   } catch (err) {
-    return c.json({ code: -1, error: err?.message ?? "report failed" }, 500);
+    return c.json(taskErrorResponse(err, "report failed"), 500);
+  }
+});
+
+app.get("/api/task/result", async (c) => {
+  // #56 decision 1: re-export TaskResultAPI so the browser can fetch the final
+  // outputs (including _executionDetail) once a task terminates. Returns
+  // undefined (→ empty 200) if the task hasn't terminated yet.
+  const taskID = c.req.query("taskID");
+  if (!taskID) return c.json({ error: "taskID is required" }, 400);
+  try {
+    const result = await TaskResultAPI({ taskID });
+    return c.json(result ?? {});
+  } catch (err) {
+    return c.json(taskErrorResponse(err, "result failed"), 500);
   }
 });
 
@@ -338,9 +427,11 @@ app.put("/api/task/cancel", async (c) => {
   if (!body?.taskID) return c.json({ error: "taskID is required" }, 400);
   try {
     const result = await TaskCancelAPI({ taskID: body.taskID });
+    // Release the workflow lock immediately on cancel — the task is terminal.
+    if (result?.success) releaseTaskLock(body.taskID);
     return c.json(result);
   } catch (err) {
-    return c.json({ code: -1, error: err?.message ?? "cancel failed" }, 500);
+    return c.json(taskErrorResponse(err, "cancel failed"), 500);
   }
 });
 
