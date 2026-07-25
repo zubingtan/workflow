@@ -98,11 +98,5 @@
     "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,json,less,css,md}\"",
     "prepare": "husky"
   },
-  "packageManager": "pnpm@11.13.0",
-  "lint-staged": {
-    "src/**/*.{ts,tsx,js,jsx}": "eslint --fix",
-    "src/**/*.{less,css}": "stylelint --fix",
-    "src/**/styles.tsx": "stylelint",
-    "*.{ts,tsx,js,jsx,json,less,css,md,yml,yaml}": "prettier --write"
-  }
+  "packageManager": "pnpm@11.13.0"
 }
