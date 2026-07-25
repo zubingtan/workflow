@@ -1,0 +1,35 @@
+/**
+ * Semi bridge — override Semi's primary family (8 tokens + focus) so Semi
+ * components follow the brand color (#4d53e8 light / #8a8cff dark).
+ *
+ * CRITICAL (D6 pitfall 2): Semi defines `--semi-color-*` on `body`, so the
+ * override selector must be `body` (or higher specificity). `:root` alone
+ * cannot see `body` variables. We use `:root body` to guarantee cascade
+ * ordering without `!important`.
+ *
+ * Dark overrides hang off `body[theme-mode="dark"]` — the single source of
+ * truth for dark mode (D3, ADR-0002).
+ */
+
+/* stylelint-disable-next-line no-descending-specificity */
+:root body {
+  --semi-color-primary: #4d53e8;
+  --semi-color-primary-hover: #6366f1;
+  --semi-color-primary-active: #4338ca;
+  --semi-color-primary-disabled: #c7c9f5;
+  --semi-color-primary-light-default: rgba(77, 83, 232, 0.08);
+  --semi-color-primary-light-hover: rgba(77, 83, 232, 0.12);
+  --semi-color-primary-light-active: rgba(77, 83, 232, 0.16);
+  --semi-color-focus: rgba(77, 83, 232, 0.5);
+}
+
+body[theme-mode='dark'] {
+  --semi-color-primary: #8a8cff;
+  --semi-color-primary-hover: #a5acff;
+  --semi-color-primary-active: #6b7aff;
+  --semi-color-primary-disabled: #4a4f8a;
+  --semi-color-primary-light-default: rgba(138, 140, 255, 0.16);
+  --semi-color-primary-light-hover: rgba(138, 140, 255, 0.24);
+  --semi-color-primary-light-active: rgba(138, 140, 255, 0.32);
+  --semi-color-focus: rgba(138, 140, 255, 0.5);
+}

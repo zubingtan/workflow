@@ -74,5 +74,17 @@ module.exports = {
       files: ['**/styles.tsx', '**/*.styles.tsx'],
       customSyntax: 'postcss-styled-syntax',
     },
+    {
+      // src/theme/*.css — token DEFINITION files. The whole point of this
+      // directory is to own the hex values that other files consume via
+      // var(--app-*). `color-no-hex` would defeat the purpose here. The
+      // namespace convention (--app-*) is enforced by code review, per the
+      // stylelint config comment above. Semi bridge tokens (--semi-color-*)
+      // are also defined here as hex overrides.
+      files: ['src/theme/*.css'],
+      rules: {
+        'color-no-hex': null,
+      },
+    },
   ],
 };
