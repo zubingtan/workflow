@@ -3,6 +3,16 @@
  * SPDX-License-Identifier: MIT
  */
 
+/* Global reset: eliminate the UA body margin so app.tsx's height:100vh
+ * doesn't overflow the html element by 16px (8px top + 8px bottom body
+ * margin), which caused an unexpected page-level scrollbar. */
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
 :root {
   /* Port colors */
   --g-workflow-port-color-primary: #4d53e8;
