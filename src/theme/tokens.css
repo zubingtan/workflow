@@ -1,0 +1,108 @@
+/**
+ * Design tokens — primitive layer (`:root`) + semantic layer (`body`).
+ *
+ * Two-layer model (ADR-0002):
+ *  - Primitives (spacing/radius/font/shadow) live on `:root` and never carry
+ *    app meaning. They don't flip with theme.
+ *  - Semantics (color wrappers) live on `body` because they reference Semi's
+ *    `--semi-color-*` variables, which Semi mounts on `body` (D6 pitfall 2 —
+ *    defining on `:root` yields empty values because `:root` cannot see `body`
+ *    variables). Dark overrides hang off `body[theme-mode="dark"]`, the single
+ *    source of truth for dark mode (D3).
+ *
+ * Loading order (in app.tsx, see ADR-0002):
+ *   semi.min.css → semi-bridge.css → tokens.css → theme-dark.css
+ *   → flowgram-bridge.css → styles/index.css
+ */
+
+:root {
+  /* ---- Spacing (4px base × 10 tiers) ---- */
+  --app-space-0: 0;
+  --app-space-1: 4px;
+  --app-space-2: 8px;
+  --app-space-3: 12px;
+  --app-space-4: 16px;
+  --app-space-5: 20px;
+  --app-space-6: 24px;
+  --app-space-8: 32px;
+  --app-space-10: 40px;
+  --app-space-12: 48px;
+
+  /* ---- Radius (4 tiers; do NOT override Semi defaults) ---- */
+  --app-radius-sm: 4px;
+  --app-radius-md: 8px;
+  --app-radius-lg: 12px;
+  --app-radius-full: 9999px;
+
+  /* ---- Font size (5 tiers) + font weight (3 tiers) ---- */
+  --app-font-size-xs: 12px;
+  --app-font-size-sm: 13px;
+  --app-font-size-md: 14px;
+  --app-font-size-lg: 16px;
+  --app-font-size-xl: 20px;
+
+  --app-font-weight-regular: 400;
+  --app-font-weight-medium: 500;
+  --app-font-weight-strong: 600;
+
+  /* ---- Shadow (3 tiers light; dark variants in theme-dark.css) ---- */
+  --app-shadow-sm: 0 1px 2px rgba(0, 0, 0, 4%);
+  --app-shadow-md: 0 2px 8px rgba(0, 0, 0, 8%);
+  --app-shadow-lg: 0 6px 16px rgba(0, 0, 0, 12%);
+
+  /* ---- Primary family (light, locked by D4) ----
+   * These are app-layer semantic wrappers — the Semi bridge in semi-bridge.css
+   * pushes these same values into Semi's `--semi-color-primary-*` so Semi
+   * components follow the brand automatically. */
+  --app-color-primary: #4d53e8;
+  --app-color-primary-hover: #6366f1;
+  --app-color-primary-active: #4338ca;
+  --app-color-primary-disabled: #c7c9f5;
+  --app-color-primary-light-default: rgba(77, 83, 232, 0.08);
+  --app-color-primary-light-hover: rgba(77, 83, 232, 0.12);
+  --app-color-primary-light-active: rgba(77, 83, 232, 0.16);
+  --app-color-focus: rgba(77, 83, 232, 0.5);
+}
+
+/**
+ * Semantic color wrappers — defined on `body` (NOT `:root`) per D6 pitfall 2.
+ * They reference Semi's `--semi-color-*` variables, which Semi mounts on body.
+ *
+ * Note: the `--app-color-primary-*` family is defined on `:root` (above) and
+ * cascades through to `body` automatically — NOT re-declared here. Only
+ * wrappers that route through Semi's body-mounted vars live on `body`.
+ */
+body {
+  /* Grayscale wrappers — route through Semi's body-mounted color scale. */
+  --app-color-canvas: var(--semi-color-bg-1);
+  --app-color-surface: var(--semi-color-bg-2);
+  --app-color-overlay: var(--semi-color-bg-3);
+  --app-color-panel: var(--semi-color-bg-4);
+  --app-color-text-1: var(--semi-color-text-0);
+  --app-color-text-2: var(--semi-color-text-1);
+  --app-color-text-3: var(--semi-color-text-2);
+  --app-color-text-disabled: var(--semi-color-text-3);
+  --app-color-border: var(--semi-color-border);
+  --app-color-divider: var(--semi-color-border);
+  --app-color-fill-0: var(--semi-color-fill-0);
+  --app-color-fill-1: var(--semi-color-fill-1);
+  --app-color-fill-2: var(--semi-color-fill-2);
+
+  /* Semantic status — route through Semi (auto-flips in dark mode). */
+  --app-color-success: var(--semi-color-success);
+  --app-color-warning: var(--semi-color-warning);
+  --app-color-danger: var(--semi-color-danger);
+  --app-color-info: var(--semi-color-info);
+
+  /* Node card (light) — D4 §2 self-invented. */
+  --app-color-node-bg: var(--semi-color-bg-2);
+  --app-color-node-border: var(--semi-color-border);
+
+  /* D6 pitfalls 3 + 4: page background + body margin reset.
+   * Semi doesn't set a page background-color, so dark mode showed white
+   * patches behind transparent containers. Browser default body margin (8px)
+   * was never cleared and caused accidental page scroll. */
+  background-color: var(--app-color-canvas);
+  color: var(--app-color-text-1);
+  margin: 0;
+}

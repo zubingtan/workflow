@@ -1,0 +1,31 @@
+/**
+ * Dark-mode overrides for app-layer tokens (the ones not already overridden by
+ * semi-bridge.css). Single source of truth: `body[theme-mode='dark']` (D3,
+ * ADR-0002).
+ *
+ * - Primary family flips to the dark palette (#8a8cff family).
+ * - Node card gets a distinct dark background (#1f1f2e) and border (#3a3a5c),
+ *   validated in the D6 prototype.
+ * - Shadows deepen (no rgba alpha hack).
+ */
+
+body[theme-mode='dark'] {
+  /* Primary family (dark, locked by D4). */
+  --app-color-primary: #8a8cff;
+  --app-color-primary-hover: #a5acff;
+  --app-color-primary-active: #6b7aff;
+  --app-color-primary-disabled: #4a4f8a;
+  --app-color-primary-light-default: rgba(138, 140, 255, 0.16);
+  --app-color-primary-light-hover: rgba(138, 140, 255, 0.24);
+  --app-color-primary-light-active: rgba(138, 140, 255, 0.32);
+  --app-color-focus: rgba(138, 140, 255, 0.5);
+
+  /* Node card dark (D4 §2 — self-invented, validated in D6 prototype). */
+  --app-color-node-bg: #1f1f2e;
+  --app-color-node-border: #3a3a5c;
+
+  /* Shadow darkening — deeper, lower-alpha black for dark surfaces. */
+  --app-shadow-sm: 0 1px 2px rgba(0, 0, 0, 24%);
+  --app-shadow-md: 0 2px 8px rgba(0, 0, 0, 36%);
+  --app-shadow-lg: 0 6px 16px rgba(0, 0, 0, 48%);
+}

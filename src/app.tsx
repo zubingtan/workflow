@@ -2,10 +2,26 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { createRoot } from 'react-dom/client';
 import { unstableSetCreateRoot } from '@flowgram.ai/form-materials';
+// Semi CSS must load before semi-bridge.css so the bridge overrides win.
+// D6 pitfall 1: bare '@douyinfe/semi-ui/dist/css/semi.min.css' import path is
+// blocked by the package's `exports` field under Semi 2.101.1, but the file
+// physically exists at that path — rsbuild resolves it via the filesystem.
+// If this breaks in a future Semi upgrade, switch to a relative path.
+import '@douyinfe/semi-ui/dist/css/semi.min.css';
 import { Button, Typography, Spin, Toast, Modal } from '@douyinfe/semi-ui';
-import { IconArrowLeft, IconSave } from '@douyinfe/semi-icons';
+import { IconArrowLeft, IconMoon, IconSave, IconSun } from '@douyinfe/semi-icons';
+
+// Theme CSS files — order matters (ADR-0002):
+//   semi.min.css → semi-bridge.css → tokens.css → theme-dark.css
+//   → flowgram-bridge.css → ./styles/index.css → app code
+import './theme/semi-bridge.css';
+import './theme/tokens.css';
+import './theme/theme-dark.css';
+import './theme/flowgram-bridge.css';
+import './styles/index.css';
 
 import { FlowDocumentJSON } from './typings';
+import { useTheme } from './theme';
 import { GetGlobalVariableSchema } from './plugins/variable-panel-plugin';
 import { WorkflowManager, AgentManager } from './manage';
 import { initialData } from './initial-data';
@@ -35,6 +51,7 @@ function App() {
     action: (() => void) | null;
   }>({ visible: false, action: null });
   const ctxRef = useRef<any>(null);
+  const { resolvedTheme, toggleTheme } = useTheme();
 
   // Seed a default workflow on first launch
   useEffect(() => {
@@ -165,6 +182,17 @@ function App() {
             {item.label}
           </div>
         ))}
+        {/* Spacer pushes the theme toggle to the sidebar bottom. */}
+        <div style={{ flex: 1 }} />
+        <div style={{ padding: '0 12px' }}>
+          <Button
+            icon={resolvedTheme === 'dark' ? <IconSun /> : <IconMoon />}
+            theme="borderless"
+            size="small"
+            onClick={toggleTheme}
+            aria-label={resolvedTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+          />
+        </div>
       </div>
 
       {/* Main area */}

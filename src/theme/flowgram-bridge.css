@@ -1,0 +1,49 @@
+/**
+ * FlowGram bridge — map the project's `--g-workflow-*` variables onto the
+ * `--app-*` token layer so port/line colors follow light/dark theme.
+ *
+ * The `--g-workflow-port-color-*` and `--g-workflow-line-color-*` variables
+ * are consumed by FlowGram's editor (see `src/hooks/use-editor-props.tsx`).
+ * Originally they were defined with hardcoded hex values in
+ * `src/styles/index.css`; this bridge overrides them on `body` so they route
+ * through `--app-color-primary` / `--app-color-primary-hover` / etc. instead,
+ * which in turn flip with `body[theme-mode]`.
+ *
+ * Defined on `body` (NOT `:root`) for two reasons (D6 pitfall 2):
+ *   1. The semantic `--app-color-*` wrappers themselves live on `body` (they
+ *      route through Semi's `--semi-color-*`, which Semi mounts on `body`).
+ *      Defining these on `:root` would resolve the var() reference to the
+ *      empty string because `:root` cannot see `body` variables.
+ *   2. Higher specificity than the `:root` definitions in `styles/index.css`,
+ *      so we win regardless of CSS load order.
+ *
+ * Scope (spec AC #5): only the `--g-workflow-*` family. FlowGram's internal
+ * `--g-playground-*` / `--g-editor-*` vars are NOT bridged because they are
+ * defined by FlowGram's runtime (when present) and consumed by its own
+ * internals — touching them is out of scope for the token-layer ticket.
+ */
+
+body {
+  /* Port colors — follow the primary family. */
+  --g-workflow-port-color-primary: var(--app-color-primary);
+  --g-workflow-port-color-secondary: var(--app-color-primary-hover);
+  --g-workflow-port-color-background: var(--app-color-canvas);
+
+  /* Line colors — default/flowing follow primary; drawing/hover/selected stay
+   * distinct cyan accents (FlowGram UX, not part of the brand palette). */
+  --g-workflow-line-color-default: var(--app-color-primary);
+  --g-workflow-line-color-flowing: var(--app-color-primary);
+}
+
+body[theme-mode='dark'] {
+  /* In dark mode the primary family already flips via theme-dark.css, so the
+   * `var(--app-color-*)` references above re-resolve automatically. Re-stating
+   * the block here keeps the dark variant explicit per spec AC #5 and gives a
+   * single place to override line/port colors for dark mode if needed later. */
+  --g-workflow-port-color-primary: var(--app-color-primary);
+  --g-workflow-port-color-secondary: var(--app-color-primary-hover);
+  --g-workflow-port-color-background: var(--app-color-canvas);
+
+  --g-workflow-line-color-default: var(--app-color-primary);
+  --g-workflow-line-color-flowing: var(--app-color-primary);
+}
