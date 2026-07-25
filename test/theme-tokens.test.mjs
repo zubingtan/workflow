@@ -149,13 +149,19 @@ test('Layer 1: tokens.css applies global body reset (background-color + color + 
   assert.match(css, /body\s*\{[^}]*margin\s*:\s*0/s);
 });
 
+// Prettier reformats CSS attribute selectors to single quotes (.prettierrc:
+// singleQuote: true). Tests should assert on the selector existence, not on a
+// specific quote style — so accept either `body[theme-mode='dark']` or
+// `body[theme-mode="dark"]`.
+const DARK_SELECTOR = /body\[theme-mode=['"]dark['"]\]/;
+
 test('Layer 1: theme-dark.css defines dark primary #8a8cff + node-bg #1f1f2e + node-border #3a3a5c', () => {
   const css = readCss('theme-dark.css');
   assert.match(css, /--app-color-primary\s*:\s*#8a8cff/i);
   assert.match(css, /--app-color-node-bg\s*:\s*#1f1f2e/i);
   assert.match(css, /--app-color-node-border\s*:\s*#3a3a5c/i);
-  // Dark overrides must hang off body[theme-mode="dark"] (D3 single source of truth).
-  assert.match(css, /body\[theme-mode="dark"\]/);
+  // Dark overrides must hang off body[theme-mode=dark] (D3 single source of truth).
+  assert.match(css, DARK_SELECTOR);
 });
 
 test('Layer 1: semi-bridge.css overrides Semi primary family (8 + focus) on :root body + dark', () => {
@@ -175,8 +181,8 @@ test('Layer 1: semi-bridge.css overrides Semi primary family (8 + focus) on :roo
   }
   // Light override on `:root body` (D2 + D6 pitfall 2: must be body, not :root).
   assert.match(css, /:root\s+body\s*\{/);
-  // Dark override on `body[theme-mode="dark"]`.
-  assert.match(css, /body\[theme-mode="dark"\]\s*\{/);
+  // Dark override on `body[theme-mode=dark]`.
+  assert.match(css, DARK_SELECTOR);
   // Light primary must be #4d53e8.
   assert.match(css, /--semi-color-primary\s*:\s*#4d53e8/i);
 });
@@ -196,7 +202,7 @@ test('Layer 1: flowgram-bridge.css bridges FlowGram --g-workflow-* vars to --app
   // Bridge must route through --app-* tokens (not hardcoded hex).
   assert.match(css, /var\(--app-color-primary\)/, 'bridge must use --app-color-primary');
   // Dark variant must exist (spec AC #5).
-  assert.match(css, /body\[theme-mode="dark"\]/);
+  assert.match(css, DARK_SELECTOR);
 });
 
 test('Layer 1: app.tsx imports theme CSS files in the mandated order', () => {
