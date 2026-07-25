@@ -12,6 +12,7 @@ import {
 } from '@douyinfe/semi-ui';
 import { IconCopy, IconDelete, IconEdit, IconPlus, IconPlay } from '@douyinfe/semi-icons';
 
+import { newWorkflowTemplate } from './new-workflow-template.mjs';
 import * as api from './api';
 import { useAgentExecution } from './agent-execution/use-agent-execution';
 
@@ -265,7 +266,7 @@ export function WorkflowManager({ onOpen }: { onOpen: (id: string) => void }) {
 
   const create = async () => {
     if (!newName.trim()) return;
-    const wf = await api.createWorkflow(newName.trim(), { nodes: [], edges: [] });
+    const wf = await api.createWorkflow(newName.trim(), newWorkflowTemplate());
     setCreating(false);
     setNewName('');
     onOpen(wf.id);
