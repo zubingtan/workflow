@@ -53,3 +53,20 @@ test('newWorkflowTemplate returns a fresh object each call (no shared mutation)'
     'mutating one return value must not affect the next'
   );
 });
+
+test('newWorkflowTemplate seeds nodes with non-overlapping horizontal spacing', () => {
+  // All three node types have size.width = 360 (set in their registries and in
+  // base-node/styles.tsx). Adjacent nodes in the chain must be spaced at least
+  // 360px apart on the x-axis, otherwise they visually overlap — which is the
+  // exact regression this test exists to prevent.
+  const NODE_WIDTH = 360;
+  const doc = newWorkflowTemplate();
+  const xs = doc.nodes.map((n) => n.meta.position.x).sort((a, b) => a - b);
+  for (let i = 1; i < xs.length; i++) {
+    const gap = xs[i] - xs[i - 1];
+    assert.ok(
+      gap >= NODE_WIDTH,
+      `adjacent nodes overlap: x=${xs[i - 1]} → x=${xs[i]} (gap ${gap} < width ${NODE_WIDTH})`
+    );
+  }
+});

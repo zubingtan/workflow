@@ -6,6 +6,11 @@
  * "New Workflow" usable, the document must ship with one of each, plus a single
  * empty LLM node wired between them so the user has something to configure.
  *
+ * Node width is 360px for all three types (set in each node registry's
+ * meta.size.width and in base-node/styles.tsx). The horizontal gap between
+ * adjacent node left-edges is 440px (= 360px node + 80px gutter), so nodes
+ * never overlap visually and the start→llm→end chain reads as a clear line.
+ *
  * @returns {import('./typings').FlowDocumentJSON}
  */
 export function newWorkflowTemplate() {
@@ -28,7 +33,7 @@ export function newWorkflowTemplate() {
       {
         id: 'llm_main',
         type: 'llm',
-        meta: { position: { x: 420, y: 300 } },
+        meta: { position: { x: 540, y: 300 } },
         data: {
           title: 'Agent_Main',
           inputsValues: {
@@ -52,7 +57,7 @@ export function newWorkflowTemplate() {
       {
         id: 'end_0',
         type: 'end',
-        meta: { position: { x: 740, y: 300 } },
+        meta: { position: { x: 980, y: 300 } },
         data: {
           title: 'End',
           inputsValues: {
