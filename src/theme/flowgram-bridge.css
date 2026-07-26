@@ -17,10 +17,11 @@
  *   2. Higher specificity than the `:root` definitions in `styles/index.css`,
  *      so we win regardless of CSS load order.
  *
- * Scope (spec AC #5): only the `--g-workflow-*` family. FlowGram's internal
- * `--g-playground-*` / `--g-editor-*` vars are NOT bridged because they are
- * defined by FlowGram's runtime (when present) and consumed by its own
- * internals — touching them is out of scope for the token-layer ticket.
+ * Scope (spec AC #5): the `--g-workflow-*` family PLUS `--g-editor-background`
+ * (FlowGram's canvas root `.gedit-playground` reads this var). Originally
+ * `--g-editor-background` was NOT bridged, leaving the canvas stuck on
+ * FlowGram's default `#f2f3f5` in dark mode — now bridged to
+ * `--app-color-canvas` so the canvas follows the theme.
  */
 
 body {
@@ -33,6 +34,11 @@ body {
    * distinct cyan accents (FlowGram UX, not part of the brand palette). */
   --g-workflow-line-color-default: var(--app-color-primary);
   --g-workflow-line-color-flowing: var(--app-color-primary);
+
+  /* Canvas background — bridge FlowGram's playground var to the app canvas
+   * token so light/dark both follow. Without this, dark mode left the canvas
+   * on FlowGram's default light gray (#f2f3f5). */
+  --g-editor-background: var(--app-color-canvas);
 }
 
 body[theme-mode='dark'] {
@@ -46,4 +52,12 @@ body[theme-mode='dark'] {
 
   --g-workflow-line-color-default: var(--app-color-primary);
   --g-workflow-line-color-flowing: var(--app-color-primary);
+}
+
+/* Grid dots — FlowGram renders the canvas grid as an SVG pattern of <circle>
+ * elements with default fill rgb(0,0,0). On a dark canvas the black dots read
+ * as bright noise. Lower the opacity so the grid stays subtle. Light mode is
+ * unaffected (black dots on a light canvas are already subtle). */
+body[theme-mode='dark'] .gedit-grid-svg circle {
+  opacity: 0.3;
 }

@@ -11,14 +11,14 @@ export const Header = styled.div`
   justify-content: flex-start;
   align-items: center;
   width: 100%;
-  column-gap: 8px;
-  border-radius: 8px 8px 0 0;
+  column-gap: var(--app-space-2);
+  border-radius: var(--app-radius-md) var(--app-radius-md) 0 0;
   cursor: move;
 
-  background: linear-gradient(#f2f2ff 0%, rgb(251, 251, 251) 100%);
+  background: linear-gradient(var(--app-color-node-header-from) 0%, var(--app-color-surface) 100%);
   overflow: hidden;
 
-  padding: 8px;
+  padding: var(--app-space-2);
 `;
 
 export const Title = styled.div`
