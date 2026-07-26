@@ -15,11 +15,11 @@ export function SidebarNodeRenderer(props: { node: FlowNodeEntity }) {
     <NodeRenderContext.Provider value={nodeRender}>
       <div
         style={{
-          background: 'rgb(251, 251, 251)',
+          background: 'var(--app-color-surface)',
           height: '100%',
           width: '100%',
-          borderRadius: 8,
-          border: '1px solid rgba(82,100,154, 0.13)',
+          borderRadius: 'var(--app-radius-md)',
+          border: '1px solid var(--app-color-border)',
           boxSizing: 'border-box',
         }}
       >

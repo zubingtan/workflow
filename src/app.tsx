@@ -160,11 +160,11 @@ function App() {
         style={{
           width: 200,
           flexShrink: 0,
-          borderRight: '1px solid var(--semi-color-border)',
-          background: 'var(--semi-color-bg-1)',
+          borderRight: '1px solid var(--app-color-border)',
+          background: 'var(--app-color-canvas)',
           display: 'flex',
           flexDirection: 'column',
-          padding: '16px 0',
+          padding: 'var(--app-space-4) 0',
         }}
       >
         {NAV_ITEMS.map((item) => (
@@ -172,11 +172,11 @@ function App() {
             key={item.key}
             onClick={() => requestNavigation(() => setView(item.key))}
             style={{
-              padding: '10px 16px',
+              padding: 'var(--app-space-2) var(--app-space-4)',
               cursor: 'pointer',
               fontWeight: view === item.key ? 700 : 400,
-              background: view === item.key ? 'var(--semi-color-fill-0)' : 'transparent',
-              color: view === item.key ? 'var(--semi-color-primary)' : 'var(--semi-color-text-0)',
+              background: view === item.key ? 'var(--app-color-fill-0)' : 'transparent',
+              color: view === item.key ? 'var(--app-color-primary)' : 'var(--app-color-text-1)',
             }}
           >
             {item.label}
@@ -184,7 +184,7 @@ function App() {
         ))}
         {/* Spacer pushes the theme toggle to the sidebar bottom. */}
         <div style={{ flex: 1 }} />
-        <div style={{ padding: '0 12px' }}>
+        <div style={{ padding: '0 var(--app-space-3)' }}>
           <Button
             icon={resolvedTheme === 'dark' ? <IconSun /> : <IconMoon />}
             theme="borderless"
@@ -201,7 +201,7 @@ function App() {
           flex: 1,
           overflow: 'auto',
           position: 'relative',
-          background: 'var(--semi-color-bg-1)',
+          background: 'var(--app-color-canvas)',
         }}
       >
         {!booted ? (
@@ -225,10 +225,10 @@ function App() {
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 8,
-                padding: '8px 16px',
-                borderBottom: '1px solid var(--semi-color-border)',
-                background: 'var(--semi-color-bg-1)',
+                gap: 'var(--app-space-2)',
+                padding: 'var(--app-space-2) var(--app-space-4)',
+                borderBottom: '1px solid var(--app-color-border)',
+                background: 'var(--app-color-canvas)',
               }}
             >
               <Button

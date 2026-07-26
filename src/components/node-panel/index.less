@@ -6,40 +6,40 @@
 .node-placeholder {
   width: 360px;
 
-  background-color: rgba(252, 252, 255, 1);
-  border: 1px solid rgba(68, 83, 130, 0.25);
-  border-radius: 8px;
-  box-shadow: 0 4px 12px 0 rgba(0, 0, 0, 2%), 0 2px 6px 0 rgba(0, 0, 0, 4%);
+  background-color: var(--app-color-surface);
+  border: 1px solid var(--app-color-border);
+  border-radius: var(--app-radius-md);
+  box-shadow: var(--app-shadow-lg);
 }
 
 .node-placeholder-skeleton {
   width: 100%;
-  padding: 12px;
-  background-color: rgba(252, 252, 255, 1);
-  border-radius: 8px;
+  padding: var(--app-space-3);
+  background-color: var(--app-color-surface);
+  border-radius: var(--app-radius-md);
 
   .semi-skeleton-avatar {
-    background-color: rgba(68, 83, 130, 0.25);
+    background-color: var(--app-color-border);
   }
 
   .semi-skeleton-title {
     height: 16px;
-    background-color: rgba(82, 100, 154, 0.13);
-    border-radius: 4px;
+    background-color: var(--app-color-fill-1);
+    border-radius: var(--app-radius-sm);
   }
 }
 
 .node-placeholder-hd {
   display: flex;
   align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: var(--app-space-3);
 }
 
 .node-placeholder-avatar {
   width: 24px;
   height: 24px;
-  margin-right: 8px;
-  border-radius: 6px;
+  margin-right: var(--app-space-2);
+  border-radius: var(--app-radius-sm);
 }
 
 .node-placeholder-content {

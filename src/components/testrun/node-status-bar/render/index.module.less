@@ -4,25 +4,28 @@
  */
 
 .nodeStatus {
+  /* Backgrounds keep their original rgba tints (not stylelint violations —
+   * color-no-hex only catches hex). Foreground text colors migrated from
+   * hex to --app-color-* tokens so they auto-flip in dark mode. */
   &Succeed {
     background-color: rgba(105, 209, 140, 0.3);
-    color: #00b42a;
+    color: var(--app-color-success);
   }
 
   &Processing {
     background-color: rgba(153, 187, 255, 0.3);
-    color: #4d53e8;
+    color: var(--app-color-primary);
   }
 
   &Failed {
     background-color: rgba(255, 163, 171, 0.3);
-    color: #f53f3f;
+    color: var(--app-color-danger);
   }
 }
 
 .icon {
   &.processing {
-    color: rgba(77, 83, 232, 1);
+    color: var(--app-color-primary);
   }
 }
 
@@ -36,7 +39,7 @@
 
 .count {
   font-weight: 500;
-  color: #333;
+  color: var(--app-color-text-1);
   font-size: 15px;
   margin-left: 12px;
 }
@@ -59,12 +62,12 @@
   font-weight: 500;
 
   &.active {
-    border-color: #4d53e8;
+    border-color: var(--app-color-primary);
     font-weight: 800;
   }
 
   &.inactive {
-    border-color: rgba(29, 28, 35, 0.08);
+    border-color: var(--app-color-border);
   }
 }
 
@@ -74,11 +77,11 @@
   border: 1px solid;
 
   &.active {
-    border-color: #4d53e8;
+    border-color: var(--app-color-primary);
   }
 
   &.inactive {
-    border-color: rgba(29, 28, 35, 0.08);
+    border-color: var(--app-color-border);
   }
 }
 
@@ -90,5 +93,5 @@
 
 .error {
   padding: 12px;
-  color: red;
+  color: var(--app-color-danger);
 }

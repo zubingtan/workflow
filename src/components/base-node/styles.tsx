@@ -8,10 +8,10 @@ import { IconInfoCircle } from '@douyinfe/semi-icons';
 
 export const NodeWrapperStyle = styled.div`
   align-items: flex-start;
-  background-color: #fff;
-  border: 1px solid rgba(6, 7, 9, 0.15);
-  border-radius: 8px;
-  box-shadow: 0 2px 6px 0 rgba(0, 0, 0, 0.04), 0 4px 12px 0 rgba(0, 0, 0, 0.02);
+  background-color: var(--app-color-node-bg);
+  border: 1px solid var(--app-color-node-border);
+  border-radius: var(--app-radius-md);
+  box-shadow: var(--app-shadow-md);
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -20,7 +20,7 @@ export const NodeWrapperStyle = styled.div`
   height: auto;
 
   &.selected {
-    border: 1px solid #4e40e5;
+    border: 1px solid var(--app-color-primary-active);
   }
 `;
 
@@ -28,11 +28,11 @@ export const ErrorIcon = () => (
   <IconInfoCircle
     style={{
       position: 'absolute',
-      color: 'red',
+      color: 'var(--app-color-danger)',
       left: -6,
       top: -6,
       zIndex: 1,
-      background: 'white',
+      background: 'var(--app-color-canvas)',
       borderRadius: 8,
     }}
   />
