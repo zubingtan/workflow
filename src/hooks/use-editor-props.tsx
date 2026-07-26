@@ -35,6 +35,7 @@ import {
 } from '../plugins';
 import { defaultFormMeta } from '../nodes/default-form-meta';
 import { WorkflowNodeType } from '../nodes';
+import { getMinimapCanvasStyle } from '../components/tools/minimap-canvas-style.mjs';
 import { SelectorBoxPopover } from '../components/selector-box-popover';
 import { BaseNode, CommentRender, GroupNodeRender, LineAddButton, NodePanel } from '../components';
 
@@ -319,23 +320,11 @@ export function useEditorProps(
          */
         createMinimapPlugin({
           disableLayer: true,
-          canvasStyle: {
-            canvasWidth: 182,
-            canvasHeight: 102,
-            canvasPadding: 50,
-            canvasBackground: 'rgba(242, 243, 245, 1)',
-            canvasBorderRadius: 10,
-            viewportBackground: 'rgba(255, 255, 255, 1)',
-            viewportBorderRadius: 4,
-            viewportBorderColor: 'rgba(6, 7, 9, 0.10)',
-            viewportBorderWidth: 1,
-            viewportBorderDashLength: undefined,
-            nodeColor: 'rgba(0, 0, 0, 0.10)',
-            nodeBorderRadius: 2,
-            nodeBorderWidth: 0.145,
-            nodeBorderColor: 'rgba(6, 7, 9, 0.10)',
-            overlayColor: 'rgba(255, 255, 255, 0.55)',
-          },
+          // First-mount canvasStyle. Runtime theme switches are handled by
+          // `<Minimap>` calling `FlowMinimapService.init({ canvasStyle })`,
+          // so this value only matters until the Minimap component's first
+          // effect runs (which immediately re-inits with the current theme).
+          canvasStyle: getMinimapCanvasStyle('light'),
         }),
         /**
          * Download plugin
