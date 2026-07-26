@@ -5,14 +5,27 @@
  * resolvedTheme/themeMode and call setThemeMode/toggleTheme. The controller
  * itself is React-free and node-testable (Layer 2, #54 pattern).
  *
- * On mount: creates a controller (which reads localStorage, applies
- * body[theme-mode] — already set by the FOUC script — and subscribes to
- * matchMedia). On unmount: disposes the controller.
+ * **Singleton controller**: the controller is created once at module load
+ * and shared across all `useTheme()` callers. This is necessary because
+ * `<Minimap>` (rendered inside FlowGram's panel-manager-plugin) and `<App>`
+ * both call `useTheme()` — if each got its own controller, `<App>`'s
+ * `toggleTheme()` would notify only `<App>`, and `<Minimap>` would never
+ * see the change (its controller is a separate instance with its own
+ * matchMedia listener, which doesn't fire on user-initiated toggles).
+ *
+ * The shared controller holds a Set of React `force` callbacks; every
+ * `setThemeMode` / `toggleTheme` / matchMedia change invokes all of them,
+ * so every subscribed component re-renders in lockstep.
+ *
+ * On mount: a component subscribes its `force` callback to the singleton.
+ * On unmount: the callback is removed. The controller itself is never
+ * disposed — it lives for the page lifetime (matching the original design
+ * where the FOUC script has already set body[theme-mode] before React
+ * mounts, and the controller takes over from there).
  *
  * `auto` mode follows `matchMedia('(prefers-color-scheme: dark)')` in real
- * time — the controller invokes our `onChange` callback when OS preference
- * changes, which triggers a React re-render. No second matchMedia listener
- * is needed here; the controller owns the single subscription.
+ * time — the controller's matchMedia subscription invokes all subscribers
+ * when OS preference changes.
  */
 import { useCallback, useEffect, useState } from 'react';
 
@@ -28,53 +41,66 @@ export interface UseThemeReturn {
   toggleTheme: () => void;
 }
 
+// --- Singleton controller (module scope, shared by all useTheme callers) ---
+// Created lazily on first use in the browser. Stays null in SSR / Node tests
+// (tests import createThemeController directly from theme-controller.mjs).
+interface SingletonState {
+  controller: ReturnType<typeof createThemeController>;
+  subscribers: Set<() => void>;
+}
+let singleton: SingletonState | null = null;
+
+function getSingleton(): SingletonState {
+  if (singleton) return singleton;
+  const subscribers = new Set<() => void>();
+  const notifyAll = () => {
+    // Defer to next microtask so multiple synchronous state changes (e.g.
+    // setThemeMode → apply → notify) batch into a single React re-render.
+    // Using queueMicrotask keeps it deterministic without a full macrotask.
+    queueMicrotask(() => {
+      subscribers.forEach((fn) => fn());
+    });
+  };
+  const controller = createThemeController({
+    localStorage: window.localStorage,
+    matchMedia: (q: string) => window.matchMedia(q),
+    body: document.body,
+    onChange: () => notifyAll(),
+  });
+  singleton = { controller, subscribers };
+  return singleton;
+}
+
 /**
  * React hook for theme state. Reads the initial body attribute (set by the
  * FOUC script) so first render matches first paint.
  */
 export function useTheme(): UseThemeReturn {
-  const [controller, setController] = useState<ReturnType<typeof createThemeController> | null>(
-    null
-  );
-  // Bump a counter to trigger re-renders whenever the controller notifies.
-  // The controller mutates its own state; we read it lazily in the getters
-  // below, and this counter is what makes React notice the mutation.
   const [, force] = useState(0);
   const rerender = useCallback(() => force((n) => n + 1), []);
 
   useEffect(() => {
-    const c = createThemeController({
-      localStorage: window.localStorage,
-      matchMedia: (q: string) => window.matchMedia(q),
-      body: document.body,
-      // Single subscription point — the controller calls this on every
-      // resolved-theme change (setThemeMode, toggleTheme, or OS flip while
-      // in 'auto' mode). Replaces the previous "second matchMedia listener"
-      // workaround.
-      onChange: () => rerender(),
-    });
-    setController(c);
-    return () => c.dispose();
+    const { subscribers } = getSingleton();
+    subscribers.add(rerender);
+    return () => {
+      subscribers.delete(rerender);
+    };
   }, [rerender]);
 
-  const setThemeMode = useCallback(
-    (mode: ThemeMode) => {
-      controller?.setThemeMode(mode);
-      // Controller's onChange already triggers rerender, but call it here
-      // too in case a future controller variant doesn't notify.
-      rerender();
-    },
-    [controller, rerender]
-  );
+  const setThemeMode = useCallback((mode: ThemeMode) => {
+    const { controller } = getSingleton();
+    controller.setThemeMode(mode);
+  }, []);
 
   const toggleTheme = useCallback(() => {
-    controller?.toggleTheme();
-    rerender();
-  }, [controller, rerender]);
+    const { controller } = getSingleton();
+    controller.toggleTheme();
+  }, []);
 
+  const { controller } = getSingleton();
   return {
-    resolvedTheme: controller?.resolvedTheme ?? 'light',
-    themeMode: controller?.themeMode ?? 'auto',
+    resolvedTheme: controller.resolvedTheme,
+    themeMode: controller.themeMode,
     setThemeMode,
     toggleTheme,
   };
