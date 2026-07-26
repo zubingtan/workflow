@@ -84,14 +84,45 @@ canvas LLM node → localhost:4001/agents/:id/run (Hono, SSE)
 ## Commands
 
 ```bash
-pnpm dev              # rsbuild dev only (frontend, --open)
-pnpm server           # Hono backend only (needs .env)
-pnpm fake-provider    # fake provider only (needs .env)
-pnpm dev:all          # all three via concurrently
+pnpm dev              # rsbuild dev only (frontend only, port 3000)
+pnpm server           # Hono backend only (needs .env, port 4001)
+pnpm fake-provider    # fake provider only (needs .env, port 4010)
+pnpm dev:all          # all three via concurrently (fake + server + web)
 pnpm build:prod       # production rsbuild build
 pnpm ts-check         # tsc --noEmit
 pnpm lint             # eslint ./src --cache
 ```
+
+### Dev server startup convention
+
+`pnpm dev` / `pnpm dev:all` no longer pass `--open` to rsbuild — starting
+the dev server will NOT auto-open a browser tab. Open http://localhost:3000
+manually when you need it.
+
+**Which command to use:**
+
+| Scenario                                                          | Command         | Why                                                 |
+| ----------------------------------------------------------------- | --------------- | --------------------------------------------------- |
+| Agent starts full-stack dev (LLM node needs backend + provider)   | `pnpm dev:all`  | One process group, three ports ready                |
+| Agent only iterates on frontend (no agent execution, no Test Run) | `pnpm dev`      | Lighter; backend & provider not needed              |
+| Agent only iterates on backend (SSE, CRUD, no canvas)             | `pnpm server`   | Frontend not needed; `PUBLIC_SERVER_URL` irrelevant |
+| Agent runs E2E                                                    | `pnpm test:e2e` | `e2e/global-setup.ts` spawns its own dev stack      |
+
+**Agent rules:**
+
+- Default to `pnpm dev:all` for any task that touches LLM node behavior,
+  agent execution, or anything observable from the canvas. The canvas
+  alone is useless without the backend to execute against.
+- Use `pnpm dev` (frontend only) for pure-UI work (layout, styling,
+  component behavior) where backend interaction is out of scope.
+- Never run `pnpm dev` and `pnpm server` / `pnpm fake-provider` in
+  separate terminals — use `pnpm dev:all` so the process group is
+  managed as one unit.
+- After startup, wait for the three ports to be ready before declaring
+  "dev server is up":
+  - http://localhost:4010/health/live (fake-provider)
+  - http://localhost:4001/health/live (Hono server)
+  - http://localhost:3000 (rsbuild dev — any HTTP response is fine)
 
 ## Key files
 

@@ -128,11 +128,11 @@ export default async function globalSetup() {
   });
   await waitForUrl('http://localhost:4001/health/live', 'Hono server', 'server');
 
-  // --- rsbuild dev (port 3000) WITHOUT --open ---
-  // The `pnpm dev` script is `cross-env MODE=app NODE_ENV=development rsbuild dev --open`.
-  // For E2E we run rsbuild directly, set the env vars ourselves, and DROP --open
-  // (playwright launches its own chromium; an extra external browser tab is
-  // noise and can hang headless environments).
+  // --- rsbuild dev (port 3000) ---
+  // The `pnpm dev` script no longer passes `--open` (auto-open was removed so
+  // agent-driven dev starts don't spawn a browser tab). For E2E we still run
+  // rsbuild directly (rather than via `pnpm dev`) so we control env vars and
+  // process-group management ourselves — playwright launches its own chromium.
   const rsbuildBin = resolve(ROOT, 'node_modules', '.bin', 'rsbuild');
   processes.web = spawnLogged('web', rsbuildBin, ['dev'], {
     ...baseEnv,
