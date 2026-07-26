@@ -11,9 +11,9 @@ export const FormWrapper = styled.div`
   display: flex;
   flex-direction: column;
   gap: 6px;
-  background-color: rgb(251, 251, 251);
-  border-radius: 0 0 8px 8px;
-  padding: 0 12px 12px;
+  background-color: var(--app-color-surface);
+  border-radius: 0 0 var(--app-radius-md) var(--app-radius-md);
+  padding: 0 var(--app-space-3) var(--app-space-3);
 `;
 
 export const FormTitleDescription = styled.div`

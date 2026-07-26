@@ -50,7 +50,10 @@ export function Save(props: { disabled: boolean }) {
       <Button
         disabled={props.disabled}
         onClick={onSave}
-        style={{ backgroundColor: 'rgba(171,181,255,0.3)', borderRadius: '8px' }}
+        style={{
+          backgroundColor: 'var(--app-color-primary-light-default)',
+          borderRadius: 'var(--app-radius-md)',
+        }}
       >
         Save
       </Button>
@@ -62,7 +65,10 @@ export function Save(props: { disabled: boolean }) {
         type="danger"
         disabled={props.disabled}
         onClick={onSave}
-        style={{ backgroundColor: 'rgba(255, 179, 171, 0.3)', borderRadius: '8px' }}
+        style={{
+          backgroundColor: 'var(--semi-color-danger-light-default)',
+          borderRadius: 'var(--app-radius-md)',
+        }}
       >
           Save
       </Button>

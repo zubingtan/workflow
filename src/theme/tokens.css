@@ -98,6 +98,11 @@ body {
   --app-color-node-bg: var(--semi-color-bg-2);
   --app-color-node-border: var(--semi-color-border);
 
+  /* Node header gradient — light mode keeps the soft primary-light tint; dark
+   * mode overrides this to a neutral fill (see theme-dark.css) so the header
+   * doesn't carry a purple cast on dark surfaces. */
+  --app-color-node-header-from: var(--app-color-primary-light-default);
+
   /* D6 pitfalls 3 + 4: page background + body margin reset.
    * Semi doesn't set a page background-color, so dark mode showed white
    * patches behind transparent containers. Browser default body margin (8px)

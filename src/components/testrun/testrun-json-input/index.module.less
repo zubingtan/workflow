@@ -6,38 +6,44 @@
 .testrun-json-input {
   min-height: 300px;
   max-height: 400px;
-  background: #fff;
+  background: var(--app-color-canvas);
   padding: 8px 8px 8px 4px;
-  border-radius: 8px;
-  border: 1px solid #7f92cd40;
+  border-radius: var(--app-radius-md);
+  border: 1px solid var(--app-color-border);
   width: 348px;
 
   :global(.cm-editor) {
+    /* stylelint-disable-next-line declaration-no-important -- override CodeMirror default sizing */
     height: 100% !important;
+    /* stylelint-disable-next-line declaration-no-important -- override CodeMirror default sizing */
     overflow: auto !important;
   }
 
   :global(.cm-scroller) {
+    /* stylelint-disable-next-line declaration-no-important -- override CodeMirror default sizing */
     min-height: 300px !important;
+    /* stylelint-disable-next-line declaration-no-important -- override CodeMirror default sizing */
     max-height: 400px !important;
   }
 
   :global(.cm-content) {
+    /* stylelint-disable-next-line declaration-no-important -- override CodeMirror default sizing */
     min-height: 300px !important;
+    /* stylelint-disable-next-line declaration-no-important -- override CodeMirror default sizing */
     max-height: 400px !important;
   }
 
   :global(.cm-activeLine) {
-    background-color: #efefef78;
+    background-color: var(--app-color-fill-1);
   }
 
   :global(.cm-activeLineGutter) {
-    background-color: #efefef78;
+    background-color: var(--app-color-fill-1);
   }
 
   :global(.cm-gutters) {
-    background-color: #fff;
-    color: #000a298a;
+    background-color: var(--app-color-canvas);
+    color: var(--app-color-text-3);
     border-right-color: transparent;
     border-right-width: 0px;
   }

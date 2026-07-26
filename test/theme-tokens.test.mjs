@@ -155,11 +155,13 @@ test('Layer 1: tokens.css applies global body reset (background-color + color + 
 // `body[theme-mode="dark"]`.
 const DARK_SELECTOR = /body\[theme-mode=['"]dark['"]\]/;
 
-test('Layer 1: theme-dark.css defines dark primary #8a8cff + node-bg #1f1f2e + node-border #3a3a5c', () => {
+test('Layer 1: theme-dark.css defines dark primary #8a8cff + node-bg #252530 + node-border #3a3a4a', () => {
   const css = readCss('theme-dark.css');
   assert.match(css, /--app-color-primary\s*:\s*#8a8cff/i);
-  assert.match(css, /--app-color-node-bg\s*:\s*#1f1f2e/i);
-  assert.match(css, /--app-color-node-border\s*:\s*#3a3a5c/i);
+  assert.match(css, /--app-color-node-bg\s*:\s*#252530/i);
+  assert.match(css, /--app-color-node-border\s*:\s*#3a3a4a/i);
+  // Dark mode softens the node header gradient (drops primary-light tint).
+  assert.match(css, /--app-color-node-header-from\s*:\s*var\(--app-color-fill-0\)/i);
   // Dark overrides must hang off body[theme-mode=dark] (D3 single source of truth).
   assert.match(css, DARK_SELECTOR);
 });
@@ -187,7 +189,7 @@ test('Layer 1: semi-bridge.css overrides Semi primary family (8 + focus) on :roo
   assert.match(css, /--semi-color-primary\s*:\s*#4d53e8/i);
 });
 
-test('Layer 1: flowgram-bridge.css bridges FlowGram --g-workflow-* vars to --app-* tokens', () => {
+test('Layer 1: flowgram-bridge.css bridges FlowGram --g-workflow-* + --g-editor-background vars to --app-* tokens', () => {
   const css = readCss('flowgram-bridge.css');
   // Spec AC #5: bridge the --g-workflow-* family consumed by
   // src/hooks/use-editor-props.tsx (port + line colors). These are the real
@@ -201,6 +203,9 @@ test('Layer 1: flowgram-bridge.css bridges FlowGram --g-workflow-* vars to --app
   }
   // Bridge must route through --app-* tokens (not hardcoded hex).
   assert.match(css, /var\(--app-color-primary\)/, 'bridge must use --app-color-primary');
+  // --g-editor-background must be bridged so the canvas follows the theme
+  // (without this, dark mode left the canvas on FlowGram's default #f2f3f5).
+  assert.match(css, /--g-editor-background\s*:\s*var\(--app-color-canvas\)/, 'must bridge --g-editor-background to --app-color-canvas');
   // Dark variant must exist (spec AC #5).
   assert.match(css, DARK_SELECTOR);
 });

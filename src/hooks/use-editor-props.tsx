@@ -23,6 +23,7 @@ import { createDownloadPlugin } from '@flowgram.ai/export-plugin';
 
 import { canContainNode, onDragLineEnd } from '../utils';
 import { FlowNodeRegistry, FlowDocumentJSON } from '../typings';
+import type { ResolvedTheme } from '../theme';
 import { shortcuts } from '../shortcuts';
 import { CustomService, ValidateService } from '../services';
 import { GetGlobalVariableSchema } from '../plugins/variable-panel-plugin';
@@ -38,11 +39,61 @@ import { WorkflowNodeType } from '../nodes';
 import { SelectorBoxPopover } from '../components/selector-box-popover';
 import { BaseNode, CommentRender, GroupNodeRender, LineAddButton, NodePanel } from '../components';
 
+/**
+ * Minimap canvasStyle is a JS object consumed by the minimap plugin's 2D canvas
+ * renderer — it cannot use CSS variables (context2D.fillStyle only accepts
+ * concrete color strings). We switch the whole object based on resolvedTheme.
+ */
+function getMinimapCanvasStyle(theme: ResolvedTheme) {
+  if (theme === 'dark') {
+    return {
+      canvasWidth: 182,
+      canvasHeight: 102,
+      canvasPadding: 50,
+      // Canvas bg matches the playground (#232429) so the minimap blends in.
+      canvasBackground: 'rgba(35, 36, 41, 1)',
+      canvasBorderRadius: 10,
+      // Viewport rect — light tint on dark canvas.
+      viewportBackground: 'rgba(255, 255, 255, 0.08)',
+      viewportBorderRadius: 4,
+      viewportBorderColor: 'rgba(255, 255, 255, 0.20)',
+      viewportBorderWidth: 1,
+      viewportBorderDashLength: undefined,
+      // Nodes — light tint dots on dark canvas.
+      nodeColor: 'rgba(255, 255, 255, 0.20)',
+      nodeBorderRadius: 2,
+      nodeBorderWidth: 0.145,
+      nodeBorderColor: 'rgba(255, 255, 255, 0.20)',
+      // Overlay (area outside viewport) — darken instead of lighten.
+      overlayColor: 'rgba(0, 0, 0, 0.40)',
+    };
+  }
+  // Light mode — original values.
+  return {
+    canvasWidth: 182,
+    canvasHeight: 102,
+    canvasPadding: 50,
+    canvasBackground: 'rgba(242, 243, 245, 1)',
+    canvasBorderRadius: 10,
+    viewportBackground: 'rgba(255, 255, 255, 1)',
+    viewportBorderRadius: 4,
+    viewportBorderColor: 'rgba(6, 7, 9, 0.10)',
+    viewportBorderWidth: 1,
+    viewportBorderDashLength: undefined,
+    nodeColor: 'rgba(0, 0, 0, 0.10)',
+    nodeBorderRadius: 2,
+    nodeBorderWidth: 0.145,
+    nodeBorderColor: 'rgba(6, 7, 9, 0.10)',
+    overlayColor: 'rgba(255, 255, 255, 0.55)',
+  };
+}
+
 export function useEditorProps(
   initialData: FlowDocumentJSON,
   nodeRegistries: FlowNodeRegistry[],
   ctxRef?: { current: FreeLayoutPluginContext | null },
-  onDirty?: () => void
+  onDirty?: () => void,
+  resolvedTheme: ResolvedTheme = 'light'
 ): FreeLayoutProps {
   return useMemo<FreeLayoutProps>(
     () => ({
@@ -319,23 +370,7 @@ export function useEditorProps(
          */
         createMinimapPlugin({
           disableLayer: true,
-          canvasStyle: {
-            canvasWidth: 182,
-            canvasHeight: 102,
-            canvasPadding: 50,
-            canvasBackground: 'rgba(242, 243, 245, 1)',
-            canvasBorderRadius: 10,
-            viewportBackground: 'rgba(255, 255, 255, 1)',
-            viewportBorderRadius: 4,
-            viewportBorderColor: 'rgba(6, 7, 9, 0.10)',
-            viewportBorderWidth: 1,
-            viewportBorderDashLength: undefined,
-            nodeColor: 'rgba(0, 0, 0, 0.10)',
-            nodeBorderRadius: 2,
-            nodeBorderWidth: 0.145,
-            nodeBorderColor: 'rgba(6, 7, 9, 0.10)',
-            overlayColor: 'rgba(255, 255, 255, 0.55)',
-          },
+          canvasStyle: getMinimapCanvasStyle(resolvedTheme),
         }),
         /**
          * Download plugin
@@ -399,9 +434,16 @@ export function useEditorProps(
         createPanelManagerPlugin(),
       ],
     }),
-    // Empty deps is safe: `initialData`/`ctxRef` are stable per Editor mount —
-    // the Editor component is fully unmounted/remounted when switching workflows,
-    // so this memo re-runs with fresh values each time.
-    []
+    // `initialData`/`nodeRegistries` are stable per Editor mount. `resolvedTheme`
+    // MUST be in this dep array: when theme changes, the parent `Editor` only
+    // re-renders (not remounts), so without this dep `useMemo` returns the
+    // cached stale canvasStyle. The `key={resolvedTheme}` on
+    // `<FreeLayoutEditorProvider>` (in editor.tsx) then remounts the provider
+    // to actually consume the fresh props — both mechanisms are required:
+    // useMemo deps compute new canvasStyle, key forces the provider to re-init
+    // the minimap plugin with it. Without the dep, the provider remounts but
+    // receives stale props; without the key, the new props are swallowed by
+    // the provider's internal `useMemo(..., [])`.
+    [initialData, nodeRegistries, resolvedTheme]
   );
 }
