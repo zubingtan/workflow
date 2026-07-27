@@ -371,9 +371,13 @@ export function useEditorProps(
         createRuntimePlugin({
           mode: 'server',
           serverConfig: {
-            domain: 'localhost',
-            port: 4001,
-            protocol: 'http',
+            // Same-origin: derive from window.location so the runtime client
+            // (TaskRun/TaskReport) hits the same host that served the SPA.
+            // Fixes remote access via tunnels (e.g. ssh -R 14001:localhost:4001)
+            // where the browser origin differs from the backend's :4001.
+            domain: window.location.hostname,
+            port: window.location.port ? Number(window.location.port) : undefined,
+            protocol: window.location.protocol.replace(':', ''),
           },
         }),
 
