@@ -7,6 +7,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { JsonCodeEditor } from '@flowgram.ai/form-materials';
 
+import { useTheme } from '../../../theme';
+
 export function JsonValueEditor({
   value,
   onChange,
@@ -14,6 +16,7 @@ export function JsonValueEditor({
   value: Record<string, unknown>;
   onChange: (value: Record<string, unknown>) => void;
 }) {
+  const { resolvedTheme } = useTheme();
   const defaultJsonText = useMemo(() => JSON.stringify(value, null, 2), [value]);
 
   const [jsonText, setJsonText] = useState(defaultJsonText);
@@ -50,5 +53,12 @@ export function JsonValueEditor({
     setRemountKey((k) => k + 1);
   }, [value]);
 
-  return <JsonCodeEditor key={remountKey} value={jsonText} onChange={handleJsonTextChange} />;
+  return (
+    <JsonCodeEditor
+      key={remountKey}
+      value={jsonText}
+      onChange={handleJsonTextChange}
+      theme={resolvedTheme}
+    />
+  );
 }

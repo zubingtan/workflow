@@ -39,6 +39,13 @@ body {
    * token so light/dark both follow. Without this, dark mode left the canvas
    * on FlowGram's default light gray (#f2f3f5). */
   --g-editor-background: var(--app-color-canvas);
+
+  /* Sub-canvas border — `@flowgram.ai/free-container-plugin` reads
+   * `--coz-bg-plus` / `--coz-stroke-plus` on `.sub-canvas-border`; the project
+   * doesn't define them otherwise, so bridge them onto the app border token
+   * (which flips with theme). */
+  --coz-bg-plus: var(--app-color-border);
+  --coz-stroke-plus: var(--app-color-border);
 }
 
 body[theme-mode='dark'] {
@@ -59,5 +66,26 @@ body[theme-mode='dark'] {
  * as bright noise. Lower the opacity so the grid stays subtle. Light mode is
  * unaffected (black dots on a light canvas are already subtle). */
 body[theme-mode='dark'] .gedit-grid-svg circle {
+  opacity: 0.3;
+}
+
+/* Sub-canvas (Loop node inner canvas) — same bridge pattern as the main canvas.
+ *
+ * `@flowgram.ai/free-container-plugin` renders `.sub-canvas-background` with an
+ * inline `style={{ backgroundColor: '#f2f3f5' }}` fallback (the plugin tries to
+ * resolve `BackgroundConfig` via DI, but this project never registers it, so the
+ * try/catch falls back to the hardcoded light palette). Inline style requires
+ * `!important` to override. The SVG `<circle stroke="#eceeef">` dot color is
+ * set as a presentation attribute and can't be overridden by CSS reliably
+ * across browsers, so we follow the same opacity weakening strategy as the
+ * main canvas grid above. The `.sub-canvas-border` uses `var(--coz-bg-plus, …)`
+ * and `var(--coz-stroke-plus, …)`, which the project doesn't define — bridge
+ * them onto app tokens so the border also flips. */
+body[theme-mode='dark'] .sub-canvas-background {
+  /* stylelint-disable-next-line declaration-no-important -- inline style fallback in free-container-plugin */
+  background-color: var(--app-color-canvas) !important;
+}
+
+body[theme-mode='dark'] .sub-canvas-background circle {
   opacity: 0.3;
 }
