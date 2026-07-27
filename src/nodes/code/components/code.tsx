@@ -7,11 +7,13 @@ import { Field } from '@flowgram.ai/free-layout-editor';
 import { TypeScriptCodeEditor } from '@flowgram.ai/form-materials';
 import { Divider } from '@douyinfe/semi-ui';
 
+import { useTheme } from '../../../theme';
 import { useIsSidebar, useNodeRenderContext } from '../../../hooks';
 
 export function Code() {
   const isSidebar = useIsSidebar();
   const { readonly } = useNodeRenderContext();
+  const { resolvedTheme } = useTheme();
 
   if (!isSidebar) {
     return null;
@@ -26,6 +28,7 @@ export function Code() {
             value={field.value}
             onChange={(value) => field.onChange(value)}
             readonly={readonly}
+            theme={resolvedTheme}
           />
         )}
       </Field>

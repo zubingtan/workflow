@@ -10,17 +10,27 @@ import { useClientContext } from '@flowgram.ai/free-layout-editor';
 
 import { useTheme } from '../../theme';
 import { MinimapContainer } from './styles';
-import { getMinimapCanvasStyle } from './minimap-canvas-style.mjs';
+import { getMinimapCanvasStyle, getMinimapPanelStyle } from './minimap-canvas-style.mjs';
 
 /**
  * Minimap component with runtime theme switching.
  *
- * The minimap is rendered on a 2D canvas — `canvasStyle` is consumed only
- * in `FlowMinimapService.init()` → `initStyle()` (one-shot per init call),
- * so CSS variables can't reach the canvas drawing. Switching themes at
- * runtime therefore requires re-invoking `service.init({ canvasStyle })`
- * (public API) to rebuild `service.style`, then `service.render()` to
- * repaint.
+ * Two surfaces need theming:
+ *
+ * 1. **Inner `<canvas>` drawing** — `canvasStyle` is consumed only in
+ *    `FlowMinimapService.init()` → `initStyle()` (one-shot per init call),
+ *    so CSS variables can't reach the canvas drawing. Switching themes at
+ *    runtime therefore requires re-invoking `service.init({ canvasStyle })`
+ *    (public API) to rebuild `service.style`, then `service.render()` to
+ *    repaint.
+ *
+ * 2. **Outer `.minimap-panel` container** — `MinimapRender` hardcodes a
+ *    light inline style on the panel div, but spreads `panelStyles` last,
+ *    so passing `panelStyles={getMinimapPanelStyle(resolvedTheme)}` cleanly
+ *    overrides `backgroundColor`/`border`/`boxShadow` per-key. Because
+ *    these values are `var(--app-color-*)` references, they re-resolve
+ *    automatically when `body[theme-mode]` flips — no `service.init`
+ *    round-trip needed for the panel.
  *
  * This component does NOT remount the editor — `useEditorProps` /
  * `FreeLayoutEditorProvider` are unaware of theme. All runtime state
@@ -46,7 +56,7 @@ export const Minimap = ({ visible }: { visible?: boolean }) => {
   return (
     <MinimapContainer>
       <MinimapRender
-        panelStyles={{}}
+        panelStyles={getMinimapPanelStyle(resolvedTheme)}
         containerStyles={{
           pointerEvents: 'auto',
           position: 'relative',

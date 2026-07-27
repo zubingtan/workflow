@@ -72,3 +72,38 @@ const DARK_CANVAS_STYLE = {
 export function getMinimapCanvasStyle(theme) {
   return theme === 'dark' ? DARK_CANVAS_STYLE : LIGHT_CANVAS_STYLE;
 }
+
+/**
+ * Minimap panel container style overrides.
+ *
+ * `MinimapRender` renders the outer `.minimap-panel` div with a hardcoded
+ * inline light style (`backgroundColor: rgba(255,255,255,1)`, light border,
+ * light shadow). The spread order is `style: { ...defaults, ...panelStyles }`,
+ * so passing `panelStyles` cleanly overrides the defaults per-key.
+ *
+ * Unlike `canvasStyle`, `panelStyles` is a normal React CSSProperties object
+ * applied as inline style — CSS `var(--app-color-*)` references resolve
+ * correctly in inline styles, so we use tokens here (consistent with the
+ * rest of the app). The tokens themselves flip with `body[theme-mode]`, so
+ * the same object works for both light and dark without a `theme` parameter.
+ *
+ * Used only by `<Minimap>` component.
+ */
+const PANEL_STYLE = {
+  backgroundColor: 'var(--app-color-surface)',
+  border: '0.572px solid var(--app-color-border)',
+  boxShadow: 'var(--app-shadow-md)',
+};
+
+/**
+ * Returns the minimap `panelStyles` for the given resolved theme.
+ *
+ * Both light and dark resolve to the same token references (the tokens flip
+ * via `body[theme-mode]`). The `theme` parameter is kept for API symmetry
+ * with `getMinimapCanvasStyle` and to make call sites uniform.
+ *
+ * @param {'light' | 'dark'} theme
+ */
+export function getMinimapPanelStyle(theme) {
+  return PANEL_STYLE;
+}
