@@ -94,7 +94,12 @@ export const DownloadTool: FC = () => {
         button
       ) : (
         <div>
-          <Tooltip content="Download">{button}</Tooltip>
+          <Tooltip content="Download">
+            {/* Wrap IconButton in a native span so Tooltip's triggerEl is an
+              HTMLElement — Semi resolveDOM returns early on Element instances
+              and skips the deprecated ReactDOM.findDOMNode path (map #107 R1). */}
+            <span>{button}</span>
+          </Tooltip>
         </div>
       )}
     </Dropdown>

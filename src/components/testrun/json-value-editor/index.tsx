@@ -17,6 +17,12 @@ export function JsonValueEditor({
   const defaultJsonText = useMemo(() => JSON.stringify(value, null, 2), [value]);
 
   const [jsonText, setJsonText] = useState(defaultJsonText);
+  // remountKey increments only when value is overridden externally (not on
+  // user input round-trips — the effectVersion/changeVersion guard below
+  // distinguishes the two). Forcing JsonCodeEditor to remount discards
+  // stale codemirror tooltip pos (-1) that triggers
+  // "RangeError: Invalid position -1 in document of length N" (map #107 R2).
+  const [remountKey, setRemountKey] = useState(0);
 
   const effectVersion = useRef(0);
   const changeVersion = useRef(0);
@@ -41,7 +47,8 @@ export function JsonValueEditor({
     effectVersion.current = changeVersion.current;
 
     setJsonText(JSON.stringify(value, null, 2));
+    setRemountKey((k) => k + 1);
   }, [value]);
 
-  return <JsonCodeEditor value={jsonText} onChange={handleJsonTextChange} />;
+  return <JsonCodeEditor key={remountKey} value={jsonText} onChange={handleJsonTextChange} />;
 }
