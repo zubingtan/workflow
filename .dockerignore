@@ -1,0 +1,53 @@
+# T5 (#116 #121): keep the build context small & keep secrets out.
+#
+# Everything listed here is NOT sent to the Docker daemon. Anything that
+# `pnpm install` or `pnpm build:prod` needs must NOT be listed here.
+
+# Secrets / env
+.env
+.env.local
+
+# Build artifacts (rebuilt inside the image)
+node_modules
+dist
+
+# Git & worktrees
+.git
+.gitignore
+.worktrees
+
+# Editor / IDE / tool caches
+.vscode
+.idea
+.qoder
+.trae
+.agents
+.eslintcache
+.husky
+
+# Playwright / E2E artifacts (not needed in prod image)
+e2e
+playwright-report
+test-results
+blob-report
+.playwright
+.playwright-cli
+
+# Local research notes
+research
+
+# Logs
+*.log
+
+# OS cruft
+.DS_Store
+
+# Docker meta (not needed inside the image)
+Dockerfile
+.dockerignore
+docker-compose.yml
+docker-compose.*.yml
+
+# Docs (not needed at runtime)
+*.md
+README*
