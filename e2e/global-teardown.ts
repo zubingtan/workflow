@@ -1,17 +1,17 @@
 /**
  * Playwright global teardown.
  *
- * Kills the three dev processes spawned by global-setup, in reverse order
- * (web → server → fake). Each was spawned `detached: true` so it's its own
+ * Kills the two processes spawned by global-setup, in reverse order
+ * (server → fake). Each was spawned `detached: true` so it's its own
  * process-group leader; we kill the whole group via process.kill(-pid, SIGTERM)
- * to reach grandchildren (e.g. rsbuild's webpack workers).
+ * to reach grandchildren (e.g. the server's child processes if any).
  *
  * Falls back to a direct process.kill(pid) if the group kill fails (happens
  * if the child already exited or wasn't a group leader for some reason).
  */
 import type { ChildProcess } from 'node:child_process';
 
-const processes: { fake?: ChildProcess; server?: ChildProcess; web?: ChildProcess } =
+const processes: { fake?: ChildProcess; server?: ChildProcess } =
   (globalThis as any).__E2E_PROCESSES__ ?? {};
 
 function killGroup(child: ChildProcess | undefined, label: string) {
@@ -36,9 +36,8 @@ function killGroup(child: ChildProcess | undefined, label: string) {
 }
 
 export default async function globalTeardown() {
-  // Reverse order: web first (so no new requests hit the server), then server,
-  // then fake-provider.
-  killGroup(processes.web, 'web');
+  // Reverse order: server first (so no new requests hit fake-provider), then
+  // fake-provider.
   killGroup(processes.server, 'server');
   killGroup(processes.fake, 'fake-provider');
 
