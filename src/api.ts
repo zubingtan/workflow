@@ -1,4 +1,9 @@
-export const SERVER_URL = process.env.PUBLIC_SERVER_URL || 'http://localhost:4001';
+// Same-origin relative path — T1/T2 (#116) decided the browser talks to the
+// same origin that served the HTML (Hono :4001 in both dev and prod). All
+// fetch calls below build `${SERVER_URL}/<path>` which, with SERVER_URL = '',
+// collapses to a relative URL resolved against window.location. fetch and
+// ReadableStream (used by the SSE controller) both support relative URLs.
+export const SERVER_URL = '';
 
 export interface AgentDef {
   id: string;

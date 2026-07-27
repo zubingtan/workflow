@@ -138,7 +138,6 @@ export default async function globalSetup() {
     ...baseEnv,
     MODE: 'app',
     NODE_ENV: 'development',
-    PUBLIC_SERVER_URL: 'http://localhost:4001', // inlined into client bundle
   });
   await waitForUrl('http://localhost:3000', 'rsbuild dev', 'web');
 
