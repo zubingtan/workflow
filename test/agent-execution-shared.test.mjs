@@ -46,12 +46,11 @@ test('runAgentExecution translates text_delta → content_delta and yields termi
   const session = makeFakeSession(events);
   const collected = [];
   for await (const ev of runAgentExecution({
-    agentConfig: { id: 'a1', name: 'test', provider_base_url: 'http://x', model: 'm', provider_api_key_env: 'K' },
+    agentConfig: { id: 'a1', name: 'test', provider_base_url: 'http://x', model: 'm', provider_api_key: 'k-value' },
     prompt: 'hi',
     signal: undefined,
     createSession: async () => session,
     agentDir: '/tmp/x',
-    environment: {},
   })) {
     collected.push(ev);
   }
@@ -81,11 +80,10 @@ test('runAgentExecution translates tool_execution_start/end → tool_start/tool_
   const session = makeFakeSession(events);
   const collected = [];
   for await (const ev of runAgentExecution({
-    agentConfig: { id: 'a1', name: 't', provider_base_url: 'http://x', model: 'm', provider_api_key_env: 'K' },
+    agentConfig: { id: 'a1', name: 't', provider_base_url: 'http://x', model: 'm', provider_api_key: 'k-value' },
     prompt: 'p',
     createSession: async () => session,
     agentDir: '/tmp/x',
-    environment: {},
   })) {
     collected.push(ev);
   }
@@ -112,12 +110,11 @@ test('runAgentExecution classifies cancellation via signal.aborted → terminal 
   };
 
   const iter = runAgentExecution({
-    agentConfig: { id: 'a1', name: 't', provider_base_url: 'http://x', model: 'm', provider_api_key_env: 'K' },
+    agentConfig: { id: 'a1', name: 't', provider_base_url: 'http://x', model: 'm', provider_api_key: 'k-value' },
     prompt: 'p',
     signal: ac.signal,
     createSession: async () => session,
     agentDir: '/tmp/x',
-    environment: {},
   });
 
   // Kick the generator so it runs to the first await (createSession), then
@@ -144,12 +141,11 @@ test('runAgentExecution short-circuits pre-aborted signal WITHOUT creating a ses
 
   const collected = [];
   for await (const ev of runAgentExecution({
-    agentConfig: { id: 'a1', name: 't', provider_base_url: 'http://x', model: 'm', provider_api_key_env: 'K' },
+    agentConfig: { id: 'a1', name: 't', provider_base_url: 'http://x', model: 'm', provider_api_key: 'k-value' },
     prompt: 'p',
     signal: ac.signal,
     createSession: async () => { sessionCreated = true; return makeFakeSession([]); },
     agentDir: '/tmp/x',
-    environment: {},
   })) {
     collected.push(ev);
   }
@@ -164,11 +160,10 @@ test('runAgentExecution yields terminal failed when session.prompt throws', asyn
   const session = makeFakeSession([], { failPrompt: new Error('provider down') });
   const collected = [];
   for await (const ev of runAgentExecution({
-    agentConfig: { id: 'a1', name: 't', provider_base_url: 'http://x', model: 'm', provider_api_key_env: 'K' },
+    agentConfig: { id: 'a1', name: 't', provider_base_url: 'http://x', model: 'm', provider_api_key: 'k-value' },
     prompt: 'p',
     createSession: async () => session,
     agentDir: '/tmp/x',
-    environment: {},
   })) {
     collected.push(ev);
   }
@@ -185,11 +180,10 @@ test('runAgentExecution yields terminal failed when session.prompt rejects with 
   const session = makeFakeSession([], { failPrompt: 'string error' });
   const collected = [];
   for await (const ev of runAgentExecution({
-    agentConfig: { id: 'a1', name: 't', provider_base_url: 'http://x', model: 'm', provider_api_key_env: 'K' },
+    agentConfig: { id: 'a1', name: 't', provider_base_url: 'http://x', model: 'm', provider_api_key: 'k-value' },
     prompt: 'p',
     createSession: async () => session,
     agentDir: '/tmp/x',
-    environment: {},
   })) {
     collected.push(ev);
   }
@@ -217,12 +211,11 @@ test('runAgentExecution classifies cancelled (not failed) when signal aborts AND
   };
 
   const iter = runAgentExecution({
-    agentConfig: { id: 'a1', name: 't', provider_base_url: 'http://x', model: 'm', provider_api_key_env: 'K' },
+    agentConfig: { id: 'a1', name: 't', provider_base_url: 'http://x', model: 'm', provider_api_key: 'k-value' },
     prompt: 'p',
     signal: ac.signal,
     createSession: async () => session,
     agentDir: '/tmp/x',
-    environment: {},
   });
 
   const nextPromise = iter.next();

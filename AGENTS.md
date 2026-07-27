@@ -34,9 +34,8 @@ canvas edits a workflow. An LLM node references an **agent** (by id) plus a
 prompt; Test Run executes the node through the backend agent session.
 
 Real provider: create an Agent in the UI (or seed one) with the provider
-`baseUrl`, `model`, and the **name** of an env var holding the API key
-(`provider_api_key_env`). Set that env var, restart `pnpm server`. The key
-itself is never stored — only the env var name.
+`baseUrl`, `model`, and the **API key value** (`provider_api_key`). The key
+is stored directly in the SQLite database and used at call time.
 
 ## Architecture (three layers, do not collapse)
 
@@ -49,13 +48,11 @@ itself is never stored — only the env var name.
    persistence and execution: agents + workflows CRUD (SQLite), and
    `POST /agents/:id/run` / `POST /agents/test` which stream **generic SSE
    events** (`content_delta` / `tool_start` / `tool_end` / `finish` / `error`).
-   CORS is enabled for the dev origin; `GET /env/vars` (autocomplete helper) is
-   restricted to localhost origins.
+   CORS is enabled for the dev origin.
 3. **pi-coding-agent → provider** — each run creates an agent session
    (`createAgentSession`) with an in-memory session/settings manager and a
    dynamically registered provider pointing at the agent's `provider_base_url`.
-   The API key is resolved from `process.env[agent.provider_api_key_env]` at
-   call time.
+   The API key is read from `agent.provider_api_key` directly at call time.
 
 ```
 canvas LLM node → localhost:4001/agents/:id/run (Hono, SSE)
@@ -68,8 +65,8 @@ canvas LLM node → localhost:4001/agents/:id/run (Hono, SSE)
   and `agents/` (agent workspace). Nothing deployment-specific is stored inside
   the repo. Tables are created with `CREATE TABLE IF NOT EXISTS` (no migration
   machinery by design).
-- **Credentials**: an agent record stores `provider_api_key_env` (env var name),
-  never the key. The backend resolves `process.env[...]` at call time.
+- **Credentials**: an agent record stores `provider_api_key` (the key value).
+  The backend uses it directly at call time.
 - **Do not run pi in the browser** — it is Node-only (`fs` / `process` / HTTP;
   CORS + key exposure). The frontend never imports pi; it only calls the Hono
   backend.
@@ -127,10 +124,10 @@ manually when you need it.
 ## Key files
 
 - `src/app.tsx` — app shell: sidebar (Workflows / Agents), editor view, Save Workflow.
-- `src/manage.tsx` — Workflow / Agent CRUD managers + agent form (env-var autocomplete, Test).
+- `src/manage.tsx` — Workflow / Agent CRUD managers + agent form (API key input, Test).
 - `src/api.ts` — HTTP client to the backend (`SERVER_URL`).
 - `src/nodes/llm/index.ts` + `form-meta.tsx` — LLM node registry and form (agentId + prompt).
-- `server/index.mjs` — Hono app: agents/workflows CRUD, agent run/test SSE, `/env/vars`, `/health/live`.
+- `server/index.mjs` — Hono app: agents/workflows CRUD, agent run/test SSE, `/health/live`.
 - `scripts/fake-provider.mjs` — OpenAI-compatible fake (port 4010, SSE + test control).
 - `.env.example` — `FAKE_PROVIDER_API_KEY` / `SERVER_PORT` / `FAKE_PROVIDER_PORT`.
 - `rsbuild.config.ts` — Rsbuild config.

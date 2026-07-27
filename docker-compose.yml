@@ -6,10 +6,11 @@
 #   docker compose down            # stop (keeps data volume)
 #   docker compose down -v         # stop + delete data
 #
-# Secrets: set FAKE_PROVIDER_API_KEY (or your real provider key) in your shell
-# before `docker compose up`. The compose file passes it through to the
-# container via `environment:`. Do NOT put secrets in a .env file next to this
-# compose file — that's what `environment:` passthrough avoids.
+# fake-provider (dev mock) validates request Authorization headers against
+# FAKE_PROVIDER_API_KEY. Set it in your shell before `docker compose up`. The
+# server itself no longer needs any API key env — agent credentials are stored
+# in the DB (set via the Agents UI). Do NOT put secrets in a .env file next to
+# this compose file — that's what `environment:` passthrough avoids.
 #
 # Port override: `PORT=8080 docker compose up` listens on 8080 instead of 4001.
 
@@ -21,9 +22,8 @@ services:
     volumes:
       - workflow-data:/app/data
     environment:
-      # Pass provider API key through from host shell. The container reads it
-      # via `process.env[agent.provider_api_key_env]` at run time (AGENTS.md
-      # credential boundary — the key is never stored in the image or compose).
+      # fake-provider (dev mock) reads this to validate request Authorization
+      # headers. The server does NOT use it — agent API keys live in the DB.
       FAKE_PROVIDER_API_KEY: ${FAKE_PROVIDER_API_KEY:-}
       # Override SERVER_PORT if PORT is set, so the container listens on the
       # same port the host maps.

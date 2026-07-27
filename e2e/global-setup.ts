@@ -125,10 +125,12 @@ export default async function globalSetup() {
   // relying on `node --env-file=.env`) so we control precedence — the E2E
   // overrides below must win over whatever's in .env.
   //
-  // Playwright does NOT auto-load .env, so process.env may be missing the
-  // FAKE_PROVIDER_API_KEY that the server needs to resolve agent credentials
-  // (server does process.env[agent.provider_api_key_env] at call time). We set
-  // it explicitly on both fake-provider and server below.
+  // Playwright does NOT auto-load .env, so process.env may be missing
+  // FAKE_PROVIDER_API_KEY. fake-provider needs it to validate request
+  // Authorization headers. The server reads agent API keys from the DB
+  // (agent.provider_api_key, set by seedAgentIfEmpty) — it does NOT resolve
+  // env vars for credentials anymore. We still pass FAKE_PROVIDER_API_KEY to
+  // both processes for simplicity (harmless on the server side).
   const baseEnv = { ...process.env };
   const fakeApiKey = baseEnv.FAKE_PROVIDER_API_KEY ?? 'fake-provider-local';
 
@@ -147,10 +149,11 @@ export default async function globalSetup() {
   // owns env precedence — `pnpm server` passes `--env-file=.env` which would
   // override WORKFLOW_DATA_DIR and FAKE_PROVIDER_API_KEY.
   //
-  // The server resolves API keys via process.env[agent.provider_api_key_env]
-  // at call time — seeded agents use FAKE_PROVIDER_API_KEY as the env-var
-  // name, so the server MUST have it in its env or execution fails with
-  // "missing env var: FAKE_PROVIDER_API_KEY".
+  // The server reads agent API keys from the DB directly (agent.provider_api_key,
+  // seeded with the literal value "fake-provider-local"). It no longer resolves
+  // env vars for credentials. FAKE_PROVIDER_API_KEY is still passed because
+  // fake-provider uses it to validate Authorization headers on requests from
+  // the server.
   assertDistExists();
   processes.server = spawnLogged('server', 'node', ['server/index.mjs'], {
     ...baseEnv,

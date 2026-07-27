@@ -55,9 +55,9 @@ export async function createAgentSessionForAgent(agentConfig, apiKey, agentDir) 
 
 /**
  * Error thrown by the task adapter. Carries a machine-readable `kind`
- * (agent_not_found | missing_env_var | provider_error | internal_error) that
- * the Hono /api/task/* routes translate to {code, message}. `cancelled` is
- * NEVER a kind — it's a terminal phase, projected to a normal return.
+ * (agent_not_found | provider_error | internal_error) that the Hono
+ * /api/task/* routes translate to {code, message}. `cancelled` is NEVER a
+ * kind — it's a terminal phase, projected to a normal return.
  */
 export class AgentExecutionError extends Error {
   constructor({ kind, message, detail }) {
@@ -75,14 +75,12 @@ class AgentExecutor {
     agentDir,
     createSession = createAgentSessionForAgent,
     runAgentExecution = defaultRunAgentExecution,
-    environment = process.env,
   }) {
     this.type = "llm";
     this.db = db;
     this.agentDir = agentDir;
     this.createSession = createSession;
     this.runAgentExecution = runAgentExecution;
-    this.environment = environment;
   }
 
   async execute(context) {
@@ -99,14 +97,7 @@ class AgentExecutor {
       throw new AgentExecutionError({ kind: "agent_not_found", message: `agent not found: ${agentId}` });
     }
 
-    const apiKey = this.environment[agent.provider_api_key_env];
-    if (!apiKey) {
-      throw new AgentExecutionError({
-        kind: "missing_env_var",
-        message: `missing env var: ${agent.provider_api_key_env}`,
-        detail: { envVar: agent.provider_api_key_env },
-      });
-    }
+    const apiKey = agent.provider_api_key;
 
     // Bind apiKey into the createSession closure — the shared module never
     // resolves credentials (#66 rule). 2-arg form: (agentConfig, agentDir).

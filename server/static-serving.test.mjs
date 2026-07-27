@@ -40,7 +40,7 @@ function setupDb() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS agents (
       id TEXT PRIMARY KEY, name TEXT NOT NULL,
-      provider_base_url TEXT NOT NULL, provider_api_key_env TEXT NOT NULL,
+      provider_base_url TEXT NOT NULL, provider_api_key TEXT NOT NULL,
       model TEXT NOT NULL, system_prompt TEXT DEFAULT '',
       temperature REAL DEFAULT 0.7,
       created_at TEXT DEFAULT (datetime('now')),
@@ -63,7 +63,6 @@ function makeApp() {
     app: createApp({
       db,
       agentDir: dataDir,
-      environment: process.env,
       staticEnabled: true,
       staticDir,
     }),
@@ -168,7 +167,6 @@ test("dev: staticEnabled=false → no static routes, unknown GET returns 404 (no
   const app = createApp({
     db,
     agentDir: dataDir,
-    environment: process.env,
     staticEnabled: false,
     staticDir: "/nonexistent",
   });
