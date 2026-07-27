@@ -1,0 +1,46 @@
+# T6 (#116 #122): single-command zero-config deployment.
+#
+# Usage:
+#   docker compose up -d           # start
+#   docker compose logs -f app     # tail logs
+#   docker compose down            # stop (keeps data volume)
+#   docker compose down -v         # stop + delete data
+#
+# Secrets: set FAKE_PROVIDER_API_KEY (or your real provider key) in your shell
+# before `docker compose up`. The compose file passes it through to the
+# container via `environment:`. Do NOT put secrets in a .env file next to this
+# compose file — that's what `environment:` passthrough avoids.
+#
+# Port override: `PORT=8080 docker compose up` listens on 8080 instead of 4001.
+
+services:
+  app:
+    build: .
+    ports:
+      - '${PORT:-4001}:${PORT:-4001}'
+    volumes:
+      - workflow-data:/app/data
+    environment:
+      # Pass provider API key through from host shell. The container reads it
+      # via `process.env[agent.provider_api_key_env]` at run time (AGENTS.md
+      # credential boundary — the key is never stored in the image or compose).
+      FAKE_PROVIDER_API_KEY: ${FAKE_PROVIDER_API_KEY:-}
+      # Override SERVER_PORT if PORT is set, so the container listens on the
+      # same port the host maps.
+      SERVER_PORT: ${PORT:-4001}
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:4001/health/live').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  workflow-data:
