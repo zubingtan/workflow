@@ -94,6 +94,15 @@ body {
   --app-color-danger: var(--semi-color-danger);
   --app-color-info: var(--semi-color-info);
 
+  /* Syntax-highlight palette (for Test Run JSON viewer). Light values follow
+   * GitHub Primer light; dark overrides in theme-dark.css. Hex is intentional
+   * at the token-definition layer (same pattern as the primary family above). */
+  --app-color-syntax-key: #0969da;
+  --app-color-syntax-string: #032f62;
+  --app-color-syntax-number: #005cc5;
+  --app-color-syntax-boolean: #e36209;
+  --app-color-syntax-null: #6a737d;
+
   /* Node card (light) — D4 §2 self-invented. */
   --app-color-node-bg: var(--semi-color-bg-2);
   --app-color-node-border: var(--semi-color-border);

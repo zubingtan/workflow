@@ -14,12 +14,12 @@ interface StatePanelProps {
 
 const Error = styled.span`
   font-size: 12px;
-  color: red;
+  color: var(--app-color-danger);
 `;
 
 const Warning = styled.span`
   font-size: 12px;
-  color: orange;
+  color: var(--app-color-warning);
 `;
 
 export const Feedback = ({ errors, warnings, invalid }: StatePanelProps) => {
