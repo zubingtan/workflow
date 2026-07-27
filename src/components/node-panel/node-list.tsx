@@ -27,12 +27,13 @@ const NodeWrap = styled.div`
   font-size: 19px;
   padding: 0 15px;
   &:hover {
-    background-color: hsl(252deg 62% 55% / 9%);
-    color: hsl(252 62% 54.9%);
+    background-color: var(--app-color-primary-light-default);
+    color: var(--app-color-primary-active);
   }
 `;
 
 const NodeLabel = styled.div`
+  color: var(--app-color-text-1);
   font-size: 12px;
   margin-left: 10px;
 `;

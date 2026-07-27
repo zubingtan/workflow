@@ -87,8 +87,7 @@
   }
 
   .nodeLabel {
-    /* stylelint-disable-next-line color-no-hex -- syntax-highlight blue (primer) */
-    color: #0969da;
+    color: var(--app-color-syntax-key);
     font-weight: 500;
     cursor: pointer;
     user-select: auto;
@@ -119,24 +118,20 @@
     }
 
     &.string {
-      /* stylelint-disable-next-line color-no-hex -- syntax-highlight string (primer) */
-      color: #032f62;
+      color: var(--app-color-syntax-string);
     }
 
     &.number {
-      /* stylelint-disable-next-line color-no-hex -- syntax-highlight number (primer) */
-      color: #005cc5;
+      color: var(--app-color-syntax-number);
     }
 
     &.boolean {
-      /* stylelint-disable-next-line color-no-hex -- syntax-highlight boolean (primer) */
-      color: #e36209;
+      color: var(--app-color-syntax-boolean);
     }
 
     &.null,
     &.undefined {
-      /* stylelint-disable-next-line color-no-hex -- syntax-highlight null (primer) */
-      color: #6a737d;
+      color: var(--app-color-syntax-null);
       font-style: italic;
     }
   }

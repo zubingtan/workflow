@@ -34,4 +34,12 @@ body[theme-mode='dark'] {
   --app-shadow-sm: 0 1px 2px rgba(0, 0, 0, 24%);
   --app-shadow-md: 0 2px 8px rgba(0, 0, 0, 36%);
   --app-shadow-lg: 0 6px 16px rgba(0, 0, 0, 48%);
+
+  /* Syntax-highlight palette (dark) — GitHub Primer dark palette, ensures WCAG
+   * AA contrast on var(--app-color-fill-0) in dark mode. */
+  --app-color-syntax-key: #79c0ff;
+  --app-color-syntax-string: #a5d6ff;
+  --app-color-syntax-number: #79c0ff;
+  --app-color-syntax-boolean: #ffa657;
+  --app-color-syntax-null: #8b949e;
 }
