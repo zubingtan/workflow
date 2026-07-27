@@ -12,7 +12,7 @@ export interface AgentDef {
   id: string;
   name: string;
   provider_base_url: string;
-  provider_api_key_env: string;
+  provider_api_key: string;
   model: string;
   system_prompt: string;
   temperature: number;
@@ -102,8 +102,8 @@ export const testAgent = (config: Partial<AgentDef> & { prompt?: string }, signa
 
 // --- Agent run by id (LLM node path) ---
 // Returns the raw Response so the hook can parse the SSE body uniformly.
-// Sends only { prompt }; agentId is in the URL. The API key value never
-// crosses this boundary (resolved server-side via provider_api_key_env).
+// Sends only { prompt }; agentId is in the URL. The API key is stored in the
+// DB (sent at agent create/update time) and resolved server-side.
 export const runAgentById = (agentId: string, prompt: string, signal?: AbortSignal) =>
   fetch(`${SERVER_URL}/agents/${agentId}/run`, {
     method: 'POST',
@@ -115,6 +115,3 @@ export const runAgentById = (agentId: string, prompt: string, signal?: AbortSign
 // --- Agent fetch by id (single-agent lookup; used by LLM node form) ---
 export const getAgent = (id: string) =>
   fetch(`${SERVER_URL}/agents/${id}`).then((r) => json<AgentDef>(r));
-
-// --- Env vars (names only) ---
-export const getEnvVars = () => fetch(`${SERVER_URL}/env/vars`).then((r) => json<string[]>(r));

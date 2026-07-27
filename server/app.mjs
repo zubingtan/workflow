@@ -28,7 +28,6 @@ import { createRunAgentSse } from "./sse-adapter.mjs";
 import {
   AgentCatalogError,
   validateTemperature,
-  validateProviderApiKeyEnv,
   listAgents,
   getAgentById,
   createAgent,
@@ -75,7 +74,6 @@ function workflowHashFromSchema(schema) {
  * @param {object} deps
  * @param {import("better-sqlite3").Database} deps.db
  * @param {string} deps.agentDir
- * @param {object} deps.environment - process.env (or a fake for tests)
  * @param {boolean} [deps.staticEnabled=false] - prod serves dist/, dev does not
  * @param {string} [deps.staticDir] - root for serveStatic (defaults to ./dist)
  * @param {object} [deps.runAgentExecution] - injected for tests
@@ -87,7 +85,6 @@ function workflowHashFromSchema(schema) {
 export function createApp({
   db,
   agentDir,
-  environment,
   staticEnabled = false,
   staticDir,
   runAgentExecution,
@@ -101,7 +98,6 @@ export function createApp({
     runAgentExecution,
     createAgentSessionForAgent,
     agentDir,
-    environment,
     ...(streamSSE ? { streamSSE } : {}),
   });
 
@@ -227,12 +223,12 @@ export function createApp({
     let body;
     try { body = await c.req.json(); } catch { return c.json({ error: "invalid JSON" }, 400); }
     if (!body || typeof body !== "object") return c.json({ error: "body must be an object" }, 400);
-    const { name, provider_base_url, provider_api_key_env, model, system_prompt, temperature } = body;
-    if (!name || !provider_base_url || !provider_api_key_env || !model) {
-      return c.json({ error: "name, provider_base_url, provider_api_key_env, model are required" }, 400);
+    const { name, provider_base_url, provider_api_key, model, system_prompt, temperature } = body;
+    if (!name || !provider_base_url || !provider_api_key || !model) {
+      return c.json({ error: "name, provider_base_url, provider_api_key, model are required" }, 400);
     }
     try {
-      const agent = createAgent(db, { name, provider_base_url, provider_api_key_env, model, system_prompt, temperature });
+      const agent = createAgent(db, { name, provider_base_url, provider_api_key, model, system_prompt, temperature });
       return c.json(agent, 201);
     } catch (err) {
       const translated = catalogErrorResponse(err);
@@ -263,18 +259,6 @@ export function createApp({
     return c.json({ ok: true });
   });
 
-  // --- Env vars (names only, for autocomplete; localhost-only) ---
-  app.get("/env/vars", (c) => {
-    const origin = c.req.header("origin") || "";
-    const isLocal = !origin || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
-    if (!isLocal) return c.json({ error: "forbidden" }, 403);
-    const names = Object.keys(environment)
-      .filter((k) => /^[A-Z][A-Z0-9_]*$/.test(k))
-      .filter((k) => /(_API_KEY|_KEY|_TOKEN|_URL|_BASE|_HOST|_SECRET)$/.test(k))
-      .sort();
-    return c.json(names);
-  });
-
   // --- Agent Run (SSE) ---
   app.post("/agents/:id/run", async (c) => {
     const agent = getAgentById(db, c.req.param("id"));
@@ -289,19 +273,18 @@ export function createApp({
   app.post("/agents/test", async (c) => {
     let body;
     try { body = await c.req.json(); } catch { return c.json({ error: "invalid JSON" }, 400); }
-    const { name, provider_base_url, provider_api_key_env, model, system_prompt, temperature, prompt } = body ?? {};
-    if (!provider_base_url || !provider_api_key_env || !model) {
-      return c.json({ error: "provider_base_url, provider_api_key_env, model are required" }, 400);
+    const { name, provider_base_url, provider_api_key, model, system_prompt, temperature, prompt } = body ?? {};
+    if (!provider_base_url || !provider_api_key || !model) {
+      return c.json({ error: "provider_base_url, provider_api_key, model are required" }, 400);
     }
     try {
       validateTemperature(temperature);
-      validateProviderApiKeyEnv(provider_api_key_env);
     } catch (err) {
       const translated = catalogErrorResponse(err);
       if (translated) return c.json(translated.body, translated.status);
       throw err;
     }
-    return runAgentSse(c, { name: name ?? "test", provider_base_url, provider_api_key_env, model, system_prompt, temperature: temperature ?? 0.7 }, prompt || "Say hello in one sentence.");
+    return runAgentSse(c, { name: name ?? "test", provider_base_url, provider_api_key, model, system_prompt, temperature: temperature ?? 0.7 }, prompt || "Say hello in one sentence.");
   });
 
   // --- FlowGram task endpoints ---

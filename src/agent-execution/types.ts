@@ -5,9 +5,10 @@
  * (server/sse-adapter.mjs via projectTerminal): content_delta / tool_start /
  * tool_end / finish / error / cancelled. See ADR-0001 and #54 resolution.
  *
- * Credential boundary (CONTEXT.md): the browser sends only the env var NAME
- * (`provider_api_key_env`) for the test path, or only `{ prompt }` for the
- * run-by-id path (agentId in URL). The hook never sees the API key value.
+ * Credential boundary (CONTEXT.md): the browser sends only `{ prompt }` for
+ * the run-by-id path (agentId in URL), or the full config (including
+ * `provider_api_key`) for the test path. The hook never sees the API key value
+ * beyond passing it through to the backend.
  */
 
 import type { AgentDef } from '../api';

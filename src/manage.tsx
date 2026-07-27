@@ -116,23 +116,15 @@ function AgentFormModal({
     name: agent?.name ?? '',
     model: agent?.model ?? 'deepseek-v4-flash',
     provider_base_url: agent?.provider_base_url ?? '',
-    provider_api_key_env: agent?.provider_api_key_env ?? 'COPILOT_PROVIDER_API_KEY',
+    provider_api_key: agent?.provider_api_key ?? '',
     system_prompt: agent?.system_prompt ?? '',
     temperature: agent?.temperature ?? 0.7,
   });
   const [saving, setSaving] = useState(false);
-  const [envVars, setEnvVars] = useState<string[]>([]);
 
   // Agent Execution consumer (#54): the hook owns transport, SSE framing,
   // cancellation, and the phase state machine. The modal keeps only rendering.
   const exec = useAgentExecution({ config: form, prompt: undefined });
-
-  useEffect(() => {
-    api
-      .getEnvVars()
-      .then(setEnvVars)
-      .catch(() => setEnvVars([]));
-  }, []);
 
   const submit = async () => {
     setSaving(true);
@@ -149,7 +141,7 @@ function AgentFormModal({
     }
   };
 
-  const canTest = !!form.provider_base_url && !!form.provider_api_key_env && !!form.model;
+  const canTest = !!form.provider_base_url && !!form.provider_api_key && !!form.model;
 
   return (
     <Modal
@@ -206,12 +198,12 @@ function AgentFormModal({
           label="Provider Base URL"
           rules={[{ required: true }]}
         />
-        <Form.AutoComplete
-          field="provider_api_key_env"
-          label="API Key Env Var"
-          data={envVars}
+        <Form.Input
+          field="provider_api_key"
+          label="API Key"
+          mode="password"
           rules={[{ required: true }]}
-          placeholder="Select or type env var"
+          placeholder="Enter API key"
         />
         <Form.TextArea field="system_prompt" label="System Prompt" rows={3} />
         <Form.InputNumber field="temperature" label="Temperature" min={0} max={2} step={0.1} />

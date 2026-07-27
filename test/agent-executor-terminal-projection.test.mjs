@@ -15,11 +15,10 @@ function makeExecutor(scriptedEvents) {
     for (const ev of scriptedEvents) yield ev;
   }
   return createAgentExecutor({
-    db: { prepare: () => ({ get: () => ({ id: 'a1', provider_api_key_env: 'K' }) }) },
+    db: { prepare: () => ({ get: () => ({ id: 'a1', provider_api_key: 'secret' }) }) },
     agentDir: '/tmp/x',
     createSession: async () => { throw new Error('createSession must not be called when runAgentExecution is injected'); },
     runAgentExecution: fakeRunAgentExecution,
-    environment: { K: 'secret' },
   });
 }
 
@@ -102,28 +101,10 @@ test('task adapter pre-checks throw agent_not_found when agent row missing', asy
     db: { prepare: () => ({ get: () => null }) },
     agentDir: '/tmp/x',
     runAgentExecution: async function* () { yield { type: 'terminal', phase: 'succeeded', partialText: '', toolEvents: [] }; },
-    environment: {},
   });
   await assert.rejects(
     () => executor.execute({ inputs: { agentId: 'ghost', prompt: 'p' } }),
     (err) => { assert.equal(err.kind, 'agent_not_found'); return true; },
-  );
-});
-
-test('task adapter pre-checks throw missing_env_var when apiKey absent', async () => {
-  const executor = createAgentExecutor({
-    db: { prepare: () => ({ get: () => ({ id: 'a1', provider_api_key_env: 'MISSING_K' }) }) },
-    agentDir: '/tmp/x',
-    runAgentExecution: async function* () { yield { type: 'terminal', phase: 'succeeded', partialText: '', toolEvents: [] }; },
-    environment: {}, // no MISSING_K
-  });
-  await assert.rejects(
-    () => executor.execute({ inputs: { agentId: 'a1', prompt: 'p' } }),
-    (err) => {
-      assert.equal(err.kind, 'missing_env_var');
-      assert.equal(err.detail.envVar, 'MISSING_K');
-      return true;
-    },
   );
 });
 
@@ -139,10 +120,9 @@ test('task adapter converts iterable-without-terminal to internal_error (defensi
 
 test('task adapter converts shared-module throw (non-AgentExecutionError) to internal_error (defensive)', async () => {
   const executor = createAgentExecutor({
-    db: { prepare: () => ({ get: () => ({ id: 'a1', provider_api_key_env: 'K' }) }) },
+    db: { prepare: () => ({ get: () => ({ id: 'a1', provider_api_key: 'secret' }) }) },
     agentDir: '/tmp/x',
     runAgentExecution: async function* () { throw new Error('shared module bug'); },
-    environment: { K: 'secret' },
   });
   await assert.rejects(
     () => executor.execute({ inputs: { agentId: 'a1', prompt: 'p' } }),

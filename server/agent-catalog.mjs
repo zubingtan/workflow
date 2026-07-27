@@ -9,7 +9,6 @@
  *
  * Validation owned here (invariants the DB schema can't express):
  *   - temperature: finite number in [0, 2]; default 0.7 when undefined.
- *   - provider_api_key_env: matches /^[A-Z][A-Z0-9_]*$/ when provided.
  * Both throw AgentCatalogError with a machine-readable `code`.
  */
 
@@ -26,13 +25,11 @@ export class AgentCatalogError extends Error {
 const AGENT_FIELDS = [
   "name",
   "provider_base_url",
-  "provider_api_key_env",
+  "provider_api_key",
   "model",
   "system_prompt",
   "temperature",
 ];
-
-const ENV_VAR_NAME_RE = /^[A-Z][A-Z0-9_]*$/;
 
 /**
  * Validate temperature. `undefined` is allowed (caller applies default).
@@ -50,20 +47,6 @@ export function validateTemperature(t) {
   }
 }
 
-/**
- * Validate provider_api_key_env. `undefined` is allowed (caller checks
- * required-ness). Must match UPPER_SNAKE_CASE so process.env can look it up.
- */
-export function validateProviderApiKeyEnv(name) {
-  if (name === undefined) return;
-  if (typeof name !== "string" || !ENV_VAR_NAME_RE.test(name)) {
-    throw new AgentCatalogError({
-      code: "invalid_provider_api_key_env",
-      message: "provider_api_key_env must be UPPER_SNAKE_CASE",
-    });
-  }
-}
-
 /** Apply default temperature when undefined. Caller must have validated first. */
 function normalizeTemperature(t) {
   return t ?? 0.7;
@@ -72,11 +55,10 @@ function normalizeTemperature(t) {
 /** Validate and normalize a fields object for INSERT. */
 function normalizeCreateFields(fields) {
   validateTemperature(fields.temperature);
-  validateProviderApiKeyEnv(fields.provider_api_key_env);
   return {
     name: fields.name,
     provider_base_url: fields.provider_base_url,
-    provider_api_key_env: fields.provider_api_key_env,
+    provider_api_key: fields.provider_api_key,
     model: fields.model,
     system_prompt: fields.system_prompt ?? "",
     temperature: normalizeTemperature(fields.temperature),
@@ -84,7 +66,7 @@ function normalizeCreateFields(fields) {
 }
 
 const INSERT_SQL = `
-  INSERT INTO agents (id, name, provider_base_url, provider_api_key_env, model, system_prompt, temperature)
+  INSERT INTO agents (id, name, provider_base_url, provider_api_key, model, system_prompt, temperature)
   VALUES (?, ?, ?, ?, ?, ?, ?)
 `;
 
@@ -94,7 +76,7 @@ function insertRow(db, row) {
     row.id,
     row.name,
     row.provider_base_url,
-    row.provider_api_key_env,
+    row.provider_api_key,
     row.model,
     row.system_prompt,
     row.temperature,
@@ -122,7 +104,6 @@ export function updateAgent(db, id, fields) {
 
   // Validate invariants for any field that's present.
   if (fields.temperature !== undefined) validateTemperature(fields.temperature);
-  if (fields.provider_api_key_env !== undefined) validateProviderApiKeyEnv(fields.provider_api_key_env);
 
   const updates = [];
   const values = [];
@@ -152,7 +133,7 @@ export function copyAgent(db, id) {
     id: newId,
     name: `${src.name} (copy)`,
     provider_base_url: src.provider_base_url,
-    provider_api_key_env: src.provider_api_key_env,
+    provider_api_key: src.provider_api_key,
     model: src.model,
     system_prompt: src.system_prompt,
     temperature: src.temperature,

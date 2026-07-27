@@ -25,9 +25,9 @@
  *   - Re-run auto-supersedes: the controller silently aborts any in-flight
  *     run before starting the new one; the superseded run emits no terminal.
  *
- * Credential boundary (CONTEXT.md): the hook never sends the API key value.
- * The test path sends `provider_api_key_env` (env var name) inside `config`;
- * the run-by-id path sends only `{ prompt }`. Resolution happens server-side.
+ * Credential boundary (CONTEXT.md): the test path sends the full config
+ * (including `provider_api_key`) to `/agents/test`; the run-by-id path sends
+ * only `{ prompt }`. The API key is stored in the DB and resolved server-side.
  */
 
 import { useCallback, useMemo, useRef, useState } from 'react';

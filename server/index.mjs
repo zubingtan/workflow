@@ -35,12 +35,23 @@ mkdirSync(AGENT_DIR, { recursive: true });
 
 const db = new Database(DB_PATH);
 db.pragma("journal_mode = WAL");
+
+// Migration (#129): drop legacy agents table that used provider_api_key_env
+// (env-var name) column. New schema stores the key value directly in
+// provider_api_key. Detect by checking for the old column name; only drop if
+// it exists, so fresh installs (no agents table yet) are unaffected.
+const legacyCols = db.prepare("PRAGMA table_info(agents)").all();
+if (legacyCols.some((c) => c.name === "provider_api_key_env")) {
+  db.exec("DROP TABLE agents");
+  console.log("  dropped legacy agents table (provider_api_key_env → provider_api_key)");
+}
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS agents (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     provider_base_url TEXT NOT NULL,
-    provider_api_key_env TEXT NOT NULL,
+    provider_api_key TEXT NOT NULL,
     model TEXT NOT NULL,
     system_prompt TEXT DEFAULT '',
     temperature REAL DEFAULT 0.7,
@@ -63,7 +74,7 @@ const seeded = seedAgentIfEmpty(db, {
   id: "fake-default",
   name: "Fake Provider",
   provider_base_url: "http://localhost:4010/v1",
-  provider_api_key_env: "FAKE_PROVIDER_API_KEY",
+  provider_api_key: "fake-provider-local",
   model: "fake-model",
   system_prompt: "You are a helpful assistant.",
   temperature: 0.7,
@@ -74,12 +85,11 @@ if (seeded) console.log("  seeded fake-provider agent");
 initRuntime(db, AGENT_DIR);
 
 // --- Build the Hono app (shared factory — see server/app.mjs) ---
-// Credential boundary: createApp binds apiKey from process.env into a
-// createSession closure before calling runAgentExecution (#66 rule).
+// Credential: agent rows store provider_api_key directly (#129); createApp
+// no longer needs process.env for credential resolution.
 const app = createApp({
   db,
   agentDir: AGENT_DIR,
-  environment: process.env,
   staticEnabled: STATIC_ENABLED,
   staticDir: STATIC_DIR,
   runAgentExecution,

@@ -6,7 +6,7 @@ import { createAgentExecutor } from '../server/runtime-adapter.mjs';
 test('LLM executor aborts and disposes its Pi session when FlowGram cancels', async () => {
   const agent = {
     id: 'agent_1',
-    provider_api_key_env: 'TEST_PROVIDER_API_KEY',
+    provider_api_key: 'test-only',
   };
   let start;
   const started = new Promise((resolve) => {
@@ -46,7 +46,6 @@ test('LLM executor aborts and disposes its Pi session when FlowGram cancels', as
     db: { prepare: () => ({ get: () => agent }) },
     agentDir: '/tmp/workflow-agent-executor-test',
     createSession: async () => session,
-    environment: { TEST_PROVIDER_API_KEY: 'test-only' },
   });
 
   const execution = executor.execute({

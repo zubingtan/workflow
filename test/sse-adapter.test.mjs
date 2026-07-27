@@ -49,13 +49,12 @@ test('projectTerminal: failed without error object → generic provider_error', 
  * asserts against `fakeStream._written` directly — no separate capture helper
  * needed.
  */
-function makeRunAgentSseWithFakeStream({ runAgentExecution, environment, fakeStream }) {
+function makeRunAgentSseWithFakeStream({ runAgentExecution, fakeStream }) {
   const fakeStreamer = async (_c, handler) => handler(fakeStream);
   return createRunAgentSse({
     runAgentExecution,
     createAgentSessionForAgent: async () => { throw new Error('must not be called — fakeRun ignores createSession'); },
     agentDir: '/tmp/x',
-    environment,
     streamSSE: fakeStreamer,
   });
 }
@@ -74,7 +73,7 @@ function fakeStream() {
   };
 }
 
-const AGENT = { id: 'a1', name: 't', provider_base_url: 'http://x', model: 'm', provider_api_key_env: 'K' };
+const AGENT = { id: 'a1', name: 't', provider_base_url: 'http://x', model: 'm', provider_api_key: 'secret' };
 
 test('SSE adapter: streams content_delta + tool events, then finish on succeeded terminal', async () => {
   async function* fakeRun() {
@@ -86,7 +85,7 @@ test('SSE adapter: streams content_delta + tool events, then finish on succeeded
   }
   const stream = fakeStream();
   const runAgentSse = makeRunAgentSseWithFakeStream({
-    runAgentExecution: fakeRun, environment: { K: 'secret' }, fakeStream: stream,
+    runAgentExecution: fakeRun, fakeStream: stream,
   });
   await runAgentSse(fakeContext(), AGENT, 'hi');
   const written = stream._written ?? [];
@@ -102,7 +101,7 @@ test('SSE adapter: emits {type:"cancelled"} on cancelled terminal (additive even
   }
   const stream = fakeStream();
   const runAgentSse = makeRunAgentSseWithFakeStream({
-    runAgentExecution: fakeRun, environment: { K: 'secret' }, fakeStream: stream,
+    runAgentExecution: fakeRun, fakeStream: stream,
   });
   await runAgentSse(fakeContext(), AGENT, 'hi');
   const written = stream._written ?? [];
@@ -116,38 +115,9 @@ test('SSE adapter: emits {type:"error", message, kind} on failed terminal', asyn
   }
   const stream = fakeStream();
   const runAgentSse = makeRunAgentSseWithFakeStream({
-    runAgentExecution: fakeRun, environment: { K: 'secret' }, fakeStream: stream,
+    runAgentExecution: fakeRun, fakeStream: stream,
   });
   await runAgentSse(fakeContext(), AGENT, 'hi');
   const written = stream._written ?? [];
   assert.deepEqual(written, [{ type: 'error', message: 'boom', kind: 'provider_error' }]);
-});
-
-test('SSE adapter: missing env var → 500 JSON before streaming (route-level credential check)', async () => {
-  async function* fakeRun() { yield { type: 'terminal', phase: 'succeeded', partialText: '', toolEvents: [] }; }
-  // The credential short-circuit returns c.json(...) BEFORE streamSSE is called,
-  // so the fake streamer is never invoked.
-  const fakeStreamer = async () => { throw new Error('streamSSE should not be called on missing env var'); };
-  const runAgentSse = createRunAgentSse({
-    runAgentExecution: fakeRun,
-    createAgentSessionForAgent: async () => { throw new Error('not called'); },
-    agentDir: '/tmp/x',
-    environment: {}, // no API key for this agent
-    streamSSE: fakeStreamer,
-  });
-  const c = {
-    _headers: {},
-    _json: null,
-    _status: null,
-    header(k, v) { this._headers[k] = v; },
-    json(body, status) { this._json = body; this._status = status; return { _jsonResponse: true }; },
-    req: { param: () => undefined, json: async () => ({ prompt: 'hi' }) },
-  };
-  await runAgentSse(
-    c,
-    { id: 'a1', name: 't', provider_base_url: 'http://x', model: 'm', provider_api_key_env: 'MISSING_K' },
-    'hi',
-  );
-  assert.equal(c._status, 500);
-  assert.match(c._json.error, /MISSING_K/);
 });

@@ -3,9 +3,9 @@
  * module's event sequence. Owns NO pi session, subscribe handler, or event
  * translation — only SSE framing + terminal projection (#76).
  *
- * Credential boundary: the route resolves apiKey from environment and binds it
- * into a createSession closure BEFORE calling this adapter. The adapter (and
- * the shared module it calls) never resolves credentials.
+ * Credential boundary: apiKey comes from `agentConfig.provider_api_key`
+ * directly — no env resolution. The adapter binds it into a createSession
+ * closure before calling the shared module.
  */
 import { streamSSE } from "hono/streaming";
 import { projectTerminal } from "./agent-execution.mjs";
@@ -19,7 +19,6 @@ import { projectTerminal } from "./agent-execution.mjs";
  * @param {(opts: object) => AsyncGenerator} deps.runAgentExecution
  * @param {(agentConfig: object, apiKey: string, agentDir: string) => Promise<object>} deps.createAgentSessionForAgent
  * @param {string} deps.agentDir
- * @param {object} deps.environment
  * @param {(c: object, handler: (stream: object) => Promise<void>) => Promise<void>} [deps.streamSSE]
  *   Defaults to hono/streaming's streamSSE. Tests pass a fake that invokes
  *   the handler with a fake stream.
@@ -28,14 +27,10 @@ export function createRunAgentSse({
   runAgentExecution,
   createAgentSessionForAgent,
   agentDir,
-  environment,
   streamSSE: streamer = streamSSE,
 }) {
   return async function runAgentSse(c, agentConfig, prompt) {
-    const apiKey = environment[agentConfig.provider_api_key_env];
-    if (!apiKey) {
-      return c.json({ error: `missing env var: ${agentConfig.provider_api_key_env}` }, 500);
-    }
+    const apiKey = agentConfig.provider_api_key;
 
     c.header("X-Accel-Buffering", "no");
 

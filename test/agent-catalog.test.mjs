@@ -5,7 +5,6 @@ import Database from 'better-sqlite3';
 import {
   AgentCatalogError,
   validateTemperature,
-  validateProviderApiKeyEnv,
   listAgents,
   getAgentById,
   createAgent,
@@ -18,6 +17,9 @@ import {
 /**
  * In-memory SQLite fixture. Mirrors the agents schema from server/index.mjs
  * so the catalog module operates against the real table shape.
+ *
+ * NOTE: schema uses `provider_api_key` (the key VALUE, stored directly) —
+ * #129 dropped the legacy `provider_api_key_env` (env-var name) column.
  */
 function makeDb() {
   const db = new Database(':memory:');
@@ -26,7 +28,7 @@ function makeDb() {
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       provider_base_url TEXT NOT NULL,
-      provider_api_key_env TEXT NOT NULL,
+      provider_api_key TEXT NOT NULL,
       model TEXT NOT NULL,
       system_prompt TEXT DEFAULT '',
       temperature REAL DEFAULT 0.7,
@@ -40,7 +42,7 @@ function makeDb() {
 const validFields = {
   name: 'Test Agent',
   provider_base_url: 'http://localhost:4010/v1',
-  provider_api_key_env: 'FAKE_PROVIDER_API_KEY',
+  provider_api_key: 'fake-key-value',
   model: 'fake-model',
   system_prompt: 'You are helpful.',
   temperature: 0.5,
@@ -83,51 +85,19 @@ test('validateTemperature accepts undefined (default applies) and rejects invali
   }
 });
 
-test('validateProviderApiKeyEnv accepts valid names and rejects invalid', () => {
-  // undefined → no throw (caller checks required-ness)
-  assert.doesNotThrow(() => validateProviderApiKeyEnv(undefined));
-  for (const ok of ['FAKE_PROVIDER_API_KEY', 'A', 'ABC_123', 'KEY_URL_HOST']) {
-    assert.doesNotThrow(() => validateProviderApiKeyEnv(ok), `expected ok for name=${ok}`);
-  }
-  for (const bad of ['lower', 'snake_case', '1ABC', 'A-B', '', ' ', 123, true, null]) {
-    assert.throws(
-      () => validateProviderApiKeyEnv(bad),
-      (err) => err instanceof AgentCatalogError && err.code === 'invalid_provider_api_key_env',
-      `expected invalid_provider_api_key_env for name=${String(bad)}`,
-    );
-  }
-});
-
-test('createAgent rejects invalid provider_api_key_env via catalog validation', () => {
-  const db = makeDb();
-  assert.throws(
-    () => createAgent(db, { ...validFields, provider_api_key_env: 'lower_case' }),
-    (err) => err instanceof AgentCatalogError && err.code === 'invalid_provider_api_key_env',
-  );
-});
-
-test('updateAgent rejects invalid provider_api_key_env when provided', () => {
-  const db = makeDb();
-  const agent = createAgent(db, validFields);
-  assert.throws(
-    () => updateAgent(db, agent.id, { provider_api_key_env: 'lower' }),
-    (err) => err instanceof AgentCatalogError && err.code === 'invalid_provider_api_key_env',
-  );
-});
-
-test('credential boundary: agent rows never store the API key value, only the env-var name', () => {
-  // #55 decision / AGENTS.md credential convention: the agents table schema
-  // has a `provider_api_key_env` column (the NAME of an env var) and must NOT
-  // have any column that stores the key value itself. This test pins that
-  // invariant so a future schema change can't silently reintroduce it.
+test('credential storage: agent rows store the API key value directly in provider_api_key', () => {
+  // #129 decision: the agents table schema has a `provider_api_key` column
+  // (the key VALUE, stored directly) and must NOT have a `provider_api_key_env`
+  // column (the old env-var-name indirection, dropped as too cumbersome across
+  // machines). This test pins the new invariant.
   const db = makeDb();
   const agent = createAgent(db, validFields);
   const columns = Object.keys(agent);
-  assert.equal(columns.includes('provider_api_key_env'), true);
-  // No column whose name suggests a stored key value.
-  for (const forbidden of ['api_key', 'provider_api_key', 'apikey', 'secret', 'token']) {
-    assert.equal(columns.includes(forbidden), false, `agents table must not have a '${forbidden}' column`);
-  }
+  assert.equal(columns.includes('provider_api_key'), true);
+  assert.equal(columns.includes('provider_api_key_env'), false,
+    'agents table must not have a provider_api_key_env column — keys are stored directly now');
+  // The stored value is the key itself, not an env-var name.
+  assert.equal(agent.provider_api_key, 'fake-key-value');
 });
 
 test('createAgent accepts boundary temperatures 0, 0.7, 2', () => {
@@ -195,6 +165,7 @@ test('copyAgent clones with "(copy)" name suffix and new id', () => {
   assert.equal(copy.model, agent.model);
   assert.equal(copy.temperature, agent.temperature);
   assert.equal(copy.system_prompt, agent.system_prompt);
+  assert.equal(copy.provider_api_key, agent.provider_api_key);
 });
 
 test('copyAgent returns undefined for missing source', () => {
@@ -209,7 +180,7 @@ test('seedAgentIfEmpty inserts when table empty, no-op when non-empty', () => {
     id: 'fake-default',
     name: 'Fake Provider',
     provider_base_url: 'http://localhost:4010/v1',
-    provider_api_key_env: 'FAKE_PROVIDER_API_KEY',
+    provider_api_key: 'fake-provider-local',
     model: 'fake-model',
     system_prompt: 'You are a helpful assistant.',
     temperature: 0.7,
