@@ -74,8 +74,8 @@ canvas LLM node → localhost:4001/agents/:id/run (Hono, SSE)
   CORS + key exposure). The frontend never imports pi; it only calls the Hono
   backend.
 - **`.env` is gitignored**; `.env.example` is the committed template. `cp` it
-  before running. `PUBLIC_SERVER_URL` is inlined into the client bundle by
-  RSBuild (frontend → backend URL).
+  before running. The frontend talks to the same origin that served it (T3
+  removed `PUBLIC_SERVER_URL`; `src/api.ts` uses same-origin relative URLs).
 - **pnpm only** (not npm/yarn). `packageManager: pnpm@11.13.0`. Build-script
   allowlist lives in `pnpm-workspace.yaml` (`onlyBuiltDependencies`), NOT in
   `package.json`'s `pnpm` field (pnpm 11 ignores that field). `better-sqlite3`
@@ -101,12 +101,12 @@ manually when you need it.
 
 **Which command to use:**
 
-| Scenario                                                          | Command         | Why                                                 |
-| ----------------------------------------------------------------- | --------------- | --------------------------------------------------- |
-| Agent starts full-stack dev (LLM node needs backend + provider)   | `pnpm dev:all`  | One process group, three ports ready                |
-| Agent only iterates on frontend (no agent execution, no Test Run) | `pnpm dev`      | Lighter; backend & provider not needed              |
-| Agent only iterates on backend (SSE, CRUD, no canvas)             | `pnpm server`   | Frontend not needed; `PUBLIC_SERVER_URL` irrelevant |
-| Agent runs E2E                                                    | `pnpm test:e2e` | `e2e/global-setup.ts` spawns its own dev stack      |
+| Scenario                                                          | Command                            | Why                                                                                                  |
+| ----------------------------------------------------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Agent starts full-stack dev (LLM node needs backend + provider)   | `pnpm dev:all`                     | One process group, three ports ready                                                                 |
+| Agent only iterates on frontend (no agent execution, no Test Run) | `pnpm dev`                         | Lighter; backend & provider not needed                                                               |
+| Agent only iterates on backend (SSE, CRUD, no canvas)             | `pnpm server`                      | Frontend not needed                                                                                  |
+| Agent runs E2E                                                    | `pnpm build:prod && pnpm test:e2e` | `e2e/global-setup.ts` spawns fake-provider + prod-mode Hono (single port :4001); needs `dist/` first |
 
 **Agent rules:**
 
@@ -132,7 +132,7 @@ manually when you need it.
 - `src/nodes/llm/index.ts` + `form-meta.tsx` — LLM node registry and form (agentId + prompt).
 - `server/index.mjs` — Hono app: agents/workflows CRUD, agent run/test SSE, `/env/vars`, `/health/live`.
 - `scripts/fake-provider.mjs` — OpenAI-compatible fake (port 4010, SSE + test control).
-- `.env.example` — `FAKE_PROVIDER_API_KEY` / `SERVER_PORT` / `FAKE_PROVIDER_PORT` / `PUBLIC_SERVER_URL`.
+- `.env.example` — `FAKE_PROVIDER_API_KEY` / `SERVER_PORT` / `FAKE_PROVIDER_PORT`.
 - `rsbuild.config.ts` — Rsbuild config.
 - `pnpm-workspace.yaml` — `onlyBuiltDependencies`.
 

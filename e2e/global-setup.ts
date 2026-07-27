@@ -1,11 +1,17 @@
 /**
  * Playwright global setup.
  *
- * Spawns three long-running dev processes directly (not via pnpm wrapper, to
- * keep process-group management clean):
+ * Spawns two long-running processes directly (not via pnpm wrapper, to keep
+ * process-group management clean):
  *   - fake-provider (port 4010) — node scripts/fake-provider.mjs
- *   - Hono server (port 4001)   — node server/index.mjs (WORKFLOW_DATA_DIR → temp)
- *   - rsbuild dev (port 3000)   — rsbuild dev (NO --open; playwright owns its browser)
+ *   - Hono server  (port 4001)  — node server/index.mjs in PROD mode
+ *
+ * After T1-T6 (#116), the unified prod-mode startup is the simplest correct
+ * E2E path: `pnpm build:prod` produces `dist/`, then `NODE_ENV=production
+ * node server/index.mjs` serves SPA + API + SSE on a single port :4001 via
+ * T4's `serveStatic` + SPA fallback. The rsbuild `middlewareMode` dev-mode
+ * integration (T1 #117) was decision-only and never implemented, so we
+ * don't try to run a dev server here.
  *
  * Each child is `detached: true` so it becomes its own process-group leader,
  * letting global-teardown kill the whole group via process.kill(-pid).
@@ -15,9 +21,9 @@
  * `globalThis` so global-teardown can kill them.
  */
 import { spawn, type ChildProcess } from 'node:child_process';
-import { mkdirSync, mkdtempSync, openSync, writeSync, readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, openSync, writeSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 
 const ROOT = process.cwd();
 const LOG_DIR = join(ROOT, 'e2e', '.logs');
@@ -27,7 +33,7 @@ const DATA_DIR = mkdtempSync(join(tmpdir(), 'workflow-e2e-'));
 const READY_TIMEOUT = 60_000;
 const POLL_INTERVAL = 250;
 
-const processes: { fake?: ChildProcess; server?: ChildProcess; web?: ChildProcess } = {};
+const processes: { fake?: ChildProcess; server?: ChildProcess } = {};
 (globalThis as any).__E2E_PROCESSES__ = processes;
 (globalThis as any).__E2E_DATA_DIR__ = DATA_DIR;
 
@@ -95,6 +101,25 @@ async function waitForUrl(url: string, label: string, logName: string): Promise<
   );
 }
 
+/**
+ * Ensure `dist/` exists before we start the server in prod mode. The server
+ * reads `STATIC_DIR` (defaults to `./dist`); if it's missing, the SPA root
+ * returns 404 and every page.goto('/') in the test suite fails confusingly.
+ *
+ * We do NOT run `pnpm build:prod` automatically — that's a 30s+ operation
+ * and the user is expected to have run it (or `pnpm dev` to refresh dist/).
+ * If dist/ is missing we fail fast with a clear message.
+ */
+function assertDistExists() {
+  const distDir = join(ROOT, 'dist');
+  if (!existsSync(distDir) || !existsSync(join(distDir, 'index.html'))) {
+    throw new Error(
+      `E2E needs dist/ with index.html (prod-mode startup). Run \`pnpm build:prod\` first.\n` +
+        `  expected: ${join(distDir, 'index.html')}`
+    );
+  }
+}
+
 export default async function globalSetup() {
   // Build a clean env for the children. We load .env ourselves (rather than
   // relying on `node --env-file=.env`) so we control precedence — the E2E
@@ -115,32 +140,26 @@ export default async function globalSetup() {
   });
   await waitForUrl('http://localhost:4010/health/live', 'fake-provider', 'fake-provider');
 
-  // --- Hono server (port 4001) with isolated SQLite ---
+  // --- Hono server (port 4001) in PROD mode with isolated SQLite ---
+  // Prod mode (NODE_ENV=production) enables T4's serveStatic + SPA fallback,
+  // so this single process serves the SPA bundle (from dist/) AND the API/SSE.
+  // We invoke `node server/index.mjs` directly (not `pnpm server`) so E2E
+  // owns env precedence — `pnpm server` passes `--env-file=.env` which would
+  // override WORKFLOW_DATA_DIR and FAKE_PROVIDER_API_KEY.
+  //
   // The server resolves API keys via process.env[agent.provider_api_key_env]
   // at call time — seeded agents use FAKE_PROVIDER_API_KEY as the env-var
   // name, so the server MUST have it in its env or execution fails with
   // "missing env var: FAKE_PROVIDER_API_KEY".
+  assertDistExists();
   processes.server = spawnLogged('server', 'node', ['server/index.mjs'], {
     ...baseEnv,
     FAKE_PROVIDER_API_KEY: fakeApiKey,
     WORKFLOW_DATA_DIR: DATA_DIR, // override ~/.config/workflow/ → temp dir
     SERVER_PORT: baseEnv.SERVER_PORT ?? '4001',
+    NODE_ENV: 'production', // enables serveStatic + SPA fallback (T4 #120)
   });
   await waitForUrl('http://localhost:4001/health/live', 'Hono server', 'server');
-
-  // --- rsbuild dev (port 3000) ---
-  // The `pnpm dev` script no longer passes `--open` (auto-open was removed so
-  // agent-driven dev starts don't spawn a browser tab). For E2E we still run
-  // rsbuild directly (rather than via `pnpm dev`) so we control env vars and
-  // process-group management ourselves — playwright launches its own chromium.
-  const rsbuildBin = resolve(ROOT, 'node_modules', '.bin', 'rsbuild');
-  processes.web = spawnLogged('web', rsbuildBin, ['dev'], {
-    ...baseEnv,
-    MODE: 'app',
-    NODE_ENV: 'development',
-    PUBLIC_SERVER_URL: 'http://localhost:4001', // inlined into client bundle
-  });
-  await waitForUrl('http://localhost:3000', 'rsbuild dev', 'web');
 
   // eslint-disable-next-line no-console
   console.log(`[e2e] all processes ready; data dir: ${DATA_DIR}`);
