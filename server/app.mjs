@@ -192,8 +192,31 @@ export function createApp({
   });
 
   app.delete("/workflows/:id", (c) => {
-    const result = db.prepare("DELETE FROM workflows WHERE id = ?").run(c.req.param("id"));
+    const id = c.req.param("id");
+    // Phase 6 (#158): refuse to delete a workflow that still has queued or
+    // running runs. The user must cancel (or wait for) them first — no bulk
+    // cancel from the delete path (map out-of-scope).
+    const activeCount =
+      db
+        .prepare(
+          "SELECT COUNT(*) AS n FROM workflow_runs WHERE workflow_id=? AND status IN ('queued','running')"
+        )
+        .get(id)?.n ?? 0;
+    if (activeCount > 0) {
+      return c.json({ error: "workflow_has_active_runs", activeCount }, 409);
+    }
+    const result = db.prepare("DELETE FROM workflows WHERE id = ?").run(id);
     if (result.changes === 0) return c.json({ error: "not found" }, 404);
+    // Cascade (PRAGMA foreign_keys=ON from Phase 1 + ON DELETE CASCADE) has
+    // already removed all workflow_runs rows. Notify any open SSE subscribers
+    // so the History Modal / Delete button can close.
+    if (eventBus) {
+      try {
+        eventBus.broadcastAll({ type: "workflow_deleted", workflowId: id });
+      } catch (err) {
+        console.error("[app] workflow_deleted broadcast failed for", id, err);
+      }
+    }
     return c.json({ ok: true });
   });
 
