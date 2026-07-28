@@ -89,6 +89,20 @@ export function useActiveRunCounts(workflowIds: string[]): Record<string, number
           es.close();
           return;
         }
+        // Phase 10 (#162): the server sends an `init` frame right after
+        // subscribe with the current active-run IDs. This lets a tab that
+        // loaded AFTER runs started reflect the correct count immediately,
+        // instead of staying at 0 until the next run_status event.
+        if (type === 'init' && Array.isArray(payload.activeRunIDs)) {
+          const set = knownRuns.current[id] ?? new Set<string>();
+          set.clear();
+          for (const rid of payload.activeRunIDs) {
+            if (typeof rid === 'string') set.add(rid);
+          }
+          knownRuns.current[id] = set;
+          setCounts((prev) => ({ ...prev, [id]: set.size }));
+          return;
+        }
         if (!runID) return;
         if (type === 'run_status') {
           if (status === 'queued' || status === 'running') {

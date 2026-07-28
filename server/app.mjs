@@ -419,7 +419,8 @@ export function createApp({
       const report = await TaskReportAPI({ taskID });
       // Draft-lock release on terminal. Saved-workflow terminal capture is
       // owned by Phase 4 (queue's onTerminal hook) — NOT this route.
-      if (report && (report.status === "success" || report.status === "failed" || report.status === "cancelled")) {
+      // StatusData.terminated is the boolean "workflow done" flag.
+      if (report?.workflowStatus?.terminated) {
         releaseDraftLockByTaskID(taskID);
       }
       return c.json(report);
@@ -553,6 +554,23 @@ export function createApp({
       start(controller) {
         controllerRef = controller;
         eventBus.subscribe(workflowId, resLike);
+        // Phase 10 (#162): send an `init` event with the current active-run
+        // count so a late-subscribing tab (e.g. page loaded after a run
+        // started) immediately reflects the correct Delete-button state.
+        // Without this, the hook's count stays 0 until the next run_status
+        // event arrives — which may never come for an already-running run.
+        try {
+          const activeIds = db
+            .prepare(
+              "SELECT id FROM workflow_runs WHERE workflow_id=? AND status IN ('queued','running')"
+            )
+            .all(workflowId)
+            .map((r) => r.id);
+          const initPayload = JSON.stringify({ type: "init", activeRunIDs: activeIds });
+          controller.enqueue(encoder.encode(`data: ${initPayload}\n\n`));
+        } catch (initErr) {
+          console.error("[runs/events] init frame failed", initErr);
+        }
         // Heartbeat: write `:ping\n\n` every 25s to keep the connection alive
         // through proxies that close idle connections.
         const heartbeat = setInterval(() => {

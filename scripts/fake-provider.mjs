@@ -126,9 +126,12 @@ async function handleCompletion(request, response) {
     return;
   }
   if (mode === "timeout") {
+    // sleepMs lets E2E simulate a long-running provider call that exceeds
+    // the node timeout (default 1000ms for backwards compat).
+    const sleepMs = typeof control?.sleepMs === "number" && control.sleepMs > 0 ? control.sleepMs : 1_000;
     setTimeout(() => {
       if (!response.destroyed) streamCompletion(response);
-    }, 1_000);
+    }, sleepMs);
     return;
   }
   if (mode === "empty_output") {
@@ -175,6 +178,7 @@ createServer(async (request, response) => {
     controls.set(body.correlationId, {
       mode: body.mode,
       rawDetail: typeof body.rawDetail === "string" ? body.rawDetail : "",
+      sleepMs: typeof body.sleepMs === "number" && body.sleepMs > 0 ? body.sleepMs : undefined,
       calls: 0,
     });
     json(response, 200, { status: "configured" });

@@ -189,7 +189,7 @@ test("DELETE /api/runs/:runID on a missing run returns 404", async () => {
 
 // --- SSE endpoint ---
 
-test("GET /api/workflows/:id/runs/events opens an SSE stream and writes initial :ping", async () => {
+test("GET /api/workflows/:id/runs/events opens an SSE stream and writes initial :ping + init frame", async () => {
   const { app } = makeApp();
   const res = await app.fetch(
     new Request("http://localhost/api/workflows/wf_1/runs/events")
@@ -199,11 +199,21 @@ test("GET /api/workflows/:id/runs/events opens an SSE stream and writes initial 
   assert.equal(res.headers.get("Cache-Control"), "no-cache");
   assert.equal(res.headers.get("Connection"), "keep-alive");
 
-  // Read the first chunk from the stream — should be the initial :ping.
+  // The bus writes an initial :ping to flush headers, then the endpoint
+  // writes an `init` frame with the current active-run IDs (Phase 10 #162).
+  // Both may arrive in the same chunk or separate chunks — accumulate text
+  // until we've seen both.
   const reader = res.body.getReader();
-  const { value } = await reader.read();
-  const text = new TextDecoder().decode(value);
-  assert.equal(text, ":ping\n\n", "initial :ping flushed headers");
+  const decoder = new TextDecoder();
+  let text = "";
+  while (!text.includes(":ping") || !text.includes('"type":"init"')) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    text += decoder.decode(value, { stream: true });
+  }
+  assert.ok(text.includes(":ping\n\n"), "initial :ping flushed headers");
+  assert.ok(text.includes('"type":"init"'), "init frame sent after subscribe");
+  assert.ok(text.includes('"activeRunIDs":[]'), "init frame carries empty activeRunIDs for fresh wf");
   await reader.cancel();
 });
 
@@ -215,6 +225,24 @@ test("GET /api/workflows/:id/runs/events returns 404 for a missing workflow", as
   assert.equal(res.status, 404);
 });
 
+/**
+ * Drain the initial SSE frames (:ping + init) so subsequent reads only see
+ * real broadcast events. Phase 10 (#162) added the `init` frame after the
+ * bus's `:ping`, so tests must consume both before asserting on broadcasts.
+ */
+async function drainInitial(reader) {
+  const decoder = new TextDecoder();
+  let seenPing = false;
+  let seenInit = false;
+  while (!seenPing || !seenInit) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    const chunk = decoder.decode(value, { stream: true });
+    if (chunk.includes(":ping")) seenPing = true;
+    if (chunk.includes('"type":"init"')) seenInit = true;
+  }
+}
+
 test("SSE: broadcasting a run_status event reaches the subscriber via the stream", async () => {
   const { app, eventBus } = makeApp();
   const res = await app.fetch(
@@ -223,8 +251,8 @@ test("SSE: broadcasting a run_status event reaches the subscriber via the stream
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
 
-  // Consume the initial :ping.
-  await reader.read();
+  // Consume the initial :ping + init frame.
+  await drainInitial(reader);
 
   // Broadcast a run_status event.
   eventBus.broadcast("wf_1", { type: "run_status", runID: "run_1", status: "queued" });
@@ -244,7 +272,7 @@ test("SSE: closing the stream unsubscribes (no leak, no EPIPE crash on later bro
     new Request("http://localhost/api/workflows/wf_1/runs/events")
   );
   const reader = res.body.getReader();
-  await reader.read(); // consume :ping
+  await drainInitial(reader);
 
   // Cancel the stream — simulates the tab closing.
   await reader.cancel();
@@ -269,9 +297,9 @@ test("SSE: multi-tab — two subscribers on the same workflow both receive broad
   const reader2 = res2.body.getReader();
   const decoder = new TextDecoder();
 
-  // Consume the initial :ping on both.
-  await reader1.read();
-  await reader2.read();
+  // Consume the initial :ping + init frame on both.
+  await drainInitial(reader1);
+  await drainInitial(reader2);
 
   // Broadcast once — both should receive.
   eventBus.broadcast("wf_1", { type: "run_terminal", runID: "run_1", status: "succeeded" });
@@ -295,7 +323,7 @@ test("SSE: broadcasting to a different workflow does NOT reach this subscriber",
     new Request("http://localhost/api/workflows/wf_1/runs/events")
   );
   const reader = res.body.getReader();
-  await reader.read(); // consume :ping
+  await drainInitial(reader);
 
   // Broadcast to wf_2 — wf_1 subscriber must NOT receive.
   eventBus.broadcast("wf_2", { type: "run_status", runID: "run_1", status: "queued" });
