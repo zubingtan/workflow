@@ -3,15 +3,14 @@
  *
  * Spawns two long-running processes directly (not via pnpm wrapper, to keep
  * process-group management clean):
- *   - fake-provider (port 4010) — node scripts/fake-provider.mjs
- *   - Hono server  (port 4001)  — node server/index.mjs in PROD mode
+ *   - fake-provider (port 4011) — node scripts/fake-provider.mjs
+ *   - Hono server  (port 4099)  — node server/index.mjs in PROD mode
  *
- * After T1-T6 (#116), the unified prod-mode startup is the simplest correct
- * E2E path: `pnpm build:prod` produces `dist/`, then `NODE_ENV=production
- * node server/index.mjs` serves SPA + API + SSE on a single port :4001 via
- * T4's `serveStatic` + SPA fallback. The rsbuild `middlewareMode` dev-mode
- * integration (T1 #117) was decision-only and never implemented, so we
- * don't try to run a dev server here.
+ * E2E runs in prod mode with fully isolated ports (per map #133 D3/D4):
+ * `pnpm build` produces `dist/`, then `NODE_ENV=production PORT=4099
+ * node server/index.mjs` serves SPA + API + SSE on a single port :4099 via
+ * serveStatic + SPA fallback. Ports :4099 + :4011 are E2E-only so dev
+ * (:4001 + :4010) and prod (:4000) can run concurrently.
  *
  * Each child is `detached: true` so it becomes its own process-group leader,
  * letting global-teardown kill the whole group via process.kill(-pid).
@@ -106,7 +105,7 @@ async function waitForUrl(url: string, label: string, logName: string): Promise<
  * reads `STATIC_DIR` (defaults to `./dist`); if it's missing, the SPA root
  * returns 404 and every page.goto('/') in the test suite fails confusingly.
  *
- * We do NOT run `pnpm build:prod` automatically — that's a 30s+ operation
+ * We do NOT run `pnpm build` automatically — that's a 30s+ operation
  * and the user is expected to have run it (or `pnpm dev` to refresh dist/).
  * If dist/ is missing we fail fast with a clear message.
  */
@@ -114,7 +113,7 @@ function assertDistExists() {
   const distDir = join(ROOT, 'dist');
   if (!existsSync(distDir) || !existsSync(join(distDir, 'index.html'))) {
     throw new Error(
-      `E2E needs dist/ with index.html (prod-mode startup). Run \`pnpm build:prod\` first.\n` +
+      `E2E needs dist/ with index.html (prod-mode startup). Run \`pnpm build\` first.\n` +
         `  expected: ${join(distDir, 'index.html')}`
     );
   }
@@ -134,16 +133,16 @@ export default async function globalSetup() {
   const baseEnv = { ...process.env };
   const fakeApiKey = baseEnv.FAKE_PROVIDER_API_KEY ?? 'fake-provider-local';
 
-  // --- fake-provider (port 4010) ---
+  // --- fake-provider (E2E port 4011, per map #133 D4) ---
   processes.fake = spawnLogged('fake-provider', 'node', ['scripts/fake-provider.mjs'], {
     ...baseEnv,
     FAKE_PROVIDER_API_KEY: fakeApiKey,
-    FAKE_PROVIDER_PORT: baseEnv.FAKE_PROVIDER_PORT ?? '4010',
+    FAKE_PROVIDER_PORT: '4011',
   });
-  await waitForUrl('http://localhost:4010/health/live', 'fake-provider', 'fake-provider');
+  await waitForUrl('http://localhost:4011/health/live', 'fake-provider', 'fake-provider');
 
-  // --- Hono server (port 4001) in PROD mode with isolated SQLite ---
-  // Prod mode (NODE_ENV=production) enables T4's serveStatic + SPA fallback,
+  // --- Hono server (E2E port 4099, per map #133 D3) in PROD mode with isolated SQLite ---
+  // Prod mode (NODE_ENV=production) enables serveStatic + SPA fallback,
   // so this single process serves the SPA bundle (from dist/) AND the API/SSE.
   // We invoke `node server/index.mjs` directly (not `pnpm server`) so E2E
   // owns env precedence — `pnpm server` passes `--env-file=.env` which would
@@ -159,10 +158,10 @@ export default async function globalSetup() {
     ...baseEnv,
     FAKE_PROVIDER_API_KEY: fakeApiKey,
     WORKFLOW_DATA_DIR: DATA_DIR, // override ~/.config/workflow/ → temp dir
-    SERVER_PORT: baseEnv.SERVER_PORT ?? '4001',
-    NODE_ENV: 'production', // enables serveStatic + SPA fallback (T4 #120)
+    PORT: '4099', // E2E-only port (map #133 D3); dev=4001, prod=4000
+    NODE_ENV: 'production', // enables serveStatic + SPA fallback
   });
-  await waitForUrl('http://localhost:4001/health/live', 'Hono server', 'server');
+  await waitForUrl('http://localhost:4099/health/live', 'Hono server', 'server');
 
   // eslint-disable-next-line no-console
   console.log(`[e2e] all processes ready; data dir: ${DATA_DIR}`);

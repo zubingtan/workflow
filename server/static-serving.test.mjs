@@ -12,7 +12,7 @@ import { createApp } from "./app.mjs";
  *
  * These tests drive the Hono app via `app.fetch(new Request(...))` — no real
  * HTTP server. The app factory accepts a `staticDir` pointing at a fixture
- * dist/ so we don't depend on `pnpm build:prod`.
+ * dist/ so we don't depend on `pnpm build`.
  *
  * Behaviors pinned by T2 (#118) decision:
  *   1. API routes (registered first) win over static catch-all.

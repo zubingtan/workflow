@@ -26,10 +26,10 @@ Fresh checkout:
 ```bash
 pnpm install
 cp .env.example .env
-pnpm dev:all        # concurrently: fake-provider(4010) + Hono server(4001) + rsbuild dev(3000)
+pnpm dev            # concurrently: fake-provider(4010) + Hono+rsbuild dev server(4001)
 ```
 
-Open http://localhost:3000. The left sidebar manages Workflows and Agents; the
+Open http://localhost:4001. The left sidebar manages Workflows and Agents; the
 canvas edits a workflow. An LLM node references an **agent** (by id) plus a
 prompt; Test Run executes the node through the backend agent session.
 
@@ -61,18 +61,24 @@ canvas LLM node → localhost:4001/agents/:id/run (Hono, SSE)
 
 ## Critical conventions
 
-- **Persistence lives in `~/.config/workflow/`** — `workflow.db` (SQLite, WAL)
-  and `agents/` (agent workspace). Nothing deployment-specific is stored inside
-  the repo. Tables are created with `CREATE TABLE IF NOT EXISTS` (no migration
-  machinery by design).
+- **Persistence lives in `~/.config/workflow/` (prod) or `~/.config/workflow-dev/`
+  (dev)** — `workflow.db` (SQLite, WAL) and `agents/` (agent workspace). The
+  data dir diverges by `NODE_ENV` so dev experimentation never corrupts prod
+  data. `WORKFLOW_DATA_DIR` overrides both (used by E2E and Docker). Tables
+  are created with `CREATE TABLE IF NOT EXISTS` (no migration machinery by
+  design).
+- **Ports**: dev `:4001` (single port, Hono + rsbuild `middlewareMode`),
+  prod `:4000` (Hono + serveStatic), E2E `:4099` + `:4011` (fully isolated).
+  `PORT` env var overrides; `SERVER_PORT` is a deprecated fallback.
 - **Credentials**: an agent record stores `provider_api_key` (the key value).
   The backend uses it directly at call time.
 - **Do not run pi in the browser** — it is Node-only (`fs` / `process` / HTTP;
   CORS + key exposure). The frontend never imports pi; it only calls the Hono
   backend.
-- **`.env` is gitignored**; `.env.example` is the committed template. `cp` it
-  before running. The frontend talks to the same origin that served it (T3
-  removed `PUBLIC_SERVER_URL`; `src/api.ts` uses same-origin relative URLs).
+- **`.env` is gitignored**; `.env.example` is the committed template (dev-mode
+  defaults). For prod, copy to `.env.production` and override `PORT=4000`. The
+  frontend talks to the same origin that served it (T3 removed
+  `PUBLIC_SERVER_URL`; `src/api.ts` uses same-origin relative URLs).
 - **pnpm only** (not npm/yarn). `packageManager: pnpm@11.13.0`. Build-script
   allowlist lives in `pnpm-workspace.yaml` (`onlyBuiltDependencies`), NOT in
   `package.json`'s `pnpm` field (pnpm 11 ignores that field). `better-sqlite3`
@@ -81,45 +87,39 @@ canvas LLM node → localhost:4001/agents/:id/run (Hono, SSE)
 ## Commands
 
 ```bash
-pnpm dev              # rsbuild dev only (frontend only, port 3000)
-pnpm server           # Hono backend only (needs .env, port 4001)
-pnpm fake-provider    # fake provider only (needs .env, port 4010)
-pnpm dev:all          # all three via concurrently (fake + server + web)
-pnpm build:prod       # production rsbuild build
+pnpm dev              # concurrently: fake-provider(4010) + dev:server(4001) — single port 4001
+pnpm dev:server       # dev server only (Hono + rsbuild middlewareMode, port 4001)
+pnpm fake-provider    # fake provider only (port 4010)
+pnpm start            # prod server (Hono + serveStatic, port 4000)
+pnpm build            # production rsbuild build → dist/
 pnpm ts-check         # tsc --noEmit
 pnpm lint             # eslint ./src --cache
 ```
 
 ### Dev server startup convention
 
-`pnpm dev` / `pnpm dev:all` no longer pass `--open` to rsbuild — starting
-the dev server will NOT auto-open a browser tab. Open http://localhost:3000
-manually when you need it.
+`pnpm dev` starts a single server on `:4001` that serves both the SPA (with
+HMR, via rsbuild `middlewareMode`) and the API (via Hono, gated by path
+prefix). Open http://localhost:4001 manually — no auto-open.
 
 **Which command to use:**
 
-| Scenario                                                          | Command                            | Why                                                                                                  |
-| ----------------------------------------------------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| Agent starts full-stack dev (LLM node needs backend + provider)   | `pnpm dev:all`                     | One process group, three ports ready                                                                 |
-| Agent only iterates on frontend (no agent execution, no Test Run) | `pnpm dev`                         | Lighter; backend & provider not needed                                                               |
-| Agent only iterates on backend (SSE, CRUD, no canvas)             | `pnpm server`                      | Frontend not needed                                                                                  |
-| Agent runs E2E                                                    | `pnpm build:prod && pnpm test:e2e` | `e2e/global-setup.ts` spawns fake-provider + prod-mode Hono (single port :4001); needs `dist/` first |
+| Scenario                                                          | Command                       | Why                                                                     |
+| ----------------------------------------------------------------- | ----------------------------- | ----------------------------------------------------------------------- |
+| Agent starts full-stack dev (LLM node needs backend + provider)   | `pnpm dev`                    | One process group, two children (fake + server), single port :4001      |
+| Agent only iterates on frontend/backend (no fake-provider needed) | `pnpm dev:server`             | Single port :4001 serves SPA (HMR) + API; no fake-provider process      |
+| Agent runs prod build locally                                     | `pnpm build && pnpm start`    | Prod-mode Hono serves dist/ + API on :4000                              |
+| Agent runs E2E                                                    | `pnpm build && pnpm test:e2e` | `e2e/global-setup.ts` spawns fake-provider(4011) + prod-mode Hono(4099) |
 
 **Agent rules:**
 
-- Default to `pnpm dev:all` for any task that touches LLM node behavior,
+- Default to `pnpm dev` for any task that touches LLM node behavior,
   agent execution, or anything observable from the canvas. The canvas
   alone is useless without the backend to execute against.
-- Use `pnpm dev` (frontend only) for pure-UI work (layout, styling,
-  component behavior) where backend interaction is out of scope.
-- Never run `pnpm dev` and `pnpm server` / `pnpm fake-provider` in
-  separate terminals — use `pnpm dev:all` so the process group is
-  managed as one unit.
-- After startup, wait for the three ports to be ready before declaring
+- After startup, wait for the two ports to be ready before declaring
   "dev server is up":
   - http://localhost:4010/health/live (fake-provider)
-  - http://localhost:4001/health/live (Hono server)
-  - http://localhost:3000 (rsbuild dev — any HTTP response is fine)
+  - http://localhost:4001/health/live (Hono + rsbuild dev server)
 
 ## Key files
 
@@ -129,7 +129,7 @@ manually when you need it.
 - `src/nodes/llm/index.ts` + `form-meta.tsx` — LLM node registry and form (agentId + prompt).
 - `server/index.mjs` — Hono app: agents/workflows CRUD, agent run/test SSE, `/health/live`.
 - `scripts/fake-provider.mjs` — OpenAI-compatible fake (port 4010, SSE + test control).
-- `.env.example` — `FAKE_PROVIDER_API_KEY` / `SERVER_PORT` / `FAKE_PROVIDER_PORT`.
+- `.env.example` — `FAKE_PROVIDER_API_KEY` / `PORT` / `FAKE_PROVIDER_PORT` (dev-mode defaults; prod overrides via `.env.production`).
 - `rsbuild.config.ts` — Rsbuild config.
 - `pnpm-workspace.yaml` — `onlyBuiltDependencies`.
 

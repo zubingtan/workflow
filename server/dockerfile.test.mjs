@@ -22,6 +22,7 @@ import { resolve } from "node:path";
  *   8. `WORKFLOW_DATA_DIR` is set (so data persists via a mount, not /root).
  *   9. `CMD ["node", "server/index.mjs"]` (not `pnpm server` — that needs .env).
  *  10. `.dockerignore` excludes .env, .worktrees, node_modules, dist, .git.
+ *  11. `EXPOSE 4000` (prod default PORT per map #133 D1; dev=:4001, E2E=:4099).
  *
  * A real `docker build` + `docker run` smoke test is out of scope here — it
  * needs a Docker daemon and is better suited to a CI job. These structural
@@ -143,9 +144,10 @@ test("copies pnpm-workspace.yaml + patches/ before pnpm install", () => {
   );
 });
 
-test("has a builder stage that runs pnpm build:prod", () => {
+test("has a builder stage that runs pnpm build", () => {
   const content = readDockerfile();
-  assert.match(content, /pnpm build:prod/, "builder stage must run `pnpm build:prod` to produce dist/");
+  assert.match(content, /pnpm build/, "builder stage must run `pnpm build` to produce dist/");
+  assert.doesNotMatch(content, /pnpm build:prod/, "must NOT use old `pnpm build:prod` — renamed to `pnpm build` (map #133 D5)");
 });
 
 test("runner stage copies dist/ from builder", () => {
@@ -200,9 +202,10 @@ test("CMD runs node directly (not `pnpm server` — that needs .env file)", () =
   );
 });
 
-test("EXPOSE 4001", () => {
+test("EXPOSE 4000 (prod default port, map #133 D1)", () => {
   const content = readDockerfile();
-  assert.match(content, /EXPOSE\s+4001/, "must EXPOSE 4001 (SERVER_PORT default)");
+  assert.match(content, /EXPOSE\s+4000/, "must EXPOSE 4000 (prod default PORT, map #133 D1)");
+  assert.doesNotMatch(content, /EXPOSE\s+4001/, "must NOT EXPOSE 4001 — that's the dev port now, not prod");
 });
 
 test(".dockerignore excludes sensitive paths", () => {

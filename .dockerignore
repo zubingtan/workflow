@@ -1,7 +1,7 @@
 # T5 (#116 #121): keep the build context small & keep secrets out.
 #
 # Everything listed here is NOT sent to the Docker daemon. Anything that
-# `pnpm install` or `pnpm build:prod` needs must NOT be listed here.
+# `pnpm install` or `pnpm build` needs must NOT be listed here.
 
 # Secrets / env
 .env
