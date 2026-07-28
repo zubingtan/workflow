@@ -11,6 +11,7 @@ import {
 import { runAgentExecution } from "./agent-execution.mjs";
 import { seedAgentIfEmpty } from "./agent-catalog.mjs";
 import { createApp } from "./app.mjs";
+import { ensureSchema, markInflightRunsInterrupted } from "./db-schema.mjs";
 
 // --- Config ---
 // PORT (cloud-native standard) replaces SERVER_PORT. The legacy name is
@@ -56,35 +57,21 @@ db.pragma("journal_mode = WAL");
 // Migration (#129): drop legacy agents table that used provider_api_key_env
 // (env-var name) column. New schema stores the key value directly in
 // provider_api_key. Detect by checking for the old column name; only drop if
-// it exists, so fresh installs (no agents table yet) are unaffected.
+// it exists, so fresh installs (no agents table yet) are unaffected. MUST run
+// before ensureSchema — the DROP needs to happen first so ensureSchema's
+// CREATE IF NOT EXISTS re-creates the table with the new column.
 const legacyCols = db.prepare("PRAGMA table_info(agents)").all();
 if (legacyCols.some((c) => c.name === "provider_api_key_env")) {
   db.exec("DROP TABLE agents");
   console.log("  dropped legacy agents table (provider_api_key_env → provider_api_key)");
 }
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS agents (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    provider_base_url TEXT NOT NULL,
-    provider_api_key TEXT NOT NULL,
-    model TEXT NOT NULL,
-    system_prompt TEXT DEFAULT '',
-    temperature REAL DEFAULT 0.7,
-    created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now'))
-  )
-`);
-db.exec(`
-  CREATE TABLE IF NOT EXISTS workflows (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    data TEXT NOT NULL DEFAULT '{}',
-    created_at TEXT DEFAULT (datetime('now')),
-    updated_at TEXT DEFAULT (datetime('now'))
-  )
-`);
+// --- Schema (agents + workflows + workflow_runs + settings) ---
+// ensureSchema owns ALL table DDL (single source of truth — no inline
+// duplicates). Creates missing tables (idempotent), enables foreign_keys=ON
+// (ON DELETE CASCADE from workflows → workflow_runs), and the
+// idx_workflow_runs_wf_queued index.
+ensureSchema(db);
 
 // --- Seed fake-provider agent if empty ---
 const seeded = seedAgentIfEmpty(db, {
@@ -100,6 +87,17 @@ if (seeded) console.log("  seeded fake-provider agent");
 
 // --- Init runtime (register AgentExecutor to replace built-in LLMExecutor) ---
 initRuntime(db, AGENT_DIR);
+
+// --- Restart-interrupt sweep (#145) ---
+// Mark every in-flight (queued/running) run from a previous server lifetime as
+// `terminated` with report.reason='server_restart_interrupt'. Runs after
+// initRuntime and before app.listen, synchronously, so users never see stale
+// queued/running rows after a crash/restart. Server-restart auto-recovery
+// (re-executing queued runs) is out of scope per map #138.
+const swept = markInflightRunsInterrupted(db);
+if (swept > 0) {
+  console.log(`  marked ${swept} in-flight run(s) as terminated (server_restart_interrupt)`);
+}
 
 // --- Build the Hono app (shared factory — see server/app.mjs) ---
 // Credential: agent rows store provider_api_key directly (#129); createApp
