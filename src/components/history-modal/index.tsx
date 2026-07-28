@@ -31,7 +31,27 @@ export function HistoryModal({
 }) {
   const [rows, setRows] = useState<RunRow[]>([]);
   const [loading, setLoading] = useState(false);
-  const esRef = useRef<EventSource | null>(null);
+  // Keep onClose in a ref so the SSE effect doesn't tear down/recreate the
+  // EventSource when the parent re-renders with a fresh inline onClose arrow.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  // Patch a run row by id; if missing and `insert` is true, prepend a new row
+  // (used when an SSE event arrives for a run not yet in the REST list).
+  const patchRow = (runID: string, patch: Partial<RunRow>, insert = false) => {
+    setRows((prev) => {
+      const idx = prev.findIndex((r) => r.id === runID);
+      if (idx === -1) {
+        if (!insert) return prev;
+        // New run appeared via SSE before the REST list surfaced it — insert
+        // at the top (newest by queued_at).
+        return [{ id: runID, status: 'queued', ...patch } as RunRow, ...prev];
+      }
+      const next = prev.slice();
+      next[idx] = { ...next[idx], ...patch };
+      return next;
+    });
+  };
 
   // REST pull on open.
   useEffect(() => {
@@ -49,26 +69,13 @@ export function HistoryModal({
       .finally(() => setLoading(false));
   }, [visible, workflowId]);
 
-  // SSE incremental updates while visible.
+  // SSE incremental updates while visible. One EventSource per open Modal —
+  // the manager's useActiveRunCounts subscription drops this workflowId while
+  // the Modal is open (§5 coordination: only one EventSource per workflow).
   useEffect(() => {
     if (!visible || !workflowId) return;
     const url = `${api.SERVER_URL}/api/workflows/${workflowId}/runs/events`;
     const es = new EventSource(url);
-    esRef.current = es;
-
-    const patchRow = (runID: string, patch: Partial<RunRow>) => {
-      setRows((prev) => {
-        const idx = prev.findIndex((r) => r.id === runID);
-        if (idx === -1) {
-          // New run appeared via SSE before the REST list surfaced it — insert
-          // at the top (newest by queued_at).
-          return [{ id: runID, status: 'queued', ...patch } as RunRow, ...prev];
-        }
-        const next = prev.slice();
-        next[idx] = { ...next[idx], ...patch };
-        return next;
-      });
-    };
 
     es.onmessage = (ev) => {
       let payload: any;
@@ -78,20 +85,25 @@ export function HistoryModal({
         return;
       }
       if (!payload || typeof payload !== 'object') return;
-      const { type, runID, status, queued_at, started_at, ended_at } = payload;
+      const { type, runID, status, queued_at, started_at, ended_at, workflowId: evtWfId } = payload;
       if (type === 'workflow_deleted') {
-        // The workflow was deleted server-side — close the Modal.
+        // Only close if the deleted workflow is the one this Modal is showing.
+        if (evtWfId !== workflowId) return;
         es.close();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (!runID) return;
       if (type === 'run_status') {
-        patchRow(runID, {
-          status,
-          ...(queued_at !== undefined ? { queued_at } : {}),
-          ...(started_at !== undefined ? { started_at } : {}),
-        });
+        patchRow(
+          runID,
+          {
+            status,
+            ...(queued_at !== undefined ? { queued_at } : {}),
+            ...(started_at !== undefined ? { started_at } : {}),
+          },
+          true
+        );
       } else if (type === 'run_terminal') {
         // Terminal capture carries the full report + schema_snapshot + ended_at.
         // We keep only the row-level fields here (report/schema_snapshot are
@@ -110,29 +122,18 @@ export function HistoryModal({
 
     return () => {
       es.close();
-      esRef.current = null;
     };
-  }, [visible, workflowId, onClose]);
+  }, [visible, workflowId]);
 
   const onCancelRun = async (runID: string) => {
     try {
       await api.cancelRun(runID);
       // Optimistic: mark terminated. The SSE stream will confirm; if the
       // server refuses (e.g. already terminal), the next REST pull reconciles.
-      patchRowLocal(runID, { status: 'terminated' });
+      patchRow(runID, { status: 'terminated' });
     } catch (err) {
       Toast.error(err instanceof Error ? err.message : 'Failed to cancel run');
     }
-  };
-
-  const patchRowLocal = (runID: string, patch: Partial<RunRow>) => {
-    setRows((prev) => {
-      const idx = prev.findIndex((r) => r.id === runID);
-      if (idx === -1) return prev;
-      const next = prev.slice();
-      next[idx] = { ...next[idx], ...patch };
-      return next;
-    });
   };
 
   const onDeleteRun = async (runID: string) => {
