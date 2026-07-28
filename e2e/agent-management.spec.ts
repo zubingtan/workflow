@@ -26,8 +26,8 @@ import { expect, test } from '@playwright/test';
 const FAKE_AGENT = {
   name: `E2E Agent ${Date.now()}`,
   model: 'fake-m0',
-  baseUrl: 'http://localhost:4010/v1',
-  apiKeyEnv: 'FAKE_PROVIDER_API_KEY',
+  baseUrl: 'http://localhost:4011/v1',
+  apiKey: 'fake-provider-local',
   systemPrompt: 'You are an E2E test agent.',
   temperature: '0.5',
 };
@@ -50,9 +50,9 @@ test.describe('Agent management', () => {
     await page.getByRole('textbox', { name: 'Name*' }).fill(FAKE_AGENT.name);
     await page.getByRole('textbox', { name: 'Model*' }).fill(FAKE_AGENT.model);
     await page.getByRole('textbox', { name: 'Provider Base URL*' }).fill(FAKE_AGENT.baseUrl);
-    // The API Key Env Var field is a Semi AutoComplete; its textbox is still
+    // The API Key field is a Semi AutoComplete; its textbox is still
     // reachable via the label.
-    await page.getByRole('textbox', { name: 'API Key Env Var*' }).fill(FAKE_AGENT.apiKeyEnv);
+    await page.getByRole('textbox', { name: 'API Key*' }).fill(FAKE_AGENT.apiKey);
     await page.getByRole('textbox', { name: 'System Prompt' }).fill(FAKE_AGENT.systemPrompt);
 
     await page.getByRole('button', { name: 'Create' }).click();
