@@ -262,7 +262,14 @@ export function WorkflowManager({ onOpen }: { onOpen: (id: string) => void }) {
 
   // Phase 6 (#158): SSE-driven Delete-button gate. The hook opens one
   // EventSource per visible workflow and tracks queued+running counts.
-  const workflowIds = useMemo(() => workflows.map((w) => w.id), [workflows]);
+  // Phase 7 (#159) §5: when the HistoryModal is open for a workflow, the
+  // modal's own SSE stream owns that workflow's updates — drop the id from
+  // the manager's subscription set so only one EventSource is open per
+  // workflow (spec coordination requirement).
+  const workflowIds = useMemo(
+    () => workflows.filter((w) => w.id !== historyFor).map((w) => w.id),
+    [workflows, historyFor]
+  );
   const activeCounts = useActiveRunCounts(workflowIds);
 
   const remove = async (id: string) => {

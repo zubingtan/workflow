@@ -1,7 +1,6 @@
-import type { TagColor } from '@douyinfe/semi-ui/lib/es/tag/interface';
 import { Table, Tag, Space, Button, Popconfirm, Tooltip } from '@douyinfe/semi-ui';
 
-import type { RunStatus } from '../../api';
+import type { RunMeta, RunStatus } from '../../api';
 
 /**
  * Phase 7 (#159): the runs table inside the History Modal.
@@ -10,14 +9,30 @@ import type { RunStatus } from '../../api';
  * Row actions: 查看详情 (all) / 取消运行 (queued|running) / 删除 (terminal).
  */
 
-export interface RunRow {
-  id: string;
-  status: RunStatus;
-  task_id: string | null;
-  queued_at: string | null;
-  started_at: string | null;
-  ended_at: string | null;
-}
+// The table row shape is exactly the REST list payload (RunMeta).
+export type RunRow = RunMeta;
+
+// Semi's Tag `color` prop accepts a fixed union; we mirror the relevant subset
+// here rather than reaching into the package's deep `lib/es/...` path (which
+// the Semi BEST_PRACTICES guide warns is fragile across version bumps).
+type TagColor =
+  | 'amber'
+  | 'blue'
+  | 'cyan'
+  | 'green'
+  | 'grey'
+  | 'indigo'
+  | 'light-blue'
+  | 'light-green'
+  | 'lime'
+  | 'orange'
+  | 'pink'
+  | 'purple'
+  | 'red'
+  | 'teal'
+  | 'violet'
+  | 'yellow'
+  | 'white';
 
 const STATUS_BADGE: Record<RunStatus, { text: string; color: TagColor; pulse?: boolean }> = {
   queued: { text: '排队中', color: 'grey' },
