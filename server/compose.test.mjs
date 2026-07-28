@@ -105,6 +105,25 @@ test("healthcheck hits /health/live", () => {
   assert.match(content, /\/health\/live/, "healthcheck must hit `/health/live`");
 });
 
+test("healthcheck reads PORT env (NOT hardcoded 4000) so PORT override works", () => {
+  const content = readCompose();
+  // healthcheck runs inside the container where PORT env is set. The fetch URL
+  // must read process.env.PORT (with 4000 fallback) so `PORT=8080 docker compose up`
+  // doesn't break healthcheck. Hardcoding 4000 would make the container unhealthy
+  // whenever PORT is overridden.
+  assert.match(
+    content,
+    /process\.env\.PORT\|\|4000/,
+    "healthcheck fetch URL must read process.env.PORT (with 4000 fallback) — hardcoding breaks PORT override"
+  );
+  // Must NOT have a hardcoded localhost:4000 in the healthcheck fetch.
+  assert.doesNotMatch(
+    content,
+    /fetch\(['"]http:\/\/localhost:4000/,
+    "healthcheck must NOT hardcode localhost:4000 — breaks when PORT is overridden"
+  );
+});
+
 test("passes FAKE_PROVIDER_API_KEY through from host shell (NOT hardcoded)", () => {
   const content = readCompose();
   // `${VAR}` in compose pulls from the shell env where `docker compose up` runs.

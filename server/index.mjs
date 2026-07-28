@@ -172,14 +172,10 @@ if (IS_PROD) {
 
   // node:http.createServer accepts a connect-style listener (req, res, next).
   // rsbuildServer.middlewares is a Connect instance with .handle() bound.
+  // apiGate only ever calls next() (no err) — it either dispatches to Hono or
+  // falls through — so the callback just forwards to rsbuild's middleware stack.
   server = createServer((req, res) => {
-    apiGate(req, res, (err) => {
-      if (err) return rsbuildServer.middlewares.handle(req, res, () => {
-        res.statusCode = 500;
-        res.end(String(err));
-      });
-      rsbuildServer.middlewares.handle(req, res);
-    });
+    apiGate(req, res, () => rsbuildServer.middlewares.handle(req, res));
   });
   rsbuildServer.connectWebSocket({ server });
   await new Promise((resolve) => server.listen(PORT, resolve));
