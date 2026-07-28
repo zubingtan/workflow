@@ -115,3 +115,34 @@ export const runAgentById = (agentId: string, prompt: string, signal?: AbortSign
 // --- Agent fetch by id (single-agent lookup; used by LLM node form) ---
 export const getAgent = (id: string) =>
   fetch(`${SERVER_URL}/agents/${id}`).then((r) => json<AgentDef>(r));
+
+// --- Run management (Phase 3: queue status + unified cancel) ---
+// These are for saved-workflow runs (POST /api/task/run with workflowId
+// returns {runID, status:'queued'}). Draft runs use the taskID-based
+// /api/task/* endpoints via WorkflowRuntimeServerClient and bypass these.
+
+export type RunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'terminated';
+
+export interface RunStatusResponse {
+  status: RunStatus;
+  task_id: string | null;
+  queued_at: string | null;
+  started_at: string | null;
+  ended_at: string | null;
+  queuePosition: number; // 1-based for queued runs; 0 for running/terminal/missing
+}
+
+export interface RunCancelResponse {
+  ok?: boolean;
+  status?: 'terminated'; // only present when cancelling a queued run (immediate terminate)
+  success?: boolean; // present when cancelling a running run (best-effort; row stays running until Phase 4 onTerminal)
+  error?: string;
+}
+
+export const getRunStatus = (runID: string) =>
+  fetch(`${SERVER_URL}/api/runs/${runID}`).then((r) => json<RunStatusResponse>(r));
+
+export const cancelRun = (runID: string) =>
+  fetch(`${SERVER_URL}/api/runs/${runID}/cancel`, { method: 'PUT' }).then((r) =>
+    json<RunCancelResponse>(r)
+  );
