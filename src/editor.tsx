@@ -11,6 +11,7 @@ import './styles/index.css';
 import { FlowDocumentJSON } from './typings';
 import { nodeRegistries } from './nodes';
 import { useEditorProps } from './hooks';
+import { WorkflowIdContext } from './components/workflow-context';
 
 export const Editor = ({
   data,
@@ -25,14 +26,16 @@ export const Editor = ({
 }) => {
   const editorProps = useEditorProps(data, nodeRegistries, ctxRef, onDirty, workflowId);
   return (
-    <div className="doc-free-feature-overview">
-      <FreeLayoutEditorProvider {...editorProps}>
-        <div className="demo-container">
-          <DockedPanelLayer>
-            <EditorRenderer className="demo-editor" />
-          </DockedPanelLayer>
-        </div>
-      </FreeLayoutEditorProvider>
-    </div>
+    <WorkflowIdContext.Provider value={workflowId ?? null}>
+      <div className="doc-free-feature-overview">
+        <FreeLayoutEditorProvider {...editorProps}>
+          <div className="demo-container">
+            <DockedPanelLayer>
+              <EditorRenderer className="demo-editor" />
+            </DockedPanelLayer>
+          </div>
+        </FreeLayoutEditorProvider>
+      </div>
+    </WorkflowIdContext.Provider>
   );
 };

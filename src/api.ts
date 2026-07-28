@@ -178,3 +178,32 @@ export const cancelRun = (runID: string) =>
   fetch(`${SERVER_URL}/api/runs/${runID}/cancel`, { method: 'PUT' }).then((r) =>
     json<RunCancelResponse>(r)
   );
+
+// --- Run history (Phase 5/7: REST list + full detail + delete) ---
+// These back the History Modal. The list endpoint excludes the heavy
+// report/schema_snapshot columns; getRun fetches the full row for the
+// detail viewer. deleteRun refuses non-terminal runs with 409 (server-side).
+
+export interface RunMeta {
+  id: string;
+  status: RunStatus;
+  task_id: string | null;
+  queued_at: string | null;
+  started_at: string | null;
+  ended_at: string | null;
+}
+
+export interface RunDetail extends RunMeta {
+  report: any;
+  schema_snapshot: any;
+  queuePosition: number;
+}
+
+export const listRuns = (workflowId: string) =>
+  fetch(`${SERVER_URL}/api/workflows/${workflowId}/runs`).then((r) => json<RunMeta[]>(r));
+
+export const getRun = (runID: string) =>
+  fetch(`${SERVER_URL}/api/runs/${runID}`).then((r) => json<RunDetail>(r));
+
+export const deleteRun = (runID: string) =>
+  fetch(`${SERVER_URL}/api/runs/${runID}`, { method: 'DELETE' }).then((r) => json(r));
