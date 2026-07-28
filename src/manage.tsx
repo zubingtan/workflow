@@ -12,10 +12,18 @@ import {
   Toast,
   Tooltip,
 } from '@douyinfe/semi-ui';
-import { IconCopy, IconDelete, IconEdit, IconPlus, IconPlay } from '@douyinfe/semi-icons';
+import {
+  IconCopy,
+  IconDelete,
+  IconEdit,
+  IconPlus,
+  IconPlay,
+  IconHistory,
+} from '@douyinfe/semi-icons';
 
 import { useActiveRunCounts } from './use-active-run-counts';
 import { newWorkflowTemplate } from './new-workflow-template.mjs';
+import { HistoryModal } from './components/history-modal';
 import * as api from './api';
 import { ApiError } from './api';
 import { useAgentExecution } from './agent-execution/use-agent-execution';
@@ -239,6 +247,8 @@ export function WorkflowManager({ onOpen }: { onOpen: (id: string) => void }) {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
+  // Phase 7 (#159): History Modal entry from the management interface.
+  const [historyFor, setHistoryFor] = useState<string | null>(null);
 
   const reload = useCallback(() => {
     setLoading(true);
@@ -330,6 +340,14 @@ export function WorkflowManager({ onOpen }: { onOpen: (id: string) => void }) {
                   <Button size="small" icon={<IconCopy />} onClick={() => copy(record.id)}>
                     Copy
                   </Button>
+                  {/* Phase 7 (#159): History entry — placed BEFORE Delete per spec. */}
+                  <Button
+                    size="small"
+                    icon={<IconHistory />}
+                    onClick={() => setHistoryFor(record.id)}
+                  >
+                    历史
+                  </Button>
                   {deleteDisabled ? (
                     <Tooltip content="该 Workflow 有运行中或排队中的实例，请先取消">
                       <span>{deleteBtn}</span>
@@ -354,6 +372,11 @@ export function WorkflowManager({ onOpen }: { onOpen: (id: string) => void }) {
       >
         <Input placeholder="Workflow name" value={newName} onChange={setNewName} autoFocus />
       </Modal>
+      <HistoryModal
+        workflowId={historyFor}
+        visible={historyFor !== null}
+        onClose={() => setHistoryFor(null)}
+      />
     </div>
   );
 }

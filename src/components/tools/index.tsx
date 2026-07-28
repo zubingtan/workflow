@@ -7,8 +7,8 @@ import { useState, useEffect } from 'react';
 
 import { useRefresh } from '@flowgram.ai/free-layout-editor';
 import { useClientContext } from '@flowgram.ai/free-layout-editor';
-import { Tooltip, IconButton, Divider } from '@douyinfe/semi-ui';
-import { IconUndo, IconRedo } from '@douyinfe/semi-icons';
+import { Tooltip, IconButton, Divider, Button } from '@douyinfe/semi-ui';
+import { IconUndo, IconRedo, IconHistory } from '@douyinfe/semi-icons';
 
 import { TestRunButton } from '../testrun/testrun-button';
 import { AddNode } from '../add-node';
@@ -24,12 +24,17 @@ import { Comment } from './comment';
 import { AutoLayout } from './auto-layout';
 import { ProblemButton } from '../problem-panel';
 import { DownloadTool } from './download';
+import { useWorkflowId } from '../workflow-context';
+import { HistoryModal } from '../history-modal';
 
 export const DemoTools = () => {
   const { history, playground } = useClientContext();
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [minimapVisible, setMinimapVisible] = useState(true);
+  // Phase 7 (#159): History Modal entry from the editor toolbar.
+  const workflowId = useWorkflowId();
+  const [historyVisible, setHistoryVisible] = useState(false);
   useEffect(() => {
     const disposable = history.undoRedoService.onChange(() => {
       setCanUndo(history.canUndo());
@@ -78,9 +83,24 @@ export const DemoTools = () => {
         <DownloadTool />
         <Divider layout="vertical" style={{ height: '16px' }} margin={3} />
         <AddNode disabled={playground.config.readonly} />
+        {/* Phase 7 (#159): History entry — to the RIGHT of Add Node per spec. */}
+        <Button
+          icon={<IconHistory />}
+          theme="borderless"
+          size="small"
+          disabled={!workflowId}
+          onClick={() => setHistoryVisible(true)}
+        >
+          历史
+        </Button>
         <Divider layout="vertical" style={{ height: '16px' }} margin={3} />
         <TestRunButton disabled={playground.config.readonly} />
       </ToolSection>
+      <HistoryModal
+        workflowId={workflowId}
+        visible={historyVisible && workflowId !== null}
+        onClose={() => setHistoryVisible(false)}
+      />
     </ToolContainer>
   );
 };
