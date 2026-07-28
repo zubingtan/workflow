@@ -208,3 +208,19 @@ export const getRun = (runID: string) =>
 
 export const deleteRun = (runID: string) =>
   fetch(`${SERVER_URL}/api/runs/${runID}`, { method: 'DELETE' }).then((r) => json(r));
+
+// --- Phase 9 (#161): global settings (node timeout default, etc.) ---
+
+export interface AppSettings {
+  node_timeout_default_ms: number | null;
+}
+
+export const getSettings = () =>
+  fetch(`${SERVER_URL}/api/settings`).then((r) => json<AppSettings>(r));
+
+export const updateSettings = (patch: Partial<AppSettings>) =>
+  fetch(`${SERVER_URL}/api/settings`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  }).then((r) => json<AppSettings>(r));

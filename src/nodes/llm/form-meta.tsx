@@ -182,7 +182,7 @@ function AgentOutput({ agentId, prompt }: { agentId: string; prompt: string }) {
 
 /** LLM form render — same layout, readonly on canvas card */
 function LLMFormRender({ form }: FormRenderProps<FlowNodeJSON>) {
-  const { readonly: ctxReadonly } = useNodeRenderContext();
+  const { readonly: ctxReadonly, data: nodeData, updateData } = useNodeRenderContext();
   const isSidebar = useIsSidebar();
   const isHistoryView = useContext(IsHistoryViewContext);
   const readonly = ctxReadonly || !isSidebar;
@@ -190,6 +190,32 @@ function LLMFormRender({ form }: FormRenderProps<FlowNodeJSON>) {
   const agentId = (form.getValueIn('inputsValues.agentId') as any)?.content ?? '';
   const promptVal = form.getValueIn('inputsValues.prompt') as any;
   const promptText = typeof promptVal === 'string' ? promptVal : promptVal?.content ?? '';
+
+  // Phase 9 (#161): per-node timeout override. Stored as node.data.timeoutOverride
+  //   - number > 0 → that many ms
+  //   - null       → "no timeout" (不超时)
+  //   - undefined  → use global default (用全局默认)
+  // The backend's resolveTimeoutMs reads this with precedence:
+  //   node.data.timeoutOverride > settings.global_default > env > 10min
+  const timeoutOverride: number | null | undefined = nodeData?.timeoutOverride;
+  const timeoutSelectValue =
+    timeoutOverride === undefined
+      ? 'default'
+      : timeoutOverride === null
+      ? 'none'
+      : String(timeoutOverride);
+  const onTimeoutChange = (v: string | number | undefined) => {
+    if (v === undefined || v === '' || v === 'default') {
+      // Clear → use global default (remove the key so fallback kicks in).
+      updateData({ timeoutOverride: undefined });
+    } else if (v === 'none') {
+      // 不超时 → null signals "no timeout" to the backend.
+      updateData({ timeoutOverride: null });
+    } else {
+      const n = typeof v === 'number' ? v : Number(v);
+      updateData({ timeoutOverride: n });
+    }
+  };
 
   return (
     <>
@@ -223,6 +249,26 @@ function LLMFormRender({ form }: FormRenderProps<FlowNodeJSON>) {
             </div>
           )}
         </Field>
+        <div style={{ marginBottom: 12 }}>
+          <Typography.Text size="small" strong>
+            节点超时
+          </Typography.Text>
+          <Select
+            value={timeoutSelectValue}
+            onChange={(v) => onTimeoutChange(v as string | number | undefined)}
+            disabled={readonly}
+            style={{ width: '100%' }}
+            size="small"
+            optionList={[
+              { label: '用全局默认', value: 'default' },
+              { label: '1 分钟', value: '60000' },
+              { label: '5 分钟', value: '300000' },
+              { label: '10 分钟', value: '600000' },
+              { label: '30 分钟', value: '1800000' },
+              { label: '不超时', value: 'none' },
+            ]}
+          />
+        </div>
         {isSidebar &&
           (isHistoryView ? (
             // Phase 8 (#160): history view renders the static terminal

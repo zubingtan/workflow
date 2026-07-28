@@ -15,6 +15,7 @@ import { ensureSchema, markInflightRunsInterrupted } from "./db-schema.mjs";
 import { createRunQueue } from "./queue.mjs";
 import { createQueueAdapter } from "./queue-adapter.mjs";
 import { createRunsEventBus } from "./runs-events.mjs";
+import { getNodeTimeoutDefaultMs } from "./settings.mjs";
 
 // --- Config ---
 // PORT (cloud-native standard) replaces SERVER_PORT. The legacy name is
@@ -89,7 +90,10 @@ const seeded = seedAgentIfEmpty(db, {
 if (seeded) console.log("  seeded fake-provider agent");
 
 // --- Init runtime (register AgentExecutor to replace built-in LLMExecutor) ---
-initRuntime(db, AGENT_DIR);
+// Phase 9 (#161): pass a settingsProvider so AgentExecutor.resolveTimeoutMs
+// can read the global node_timeout_default_ms from the settings table.
+const settingsProvider = { getNodeTimeoutDefaultMs: () => getNodeTimeoutDefaultMs(db) };
+initRuntime(db, AGENT_DIR, settingsProvider);
 
 // --- Restart-interrupt sweep (#145) ---
 // Mark every in-flight (queued/running) run from a previous server lifetime as
@@ -186,7 +190,7 @@ if (IS_PROD) {
   // that appends AFTER rsbuild's own middlewares (including the SPA fallback).
   // Instead, wrap both in our own connect stack with Hono first.
   const honoListener = getRequestListener(app.fetch);
-  const API_PREFIXES = ["/health", "/agents", "/workflows", "/api/task", "/api/runs", "/api/workflows"];
+  const API_PREFIXES = ["/health", "/agents", "/workflows", "/api/task", "/api/runs", "/api/workflows", "/api/settings"];
   const apiGate = (req, res, next) => {
     const path = (req.url ?? "").split("?")[0];
     if (API_PREFIXES.some((p) => path === p || path.startsWith(p + "/"))) {

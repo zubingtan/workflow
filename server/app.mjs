@@ -36,6 +36,11 @@ import {
   copyAgent,
   seedAgentIfEmpty,
 } from "./agent-catalog.mjs";
+import {
+  getKnownSettings,
+  setSetting,
+  validateSettingsBody,
+} from "./settings.mjs";
 
 /**
  * Translate a thrown AgentCatalogError into a 400 JSON response. Non-catalog
@@ -311,6 +316,22 @@ export function createApp({
       throw err;
     }
     return runAgentSse(c, { name: name ?? "test", provider_base_url, provider_api_key, model, system_prompt, temperature: temperature ?? 0.7 }, prompt || "Say hello in one sentence.");
+  });
+
+  // --- Phase 9 (#161): global settings (node timeout default, etc.) ---
+  // GET /api/settings returns the known settings object (absent keys = null).
+  // PUT /api/settings validates and upserts node_timeout_default_ms.
+  app.get("/api/settings", (c) => c.json(getKnownSettings(db)));
+
+  app.put("/api/settings", async (c) => {
+    let body;
+    try { body = await c.req.json(); } catch { return c.json({ error: "invalid JSON" }, 400); }
+    const result = validateSettingsBody(body);
+    if (!result.ok) return c.json({ error: result.error }, 400);
+    for (const [key, value] of Object.entries(result.value)) {
+      setSetting(db, key, value);
+    }
+    return c.json(getKnownSettings(db));
   });
 
   // --- FlowGram task endpoints ---
