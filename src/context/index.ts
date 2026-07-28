@@ -5,3 +5,4 @@
 
 export { NodeRenderContext } from './node-render-context';
 export { IsSidebarContext } from './sidebar-context';
+export { IsHistoryViewContext } from './history-view-context';

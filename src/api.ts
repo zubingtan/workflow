@@ -194,6 +194,7 @@ export interface RunMeta {
 }
 
 export interface RunDetail extends RunMeta {
+  workflow_id: string;
   report: any;
   schema_snapshot: any;
   queuePosition: number;

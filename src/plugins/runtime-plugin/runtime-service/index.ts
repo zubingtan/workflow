@@ -87,6 +87,15 @@ export class WorkflowRuntimeService {
 
   public onResultChanged = this.resultEmitter.event;
 
+  /**
+   * Phase 8 (#160): protected so `StaticHistoryRuntimeService` can fire the
+   * historical per-node reports from its `flush()` method without exposing the
+   * emitter publicly.
+   */
+  protected fireNodeReport(report: NodeReport): void {
+    this.reportEmitter.fire(report);
+  }
+
   public isFlowingLine(line: WorkflowLineEntity) {
     return this.runningNodes.some((node) => node.lines.inputLines.includes(line));
   }

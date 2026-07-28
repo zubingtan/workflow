@@ -4,4 +4,6 @@
  */
 
 export { createRuntimePlugin } from './create-runtime-plugin';
+export { createHistoryRuntimePlugin } from './create-history-runtime-plugin';
+export { StaticHistoryRuntimeService } from './runtime-service/static-history';
 export { WorkflowRuntimeClient } from './client';

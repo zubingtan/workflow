@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-import { useCallback, useEffect, startTransition } from 'react';
+import { useCallback, useEffect, startTransition, useContext } from 'react';
 
 import {
   PlaygroundEntityContext,
@@ -13,7 +13,7 @@ import {
 
 import { FlowNodeMeta } from '../../typings';
 import { useNodeFormPanel } from '../../plugins/panel-manager-plugin/hooks';
-import { IsSidebarContext } from '../../context';
+import { IsSidebarContext, IsHistoryViewContext } from '../../context';
 import { SidebarNodeRenderer } from './sidebar-node-renderer';
 
 export interface NodeFormPanelProps {
@@ -24,6 +24,7 @@ export const NodeFormPanel: React.FC<NodeFormPanelProps> = ({ nodeId }) => {
   const { selection, playground, document } = useClientContext();
   const refresh = useRefresh();
   const { close: closePanel } = useNodeFormPanel();
+  const isHistoryView = useContext(IsHistoryViewContext);
   const handleClose = useCallback(() => {
     // Sidebar delayed closing
     startTransition(() => {
@@ -37,11 +38,17 @@ export const NodeFormPanel: React.FC<NodeFormPanelProps> = ({ nodeId }) => {
    */
   useEffect(() => {
     const disposable = playground.config.onReadonlyOrDisabledChange(() => {
+      // Phase 8 (#160): in history view, readonly is on by design — don't
+      // close the sidebar (the user is inspecting a historical snapshot).
+      if (isHistoryView) {
+        refresh();
+        return;
+      }
       handleClose();
       refresh();
     });
     return () => disposable.dispose();
-  }, [playground]);
+  }, [playground, isHistoryView]);
   /**
    * Listen selection
    */
@@ -75,12 +82,17 @@ export const NodeFormPanel: React.FC<NodeFormPanelProps> = ({ nodeId }) => {
    * Cloze when sidebar disabled
    */
   useEffect(() => {
-    if (!node || sidebarDisabled || playground.config.readonly) {
+    // Phase 8 (#160): history view keeps the sidebar open despite readonly.
+    if (!node || sidebarDisabled || (playground.config.readonly && !isHistoryView)) {
       handleClose();
     }
-  }, [node, sidebarDisabled, playground.config.readonly]);
+  }, [node, sidebarDisabled, playground.config.readonly, isHistoryView]);
 
-  if (!node || sidebarDisabled || playground.config.readonly) {
+  // Phase 8 (#160): in history view the sidebar stays open even though
+  // `playground.config.readonly` is true, so the user can inspect node forms
+  // (inputs) and the static historical output. The readonly gate still
+  // disables all form inputs via `useNodeRenderContext().readonly`.
+  if (!node || sidebarDisabled || (playground.config.readonly && !isHistoryView)) {
     return null;
   }
 
