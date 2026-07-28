@@ -1,5 +1,5 @@
 /**
- * Phase 3 (#155): prod queue adapter.
+ * Phase 3 (#155) + Phase 4 (#156): prod queue adapter.
  *
  * Bridges the pure `createRunQueue` factory (server/queue.mjs) to the FlowGram
  * Task APIs (TaskRunAPI / TaskReportAPI / TaskCancelAPI). The queue module
@@ -13,17 +13,22 @@
  *
  * `cancelTask` wraps TaskCancelAPI (best-effort).
  *
- * `onTerminal` is a minimal Phase 3 stub: it updates the workflow_runs row's
- * status + ended_at based on the terminal result. Phase 4 will replace this
- * with full TaskReport capture (report JSON, schema_snapshot, etc.).
+ * `onTerminal` (Phase 4): captures the full terminal snapshot into
+ *   workflow_runs — status + report (JSON TaskReport) + schema_snapshot
+ *   (JSON workflow data) + ended_at, in ONE UPDATE. Idempotent (WHERE
+ *   status NOT IN ('succeeded','failed','terminated') prevents clobbering).
+ *   Write failures are swallowed (try/catch) — never crash the queue loop.
  *
  * Decisions pinned:
  *   - #144: unified cancel — queued runs via queue.cancelQueued, running runs
  *     via TaskCancelAPI (through queue.getRunningTaskID → cancelTask).
  *   - #142: wall-clock 30min zombie guard lives in queue.mjs; this adapter
  *     just provides the prod bindings.
- *   - Phase 4 owns terminal capture — onTerminal here only writes status +
- *     ended_at (minimal). The full TaskReport is written in Phase 4.
+ *   - #145: terminal capture — onTerminal fetches the TaskReport + workflow
+ *     schema and writes them to workflow_runs. The poll route
+ *     (GET /api/task/report) stays for the Test Run panel and does NOT write.
+ *   - #66/#78: signal.aborted precedence — already resolved in
+ *     classifyTerminal (cancelled/interrupted → terminated).
  */
 import { TaskRunAPI, TaskReportAPI, TaskCancelAPI } from "./runtime-adapter.mjs";
 
@@ -84,23 +89,105 @@ function pollUntilTerminal(taskID) {
 }
 
 /**
+ * Phase 4 (#156): build the capturing onTerminal callback.
+ *
+ * Extracted from `createQueueAdapter` so host-side tests can inject a fake
+ * `fetchTaskReport` (bypassing the real `TaskReportAPI` import) while
+ * exercising the EXACT same SQL + merge logic as prod. This avoids
+ * duplicating the capture logic between the adapter and the test helper.
+ *
+ * @param {import("better-sqlite3").Database} db
+ * @param {(taskID: string) => Promise<object|null>} [fetchTaskReport]
+ *   Defaults to the real `TaskReportAPI`. Tests inject a fake.
+ * @returns {(runID: string, result: {status: string, reason?: string, taskID?: string}) => Promise<void>}
+ */
+export function createCapturingOnTerminal(db, fetchTaskReport = TaskReportAPI) {
+  // Phase 4: single UPDATE captures status + report + schema_snapshot + ended_at.
+  // Idempotent: WHERE status NOT IN (...) prevents clobbering a terminal row
+  // if onTerminal is somehow called twice (defensive — the queue's runID guard
+  // already prevents this, but the DB guard is the backstop).
+  const updateTerminal = db.prepare(
+    `UPDATE workflow_runs
+       SET status=@status, report=@report, schema_snapshot=@schema_snapshot, ended_at=datetime('now')
+     WHERE id=@id AND status NOT IN ('succeeded','failed','terminated')`
+  );
+  // Look up the workflow_id for a run (to fetch the workflow schema snapshot).
+  const getRunWorkflowId = db.prepare(
+    "SELECT workflow_id FROM workflow_runs WHERE id=?"
+  );
+  // Fetch the workflow data (terminal-time schema snapshot for Phase 8 readonly viewer).
+  const getWorkflowData = db.prepare("SELECT data FROM workflows WHERE id=?");
+
+  return async function onTerminal(runID, result) {
+    try {
+      const status = result.status; // succeeded | failed | terminated
+
+      // --- Fetch the terminal TaskReport (if taskID available) ---
+      let reportJson = null;
+      if (result.taskID) {
+        try {
+          const report = await fetchTaskReport(result.taskID);
+          if (report) {
+            // Merge the queue's classification reason into the report JSON
+            // (e.g. wall_clock_zombie, run_error, cancelled) so the history
+            // viewer can show why the run ended up in this state.
+            const merged = { ...report };
+            if (result.reason) merged.reason = result.reason;
+            reportJson = JSON.stringify(merged);
+          } else if (result.reason) {
+            // No TaskReport but we have a reason — write a minimal report.
+            reportJson = JSON.stringify({ reason: result.reason });
+          }
+        } catch {
+          // TaskReport fetch failed — write a minimal report with the reason.
+          if (result.reason) {
+            reportJson = JSON.stringify({ reason: result.reason });
+          }
+        }
+      } else if (result.reason) {
+        // No taskID (e.g. run_start_error before taskID was assigned) —
+        // write a minimal report with just the reason.
+        reportJson = JSON.stringify({ reason: result.reason });
+      }
+
+      // --- Fetch the workflow schema snapshot (terminal-time workflow data) ---
+      let schemaSnapshot = null;
+      const runRow = getRunWorkflowId.get(runID);
+      if (runRow) {
+        const wfRow = getWorkflowData.get(runRow.workflow_id);
+        if (wfRow) {
+          schemaSnapshot = wfRow.data; // already JSON string in workflows.data
+        }
+      }
+
+      // --- One idempotent UPDATE ---
+      updateTerminal.run({
+        id: runID,
+        status,
+        report: reportJson,
+        schema_snapshot: schemaSnapshot,
+      });
+    } catch (err) {
+      // Defensive: onTerminal must never throw into the queue loop (the
+      // queue wraps it in try/catch + .catch() backstop, but log here for
+      // visibility). A failed DB write leaves the row in its pre-terminal
+      // state (running) — Phase 1's restart sweep will mark it terminated
+      // on next server start if this crash takes the process down.
+      console.error(
+        "[queue-adapter] onTerminal terminal capture failed for run",
+        runID,
+        err
+      );
+    }
+  };
+}
+
+/**
  * @param {import("better-sqlite3").Database} db
  * @returns {{runTask: Function, cancelTask: Function, onTerminal: Function}}
  *   The three callbacks for createRunQueue. Inject these into the factory.
  */
 export function createQueueAdapter(db) {
-  // Prepared statements for the minimal Phase 3 onTerminal (status + ended_at).
-  // Phase 4 will extend onTerminal to write the full report JSON + schema_snapshot.
-  const updateSucceeded = db.prepare(
-    "UPDATE workflow_runs SET status='succeeded', ended_at=datetime('now') WHERE id=? AND status NOT IN ('succeeded','failed','terminated')"
-  );
-  const updateFailed = db.prepare(
-    "UPDATE workflow_runs SET status='failed', ended_at=datetime('now') WHERE id=? AND status NOT IN ('succeeded','failed','terminated')"
-  );
-  const updateTerminated = db.prepare(
-    "UPDATE workflow_runs SET status='terminated', ended_at=datetime('now') WHERE id=? AND status NOT IN ('succeeded','failed','terminated')"
-  );
-
   return {
     /**
      * Start a run via TaskRunAPI. Returns {taskID, done} — taskID is captured
@@ -125,24 +212,9 @@ export function createQueueAdapter(db) {
     },
 
     /**
-     * Minimal Phase 3 onTerminal: write status + ended_at. Phase 4 replaces
-     * this with full report capture (report JSON, schema_snapshot).
+     * Phase 4: capture the full terminal snapshot into workflow_runs.
+     * Delegates to `createCapturingOnTerminal` (shared with tests).
      */
-    onTerminal(runID, result) {
-      try {
-        if (result.status === "succeeded") {
-          updateSucceeded.run(runID);
-        } else if (result.status === "failed") {
-          updateFailed.run(runID);
-        } else {
-          // terminated (cancelled / interrupted / wall_clock_zombie)
-          updateTerminated.run(runID);
-        }
-      } catch (err) {
-        // Defensive: onTerminal must never throw into the queue loop (the
-        // queue wraps it in try/catch too, but log here for visibility).
-        console.error("[queue-adapter] onTerminal DB write failed for run", runID, err);
-      }
-    },
+    onTerminal: createCapturingOnTerminal(db),
   };
 }
