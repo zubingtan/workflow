@@ -43,7 +43,8 @@ export function useEditorProps(
   initialData: FlowDocumentJSON,
   nodeRegistries: FlowNodeRegistry[],
   ctxRef?: { current: FreeLayoutPluginContext | null },
-  onDirty?: () => void
+  onDirty?: () => void,
+  workflowId?: string
 ): FreeLayoutProps {
   return useMemo<FreeLayoutProps>(
     () => ({
@@ -378,6 +379,10 @@ export function useEditorProps(
             domain: window.location.hostname,
             port: window.location.port ? Number(window.location.port) : undefined,
             protocol: window.location.protocol.replace(':', ''),
+            // Thread the saved workflow's id into POST /api/task/run so the
+            // backend enqueues into the per-workflow serial queue (Phase 2 of
+            // #152). Undefined for draft runs → backend takes immediate path.
+            workflowId,
           },
         }),
 
@@ -392,9 +397,9 @@ export function useEditorProps(
         createPanelManagerPlugin(),
       ],
     }),
-    // Empty deps is safe: `initialData`/`ctxRef` are stable per Editor mount —
-    // the Editor component is fully unmounted/remounted when switching workflows,
-    // so this memo re-runs with fresh values each time.
+    // Empty deps is safe: `initialData`/`ctxRef`/`workflowId` are stable per
+    // Editor mount — the Editor component is fully unmounted/remounted when
+    // switching workflows, so this memo re-runs with fresh values each time.
     []
   );
 }

@@ -25,7 +25,7 @@ import {
 import { injectable } from '@flowgram.ai/free-layout-editor';
 
 import { ServerConfig } from '../../type';
-import type { ServerError } from './type';
+import type { ServerError, TaskRunRequestBody } from './type';
 import { DEFAULT_SERVER_CONFIG } from './constant';
 
 @injectable()
@@ -39,8 +39,15 @@ export class WorkflowRuntimeServerClient implements IRuntimeClient {
   }
 
   public async [FlowGramAPIName.TaskRun](input: TaskRunInput): Promise<TaskRunOutput | undefined> {
+    // Merge workflowId into the body when configured (saved-workflow path).
+    // Backend: POST /api/task/run splits on body.workflowId presence
+    // (Phase 2 of #152) — saved workflows enqueue, drafts run immediately.
+    const body: TaskRunRequestBody = { ...input };
+    if (this.config.workflowId) {
+      body.workflowId = this.config.workflowId;
+    }
     return this.request<TaskRunOutput>(TaskRunDefine.path, TaskRunDefine.method, {
-      body: input,
+      body,
       errorMessage: 'TaskRun failed',
     });
   }

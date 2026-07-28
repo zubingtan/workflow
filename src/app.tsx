@@ -266,7 +266,12 @@ function App() {
                   <Spin size="large" />
                 </div>
               ) : workflowData ? (
-                <Editor data={workflowData} ctxRef={ctxRef} onDirty={() => setDirty(true)} />
+                <Editor
+                  data={workflowData}
+                  ctxRef={ctxRef}
+                  onDirty={() => setDirty(true)}
+                  workflowId={currentWorkflowId ?? undefined}
+                />
               ) : (
                 <div style={{ padding: 24 }}>Failed to load workflow.</div>
               )}
