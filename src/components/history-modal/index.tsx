@@ -4,6 +4,7 @@ import { Modal, Toast, Empty, Spin } from '@douyinfe/semi-ui';
 
 import * as api from '../../api';
 import { RunsTable, type RunRow } from './runs-table';
+import { HistoryViewer } from '../history-viewer';
 
 /**
  * Phase 7 (#159): central History Modal for a workflow.
@@ -31,6 +32,8 @@ export function HistoryModal({
 }) {
   const [rows, setRows] = useState<RunRow[]>([]);
   const [loading, setLoading] = useState(false);
+  // Phase 8 (#160): the readonly HistoryViewer overlay for a selected run.
+  const [selectedRunID, setSelectedRunID] = useState<string | null>(null);
   // Keep onClose in a ref so the SSE effect doesn't tear down/recreate the
   // EventSource when the parent re-renders with a fresh inline onClose arrow.
   const onCloseRef = useRef(onClose);
@@ -145,9 +148,9 @@ export function HistoryModal({
     }
   };
 
-  const onViewDetail = (_runID: string) => {
-    // Phase 8 wires the readonly HistoryViewer here.
-    Toast.info('详情视图将在 Phase 8 上线');
+  const onViewDetail = (runID: string) => {
+    // Phase 8 (#160): open the full-screen readonly editor overlay.
+    setSelectedRunID(runID);
   };
 
   return (
@@ -173,6 +176,12 @@ export function HistoryModal({
           onCancelRun={onCancelRun}
           onDeleteRun={onDeleteRun}
         />
+      )}
+      {/* Phase 8 (#160): full-screen readonly viewer overlay. Rendered above
+          the Modal (z-index 1100 > Modal's 1000). The Modal stays mounted
+          underneath so its scroll position is preserved on 返回. */}
+      {selectedRunID && (
+        <HistoryViewer runID={selectedRunID} onClose={() => setSelectedRunID(null)} />
       )}
     </Modal>
   );

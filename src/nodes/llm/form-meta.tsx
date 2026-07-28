@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useContext } from 'react';
 
 import { FormRenderProps, FormMeta, ValidateTrigger } from '@flowgram.ai/free-layout-editor';
 import { Field } from '@flowgram.ai/free-layout-editor';
@@ -14,6 +14,8 @@ import { IconChevronDown, IconChevronRight } from '@douyinfe/semi-icons';
 import { FlowNodeJSON } from '../../typings';
 import { useNodeRenderContext, useIsSidebar } from '../../hooks';
 import { FormHeader, FormContent } from '../../form-components';
+import { IsHistoryViewContext } from '../../context';
+import { NodeStatusBar } from '../../components/testrun/node-status-bar';
 import * as api from '../../api';
 import { useAgentExecution } from '../../agent-execution/use-agent-execution';
 import type { ToolEvent } from '../../agent-execution/types';
@@ -182,6 +184,7 @@ function AgentOutput({ agentId, prompt }: { agentId: string; prompt: string }) {
 function LLMFormRender({ form }: FormRenderProps<FlowNodeJSON>) {
   const { readonly: ctxReadonly } = useNodeRenderContext();
   const isSidebar = useIsSidebar();
+  const isHistoryView = useContext(IsHistoryViewContext);
   const readonly = ctxReadonly || !isSidebar;
 
   const agentId = (form.getValueIn('inputsValues.agentId') as any)?.content ?? '';
@@ -220,7 +223,16 @@ function LLMFormRender({ form }: FormRenderProps<FlowNodeJSON>) {
             </div>
           )}
         </Field>
-        {isSidebar && <AgentOutput agentId={agentId} prompt={promptText} />}
+        {isSidebar &&
+          (isHistoryView ? (
+            // Phase 8 (#160): history view renders the static terminal
+            // snapshot (Inputs/Outputs/Data from the TaskReport) instead of
+            // the live useAgentExecution SSE panel. NodeStatusBar subscribes
+            // to the StaticHistoryRuntimeService and renders NodeStatusRender.
+            <NodeStatusBar />
+          ) : (
+            <AgentOutput agentId={agentId} prompt={promptText} />
+          ))}
       </FormContent>
     </>
   );

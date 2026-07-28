@@ -6,6 +6,7 @@
 import { useMemo } from 'react';
 
 import { debounce } from 'lodash-es';
+import { IReport } from '@flowgram.ai/runtime-interface';
 import { createMinimapPlugin } from '@flowgram.ai/minimap-plugin';
 import { createFreeStackPlugin } from '@flowgram.ai/free-stack-plugin';
 import { createFreeSnapPlugin } from '@flowgram.ai/free-snap-plugin';
@@ -26,9 +27,11 @@ import { FlowNodeRegistry, FlowDocumentJSON } from '../typings';
 import { shortcuts } from '../shortcuts';
 import { CustomService, ValidateService } from '../services';
 import { GetGlobalVariableSchema } from '../plugins/variable-panel-plugin';
+import { StaticHistoryRuntimeService } from '../plugins/runtime-plugin/runtime-service/static-history';
 import { WorkflowRuntimeService } from '../plugins/runtime-plugin/runtime-service';
 import {
   createRuntimePlugin,
+  createHistoryRuntimePlugin,
   createContextMenuPlugin,
   createVariablePanelPlugin,
   createPanelManagerPlugin,
@@ -39,12 +42,21 @@ import { getMinimapCanvasStyle } from '../components/tools/minimap-canvas-style.
 import { SelectorBoxPopover } from '../components/selector-box-popover';
 import { BaseNode, CommentRender, GroupNodeRender, LineAddButton, NodePanel } from '../components';
 
+export interface UseEditorPropsOptions {
+  /** Historical terminal report — when present, the editor renders in
+   * readonly history mode (Phase 8 #160) using StaticHistoryRuntimeService. */
+  historyReport?: IReport;
+  /** The runID the historyReport belongs to (for display only). */
+  historyRunID?: string;
+}
+
 export function useEditorProps(
   initialData: FlowDocumentJSON,
   nodeRegistries: FlowNodeRegistry[],
   ctxRef?: { current: FreeLayoutPluginContext | null },
   onDirty?: () => void,
-  workflowId?: string
+  workflowId?: string,
+  history?: UseEditorPropsOptions
 ): FreeLayoutProps {
   return useMemo<FreeLayoutProps>(
     () => ({
@@ -64,9 +76,12 @@ export function useEditorProps(
         preventGlobalGesture: true,
       },
       /**
-       * Whether it is read-only or not, the node cannot be dragged in read-only mode
+       * Whether it is read-only or not, the node cannot be dragged in read-only mode.
+       * Phase 8 (#160): history view forces readonly so all edit affordances
+       * (drag, add-node, delete, form inputs) are auto-disabled by the
+       * existing gates documented in research/readonly-editor-history.md §1c.
        */
-      readonly: false,
+      readonly: !!history?.historyReport,
       /**
        * Line support both-way connection (default true)
        * 线条支持双向连接
@@ -271,6 +286,14 @@ export function useEditorProps(
       onAllLayersRendered(ctx) {
         // ctx.tools.autoLayout(); // init auto layout
         ctx.tools.fitView(false);
+        // Phase 8 (#160): flush the static history report into node renderers
+        // now that they've mounted and subscribed to onNodeReportChange.
+        if (history?.historyReport) {
+          const svc = ctx.get<StaticHistoryRuntimeService>(WorkflowRuntimeService);
+          if (svc instanceof StaticHistoryRuntimeService) {
+            svc.flush();
+          }
+        }
         console.log('--- Playground rendered ---');
       },
       /**
@@ -368,23 +391,32 @@ export function useEditorProps(
         /**
          * Runtime plugin
          * Server mode: workflow execution runs on the Hono backend via FlowGram protocol
+         *
+         * Phase 8 (#160): in history view, swap to the read-only
+         * StaticHistoryRuntimeService (no polling, no taskRun) so the canvas
+         * renders the historical terminal snapshot.
          */
-        createRuntimePlugin({
-          mode: 'server',
-          serverConfig: {
-            // Same-origin: derive from window.location so the runtime client
-            // (TaskRun/TaskReport) hits the same host that served the SPA.
-            // Fixes remote access via tunnels (e.g. ssh -R 14001:localhost:4001)
-            // where the browser origin differs from the backend's :4001.
-            domain: window.location.hostname,
-            port: window.location.port ? Number(window.location.port) : undefined,
-            protocol: window.location.protocol.replace(':', ''),
-            // Thread the saved workflow's id into POST /api/task/run so the
-            // backend enqueues into the per-workflow serial queue (Phase 2 of
-            // #152). Undefined for draft runs → backend takes immediate path.
-            workflowId,
-          },
-        }),
+        history?.historyReport
+          ? createHistoryRuntimePlugin({
+              report: history.historyReport,
+              runID: history.historyRunID,
+            })
+          : createRuntimePlugin({
+              mode: 'server',
+              serverConfig: {
+                // Same-origin: derive from window.location so the runtime client
+                // (TaskRun/TaskReport) hits the same host that served the SPA.
+                // Fixes remote access via tunnels (e.g. ssh -R 14001:localhost:4001)
+                // where the browser origin differs from the backend's :4001.
+                domain: window.location.hostname,
+                port: window.location.port ? Number(window.location.port) : undefined,
+                protocol: window.location.protocol.replace(':', ''),
+                // Thread the saved workflow's id into POST /api/task/run so the
+                // backend enqueues into the per-workflow serial queue (Phase 2 of
+                // #152). Undefined for draft runs → backend takes immediate path.
+                workflowId,
+              },
+            }),
 
         /**
          * Variable panel plugin
