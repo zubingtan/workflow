@@ -83,6 +83,17 @@ function workflowHashFromSchema(schema) {
  * @param {(workflowId: string, runID: string, payload: {schema: string, inputs: object}) => void} [deps.enqueueRun]
  *   Phase 2 injects a placeholder; Phase 3 replaces it with the real
  *   per-workflow serial queue. Called when a saved-workflow run is enqueued.
+ * @param {(runID: string) => boolean} [deps.cancelQueuedRun]
+ *   Phase 3: cancel a queued run. Returns true if the run was queued and
+ *   removed (DB row → terminated); false if the run was not queued (running
+ *   / terminal / missing). The endpoint uses this to route queued cancels.
+ * @param {(runID: string) => Promise<{success: boolean}>} [deps.cancelRunningRun]
+ *   Phase 3: cancel a running run by runID. Looks up the taskID via the
+ *   queue and calls TaskCancelAPI. Returns {success:true} if the cancel
+ *   request was sent (best-effort — terminal capture is Phase 4).
+ * @param {(workflowId: string, runID: string) => number} [deps.getRunQueuePosition]
+ *   Phase 3: 1-based queue position for a queued run (0 if running/terminal/missing).
+ *   Used by GET /api/runs/:runID to show "Queued, position N" in the Test Run panel.
  * @returns {Hono}
  */
 export function createApp({
@@ -94,6 +105,9 @@ export function createApp({
   createAgentSessionForAgent,
   streamSSE,
   enqueueRun,
+  cancelQueuedRun,
+  cancelRunningRun,
+  getRunQueuePosition,
 }) {
   const app = new Hono();
 
@@ -314,7 +328,7 @@ export function createApp({
 
       // Return the runID (NOT the runtime taskID — that's filled when the
       // queue dequeues). status='queued' signals the Test Run panel to show
-      // "排队中" (Phase 7 owns the UI).
+      // the queued state (Phase 7 owns the full history UI).
       return c.json({ runID, status: "queued" });
     }
 
@@ -392,6 +406,80 @@ export function createApp({
     } catch (err) {
       return c.json(taskErrorResponse(err, "cancel failed"), 500);
     }
+  });
+
+  // --- Phase 3: run status endpoint (for Test Run panel polling) ---
+  // GET /api/runs/:runID returns the run's status + queue position. The Test
+  // Run panel polls this while a run is queued to show "Queued, position N".
+  // Phase 5 will add SSE broadcast (replacing poll); Phase 7 will add full
+  // history list. Here we return just enough for the inline Test Run feedback.
+  app.get("/api/runs/:runID", (c) => {
+    const runID = c.req.param("runID");
+    const row = db
+      .prepare("SELECT status, task_id, queued_at, started_at, ended_at, workflow_id FROM workflow_runs WHERE id=?")
+      .get(runID);
+    if (!row) return c.json({ error: "run not found", runID }, 404);
+    let queuePosition = 0;
+    if (row.status === "queued" && typeof getRunQueuePosition === "function") {
+      queuePosition = getRunQueuePosition(row.workflow_id, runID);
+    }
+    // Don't leak workflow_id to the client (not needed by the Test Run panel).
+    const { workflow_id, ...rest } = row;
+    return c.json({ ...rest, queuePosition });
+  });
+
+  // --- Phase 3: unified cancel endpoint for saved-workflow runs ---
+  // PUT /api/runs/:runID/cancel routes by DB row status:
+  //   - queued   → queue.cancelQueued (DB → terminated), no advance.
+  //   - running  → cancelRunningRun (TaskCancelAPI via queue.getRunningTaskID).
+  //   - terminal → 409 {error:'already_terminal'}.
+  //   - missing  → 404.
+  // This is the single cancel path for saved-workflow runs; the draft-path
+  // PUT /api/task/cancel above stays for draft runs (which use taskID, not
+  // runID, and bypass workflow_runs entirely).
+  app.put("/api/runs/:runID/cancel", async (c) => {
+    const runID = c.req.param("runID");
+    const row = db.prepare("SELECT status, task_id FROM workflow_runs WHERE id=?").get(runID);
+    if (!row) return c.json({ error: "run not found", runID }, 404);
+
+    if (row.status === "queued") {
+      const cancelled = typeof cancelQueuedRun === "function" ? cancelQueuedRun(runID) : false;
+      if (!cancelled) {
+        // Race: the run transitioned to running between our SELECT and the
+        // cancel call. Fall through to the running path — re-read the row.
+        const fresh = db.prepare("SELECT status, task_id FROM workflow_runs WHERE id=?").get(runID);
+        if (!fresh || fresh.status === "queued") {
+          return c.json({ error: "cancel failed: run still queued after cancelQueuedRun" }, 500);
+        }
+        Object.assign(row, fresh);
+      } else {
+        return c.json({ ok: true, status: "terminated" });
+      }
+    }
+
+    if (row.status === "running") {
+      // task_id may be null for a brief window after dequeue (runTask hasn't
+      // resolved yet). The cancelRunningRun hook looks up the taskID via the
+      // queue's in-memory current entry, so it works even before task_id is
+      // written to DB.
+      if (typeof cancelRunningRun !== "function") {
+        return c.json({ error: "cancel not wired (no cancelRunningRun hook)" }, 500);
+      }
+      try {
+        const result = await cancelRunningRun(runID);
+        // Terminal capture (Phase 4) writes the final DB state; here we just
+        // confirm the cancel request was sent. The row stays "running" until
+        // Phase 4's onTerminal hook classifies it (cancelled → terminated).
+        // Do NOT invent a "cancelling" status — only the 5 canonical run
+        // statuses are allowed (queued|running|succeeded|failed|terminated).
+        return c.json({ ok: true, success: result?.success ?? false });
+      } catch (err) {
+        return c.json(taskErrorResponse(err, "cancel running run failed"), 500);
+      }
+    }
+
+    // succeeded | failed | terminated
+    return c.json({ error: "already_terminal", status: row.status }, 409);
   });
 
   // --- Static serving + SPA fallback (prod only; dev mode uses rsbuild) ---

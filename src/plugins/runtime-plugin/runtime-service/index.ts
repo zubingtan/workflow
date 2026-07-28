@@ -23,8 +23,10 @@ import {
 import { WorkflowRuntimeClient } from '../client';
 import { GetGlobalVariableSchema } from '../../variable-panel-plugin';
 import { WorkflowNodeType } from '../../../nodes';
+import { cancelRun, getRunStatus } from '../../../api';
 
 const SYNC_TASK_REPORT_INTERVAL = 500;
+const SYNC_RUN_STATUS_INTERVAL = 500;
 
 interface NodeRunningStatus {
   nodeID: string;
@@ -32,6 +34,19 @@ interface NodeRunningStatus {
   nodeResultLength: number;
 }
 
+/**
+ * Phase 3 (#155): the Test Run panel now supports queued status.
+ *
+ * When a saved-workflow run is submitted, POST /api/task/run returns
+ * {runID, status:'queued'} (taskID is not yet available — the queue fills it
+ * on dequeue). The runtime service stores runID, polls GET /api/runs/:runID
+ * until status='running' + task_id is present, then switches to TaskReport
+ * polling. Cancel uses PUT /api/runs/:runID/cancel (works for both queued
+ * and running states).
+ *
+ * Draft runs (no workflowId) still return {taskID, status:'running'} and
+ * use the taskID-based /api/task/* endpoints directly.
+ */
 @injectable()
 export class WorkflowRuntimeService {
   @inject(Playground) playground: Playground;
@@ -46,7 +61,11 @@ export class WorkflowRuntimeService {
 
   private taskID?: string;
 
+  private runID?: string;
+
   private syncTaskReportIntervalID?: ReturnType<typeof setInterval>;
+
+  private syncRunStatusIntervalID?: ReturnType<typeof setInterval>;
 
   private reportEmitter = new Emitter<NodeReport>();
 
@@ -72,8 +91,17 @@ export class WorkflowRuntimeService {
     return this.runningNodes.some((node) => node.lines.inputLines.includes(line));
   }
 
+  /**
+   * Phase 3: expose the current runID (saved-workflow path) so the Test Run
+   * panel can poll GET /api/runs/:runID for queue position. Returns undefined
+   * for draft runs (which use taskID, not runID).
+   */
+  public getCurrentRunID(): string | undefined {
+    return this.runID;
+  }
+
   public async taskRun(inputs: WorkflowInputs): Promise<string | undefined> {
-    if (this.taskID) {
+    if (this.taskID || this.runID) {
       await this.taskCancel();
     }
     const isFormValid = await this.validateForm();
@@ -100,17 +128,31 @@ export class WorkflowRuntimeService {
     }
     this.reset();
     let taskID: string | undefined;
+    let runID: string | undefined;
+    let status: string | undefined;
     try {
       const output = await this.runtimeClient.TaskRun({
         schema: JSON.stringify(schema),
         inputs,
       });
       taskID = output?.taskID;
+      runID = (output as any)?.runID;
+      status = (output as any)?.status;
     } catch (e) {
       this.resultEmitter.fire({
         errors: [(e as Error)?.message],
       });
       return;
+    }
+    // Phase 3: saved-workflow runs return {runID, status:'queued'} (no taskID
+    // yet — the queue fills it on dequeue). Draft runs return
+    // {taskID, runID: taskID, status:'running'}.
+    if (status === 'queued' && runID) {
+      this.runID = runID;
+      this.syncRunStatusIntervalID = setInterval(() => {
+        this.syncRunStatus();
+      }, SYNC_RUN_STATUS_INTERVAL);
+      return runID;
     }
     if (!taskID) {
       this.resultEmitter.fire({
@@ -126,6 +168,11 @@ export class WorkflowRuntimeService {
   }
 
   public async taskCancel(): Promise<void> {
+    if (this.runID) {
+      // Saved-workflow run (queued or running) — use the unified cancel endpoint.
+      await cancelRun(this.runID);
+      return;
+    }
     if (!this.taskID) {
       return;
     }
@@ -144,12 +191,58 @@ export class WorkflowRuntimeService {
 
   private reset(): void {
     this.taskID = undefined;
+    this.runID = undefined;
     this.nodeRunningStatus = new Map();
     this.runningNodes = [];
     if (this.syncTaskReportIntervalID) {
       clearInterval(this.syncTaskReportIntervalID);
     }
+    if (this.syncRunStatusIntervalID) {
+      clearInterval(this.syncRunStatusIntervalID);
+    }
     this.resetEmitter.fire({});
+  }
+
+  /**
+   * Phase 3: poll GET /api/runs/:runID while queued. Once the run dequeues
+   * (status='running' + task_id present), switch to TaskReport polling.
+   */
+  private async syncRunStatus(): Promise<void> {
+    if (!this.runID) {
+      return;
+    }
+    let status;
+    try {
+      const res = await getRunStatus(this.runID);
+      status = res.status;
+      if (status === 'running' && res.task_id) {
+        // Dequeued — switch to TaskReport polling.
+        clearInterval(this.syncRunStatusIntervalID);
+        this.syncRunStatusIntervalID = undefined;
+        this.taskID = res.task_id;
+        this.syncTaskReportIntervalID = setInterval(() => {
+          this.syncTaskReport();
+        }, SYNC_TASK_REPORT_INTERVAL);
+        return;
+      }
+      if (status === 'terminated' || status === 'failed' || status === 'succeeded') {
+        // Terminal before reaching running (e.g. cancelled while queued, or
+        // wall-clock zombie — though the latter only affects running runs).
+        clearInterval(this.syncRunStatusIntervalID);
+        this.syncRunStatusIntervalID = undefined;
+        if (status === 'terminated') {
+          this.resultEmitter.fire({ errors: ['Run cancelled'] });
+        } else if (status === 'failed') {
+          this.resultEmitter.fire({ errors: ['Run failed'] });
+        } else {
+          this.resultEmitter.fire({ result: { inputs: {}, outputs: {} } });
+        }
+      }
+    } catch {
+      clearInterval(this.syncRunStatusIntervalID);
+      this.syncRunStatusIntervalID = undefined;
+      this.resultEmitter.fire({ errors: ['Failed to fetch run status'] });
+    }
   }
 
   private async syncTaskReport(): Promise<void> {

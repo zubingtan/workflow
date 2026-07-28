@@ -17,6 +17,7 @@ import { NodeStatusGroup } from '../node-status-bar/group';
 import { WorkflowRuntimeService } from '../../../plugins/runtime-plugin/runtime-service';
 import { useTestRunFormPanel } from '../../../plugins/panel-manager-plugin/hooks';
 import { IconCancel } from '../../../assets/icon-cancel';
+import { getRunStatus } from '../../../api';
 
 import styles from './index.module.less';
 
@@ -26,6 +27,7 @@ export const TestRunSidePanel: FC<TestRunSidePanelProps> = () => {
   const runtimeService = useService(WorkflowRuntimeService);
   const { close: closePanel } = useTestRunFormPanel();
   const [isRunning, setRunning] = useState(false);
+  const [queuePosition, setQueuePosition] = useState(0);
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [errors, setErrors] = useState<string[]>();
   const [result, setResult] = useState<
@@ -54,8 +56,9 @@ export const TestRunSidePanel: FC<TestRunSidePanelProps> = () => {
     }
     setResult(undefined);
     setErrors(undefined);
-    const taskID = await runtimeService.taskRun(values);
-    if (taskID) {
+    setQueuePosition(0);
+    const id = await runtimeService.taskRun(values);
+    if (id) {
       setRunning(true);
     }
   };
@@ -70,7 +73,9 @@ export const TestRunSidePanel: FC<TestRunSidePanelProps> = () => {
   const renderRunning = (
     <div className={styles['testrun-panel-running']}>
       <IconSpin spin size="large" />
-      <div className={styles.text}>Running...</div>
+      <div className={styles.text}>
+        {queuePosition > 0 ? `排队中，第 ${queuePosition} 位` : 'Running...'}
+      </div>
     </div>
   );
 
@@ -116,6 +121,7 @@ export const TestRunSidePanel: FC<TestRunSidePanelProps> = () => {
   useEffect(() => {
     const disposer = runtimeService.onResultChanged(({ result, errors }) => {
       setRunning(false);
+      setQueuePosition(0);
       setResult(result);
       if (errors) {
         setErrors(errors);
@@ -125,6 +131,40 @@ export const TestRunSidePanel: FC<TestRunSidePanelProps> = () => {
     });
     return () => disposer.dispose();
   }, []);
+
+  // Phase 3: while queued, poll GET /api/runs/:runID for queue position.
+  // runtimeService exposes the current runID (if any) via a getter.
+  useEffect(() => {
+    if (!isRunning) {
+      setQueuePosition(0);
+      return;
+    }
+    const runID = runtimeService.getCurrentRunID?.();
+    if (!runID) {
+      return;
+    }
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const res = await getRunStatus(runID);
+        if (cancelled) return;
+        if (res.status === 'queued') {
+          setQueuePosition(res.queuePosition);
+        } else {
+          // Running or terminal — stop showing queue position.
+          setQueuePosition(0);
+        }
+      } catch {
+        // Ignore — the runtime-service also polls and will fire onResultChanged.
+      }
+    };
+    poll();
+    const interval = setInterval(poll, 500);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [isRunning, runtimeService]);
 
   useEffect(
     () => () => {

@@ -12,6 +12,8 @@ import { runAgentExecution } from "./agent-execution.mjs";
 import { seedAgentIfEmpty } from "./agent-catalog.mjs";
 import { createApp } from "./app.mjs";
 import { ensureSchema, markInflightRunsInterrupted } from "./db-schema.mjs";
+import { createRunQueue } from "./queue.mjs";
+import { createQueueAdapter } from "./queue-adapter.mjs";
 
 // --- Config ---
 // PORT (cloud-native standard) replaces SERVER_PORT. The legacy name is
@@ -100,18 +102,17 @@ if (swept > 0) {
 }
 
 // --- Build the Hono app (shared factory — see server/app.mjs) ---
-// Credential: agent rows store provider_api_key directly (#129); createApp
-// no longer needs process.env for credential resolution.
-// staticEnabled=false in dev because rsbuild serves the SPA bundle via its
-// own middleware (see dev-mode branch below). Prod enables serveStatic.
-// enqueueRun: Phase 2 placeholder — records the enqueue (the INSERT into
-// workflow_runs already happened in /api/task/run) but does NOT drive the
-// run yet. Saved-workflow runs stay 'queued' until Phase 3 wires the real
-// per-workflow serial queue here. The placeholder is a no-op so the contract
-// (hook is always called on enqueue) holds in prod, not just in tests.
-const enqueueRunPlaceholder = (_workflowId, _runID, _payload) => {
-  // Phase 3 replaces this with createRunQueue({db, runTask, ...}).enqueue(...)
-};
+// Phase 3: wire the real per-workflow serial queue. The queue adapter
+// provides runTask (wraps TaskRunAPI + polls TaskReportAPI until terminal),
+// cancelTask (wraps TaskCancelAPI), and onTerminal (writes status + ended_at
+// to workflow_runs; Phase 4 will extend to full report capture).
+const queueAdapter = createQueueAdapter(db);
+const runQueue = createRunQueue({
+  db,
+  runTask: queueAdapter.runTask,
+  cancelTask: queueAdapter.cancelTask,
+  onTerminal: queueAdapter.onTerminal,
+});
 
 const app = createApp({
   db,
@@ -120,7 +121,14 @@ const app = createApp({
   staticDir: STATIC_DIR,
   runAgentExecution,
   createAgentSessionForAgent,
-  enqueueRun: enqueueRunPlaceholder,
+  enqueueRun: (workflowId, runID, payload) => runQueue.enqueue(workflowId, runID, payload),
+  cancelQueuedRun: (runID) => runQueue.cancelQueued(runID),
+  cancelRunningRun: async (runID) => {
+    const taskID = runQueue.getRunningTaskID(runID);
+    if (!taskID) return { success: false };
+    return queueAdapter.cancelTask({ taskID });
+  },
+  getRunQueuePosition: (workflowId, runID) => runQueue.getQueuePosition(workflowId, runID),
 });
 
 // --- Start ---
@@ -131,6 +139,7 @@ const app = createApp({
 let server;
 function shutdown() {
   console.log("shutting down...");
+  runQueue.dispose();
   db.close();
   server?.close();
   process.exit(0);
@@ -169,7 +178,7 @@ if (IS_PROD) {
   // that appends AFTER rsbuild's own middlewares (including the SPA fallback).
   // Instead, wrap both in our own connect stack with Hono first.
   const honoListener = getRequestListener(app.fetch);
-  const API_PREFIXES = ["/health", "/agents", "/workflows", "/api/task"];
+  const API_PREFIXES = ["/health", "/agents", "/workflows", "/api/task", "/api/runs"];
   const apiGate = (req, res, next) => {
     const path = (req.url ?? "").split("?")[0];
     if (API_PREFIXES.some((p) => path === p || path.startsWith(p + "/"))) {
