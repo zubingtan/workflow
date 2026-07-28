@@ -94,6 +94,9 @@ function workflowHashFromSchema(schema) {
  * @param {(workflowId: string, runID: string) => number} [deps.getRunQueuePosition]
  *   Phase 3: 1-based queue position for a queued run (0 if running/terminal/missing).
  *   Used by GET /api/runs/:runID to show "Queued, position N" in the Test Run panel.
+ * @param {object} [deps.eventBus] - Phase 5 SSE bus for run status broadcasts.
+ *   Optional — if absent, the SSE endpoint returns 503 (disabled). Tests pass
+ *   a fake bus to exercise the SSE endpoint without a real HTTP server.
  * @returns {Hono}
  */
 export function createApp({
@@ -108,6 +111,7 @@ export function createApp({
   cancelQueuedRun,
   cancelRunningRun,
   getRunQueuePosition,
+  eventBus,
 }) {
   const app = new Hono();
 
@@ -408,25 +412,11 @@ export function createApp({
     }
   });
 
-  // --- Phase 3: run status endpoint (for Test Run panel polling) ---
-  // GET /api/runs/:runID returns the run's status + queue position. The Test
-  // Run panel polls this while a run is queued to show "Queued, position N".
-  // Phase 5 will add SSE broadcast (replacing poll); Phase 7 will add full
-  // history list. Here we return just enough for the inline Test Run feedback.
-  app.get("/api/runs/:runID", (c) => {
-    const runID = c.req.param("runID");
-    const row = db
-      .prepare("SELECT status, task_id, queued_at, started_at, ended_at, workflow_id FROM workflow_runs WHERE id=?")
-      .get(runID);
-    if (!row) return c.json({ error: "run not found", runID }, 404);
-    let queuePosition = 0;
-    if (row.status === "queued" && typeof getRunQueuePosition === "function") {
-      queuePosition = getRunQueuePosition(row.workflow_id, runID);
-    }
-    // Don't leak workflow_id to the client (not needed by the Test Run panel).
-    const { workflow_id, ...rest } = row;
-    return c.json({ ...rest, queuePosition });
-  });
+  // --- Phase 3: run status endpoint (now superseded by Phase 5's full-row
+  // GET /api/runs/:runID below, which includes report + schema_snapshot +
+  // queuePosition). Phase 5's handler serves both the Test Run panel (which
+  // only reads status + queuePosition) and the History Modal detail view
+  // (which reads report + schema_snapshot). ---
 
   // --- Phase 3: unified cancel endpoint for saved-workflow runs ---
   // PUT /api/runs/:runID/cancel routes by DB row status:
@@ -480,6 +470,124 @@ export function createApp({
 
     // succeeded | failed | terminated
     return c.json({ error: "already_terminal", status: row.status }, 409);
+  });
+
+  // --- Phase 5: SSE run events endpoint (multi-tab broadcast) ---
+  // GET /api/workflows/:id/runs/events opens a long-lived SSE stream that
+  // receives run_status (queued/running/terminated) and run_terminal events
+  // for the given workflow. Each browser tab opens its own EventSource so
+  // multi-tab sync works without polling.
+  //
+  // Implementation: we wrap a ReadableStream into a res-like object (with
+  // .write + .setHeader) and hand it to the bus. Hono's `streamSSE` would
+  // frame events itself, but the bus already emits SSE-formatted strings —
+  // using `streamSSE` here would double-frame. Instead we return the raw
+  // stream with the headers the bus set, and a heartbeat interval keeps the
+  // connection alive through proxies (every 25s).
+  app.get("/api/workflows/:id/runs/events", (c) => {
+    if (!eventBus) return c.json({ error: "events disabled" }, 503);
+    const workflowId = c.req.param("id");
+    const wf = db.prepare("SELECT id FROM workflows WHERE id=?").get(workflowId);
+    if (!wf) return c.json({ error: "workflow not found" }, 404);
+
+    const encoder = new TextEncoder();
+    let controllerRef = null;
+    const resLike = {
+      write(chunk) {
+        // controllerRef is null until ReadableStream.start runs; after
+      // stream.cancel() it may still be set but enqueues throw — the bus's
+      // own try/catch around res.write handles that. Here we just guard null.
+        if (controllerRef) {
+          controllerRef.enqueue(encoder.encode(chunk));
+        }
+      },
+      // Headers are set on the Response below; this is a no-op kept for bus compat.
+      setHeader() {},
+    };
+
+    const stream = new ReadableStream({
+      start(controller) {
+        controllerRef = controller;
+        eventBus.subscribe(workflowId, resLike);
+        // Heartbeat: write `:ping\n\n` every 25s to keep the connection alive
+        // through proxies that close idle connections.
+        const heartbeat = setInterval(() => {
+          try {
+            controller.enqueue(encoder.encode(":ping\n\n"));
+          } catch {
+            // Controller already closed — heartbeat cleanup happens in cancel.
+          }
+        }, 25_000);
+        // Store the heartbeat on the controller so cancel() can clear it.
+        controller._heartbeat = heartbeat;
+      },
+      cancel(reason) {
+        if (controllerRef?._heartbeat) clearInterval(controllerRef._heartbeat);
+        eventBus.unsubscribe(workflowId, resLike);
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+        "X-Accel-Buffering": "no",
+      },
+    });
+  });
+
+  // --- Phase 5: REST history list (lightweight, no report/schema_snapshot) ---
+  // GET /api/workflows/:id/runs returns the ordered list of runs for a
+  // workflow. Excludes the heavy `report` and `schema_snapshot` columns so
+  // the list payload stays small — the History Modal opens detail via
+  // GET /api/runs/:runID which returns the full row.
+  app.get("/api/workflows/:id/runs", (c) => {
+    const workflowId = c.req.param("id");
+    const rows = db
+      .prepare(
+        "SELECT id, status, task_id, queued_at, started_at, ended_at FROM workflow_runs WHERE workflow_id=? ORDER BY queued_at DESC"
+      )
+      .all(workflowId);
+    return c.json(rows);
+  });
+
+  // --- Phase 5: single run detail (full row, parsed JSON) ---
+  // GET /api/runs/:runID returns the full row including `report` and
+  // `schema_snapshot` parsed as JSON objects (null if not yet terminal).
+  app.get("/api/runs/:runID", (c) => {
+    const runID = c.req.param("runID");
+    const row = db
+      .prepare(
+        "SELECT id, workflow_id, status, task_id, report, schema_snapshot, queued_at, started_at, ended_at FROM workflow_runs WHERE id=?"
+      )
+      .get(runID);
+    if (!row) return c.json({ error: "run not found", runID }, 404);
+    let queuePosition = 0;
+    if (row.status === "queued" && typeof getRunQueuePosition === "function") {
+      queuePosition = getRunQueuePosition(row.workflow_id, runID);
+    }
+    return c.json({
+      ...row,
+      report: row.report ? JSON.parse(row.report) : null,
+      schema_snapshot: row.schema_snapshot ? JSON.parse(row.schema_snapshot) : null,
+      queuePosition,
+    });
+  });
+
+  // --- Phase 5: delete a single history run (terminal only) ---
+  // DELETE /api/runs/:runID refuses to delete a queued/running run (409) so
+  // in-flight runs can't be silently removed from history. Terminal runs are
+  // deleted and the row is gone from the history list on next pull.
+  app.delete("/api/runs/:runID", (c) => {
+    const runID = c.req.param("runID");
+    const row = db.prepare("SELECT status FROM workflow_runs WHERE id=?").get(runID);
+    if (!row) return c.json({ error: "run not found", runID }, 404);
+    if (row.status === "queued" || row.status === "running") {
+      return c.json({ error: "run_not_terminal", status: row.status }, 409);
+    }
+    db.prepare("DELETE FROM workflow_runs WHERE id=?").run(runID);
+    return c.json({ ok: true });
   });
 
   // --- Static serving + SPA fallback (prod only; dev mode uses rsbuild) ---

@@ -89,19 +89,25 @@ function pollUntilTerminal(taskID) {
 }
 
 /**
- * Phase 4 (#156): build the capturing onTerminal callback.
+ * Phase 4 (#156) + Phase 5 (#157): build the capturing onTerminal callback.
  *
  * Extracted from `createQueueAdapter` so host-side tests can inject a fake
  * `fetchTaskReport` (bypassing the real `TaskReportAPI` import) while
  * exercising the EXACT same SQL + merge logic as prod. This avoids
  * duplicating the capture logic between the adapter and the test helper.
  *
+ * Phase 5: optional `eventBus` — if provided, the callback broadcasts a
+ * `run_terminal` event (with the full report + schema_snapshot) AFTER the
+ * DB row is written. The broadcast needs the workflowId (looked up from the
+ * run row) so it goes to the right subscribers.
+ *
  * @param {import("better-sqlite3").Database} db
  * @param {(taskID: string) => Promise<object|null>} [fetchTaskReport]
  *   Defaults to the real `TaskReportAPI`. Tests inject a fake.
+ * @param {object} [eventBus] - Phase 5 SSE bus. If absent, no broadcast.
  * @returns {(runID: string, result: {status: string, reason?: string, taskID?: string}) => Promise<void>}
  */
-export function createCapturingOnTerminal(db, fetchTaskReport = TaskReportAPI) {
+export function createCapturingOnTerminal(db, fetchTaskReport = TaskReportAPI, eventBus) {
   // Phase 4: single UPDATE captures status + report + schema_snapshot + ended_at.
   // Idempotent: WHERE status NOT IN (...) prevents clobbering a terminal row
   // if onTerminal is somehow called twice (defensive — the queue's runID guard
@@ -111,9 +117,12 @@ export function createCapturingOnTerminal(db, fetchTaskReport = TaskReportAPI) {
        SET status=@status, report=@report, schema_snapshot=@schema_snapshot, ended_at=datetime('now')
      WHERE id=@id AND status NOT IN ('succeeded','failed','terminated')`
   );
-  // Look up the workflow_id for a run (to fetch the workflow schema snapshot).
+  // Look up the workflow_id + ended_at for a run. ended_at is read AFTER the
+  // UPDATE (which sets ended_at=datetime('now')) so the broadcast's ended_at
+  // matches what GET /api/runs/:runID returns — avoids drift between the
+  // SQL server time and a JS new Date().toISOString().
   const getRunWorkflowId = db.prepare(
-    "SELECT workflow_id FROM workflow_runs WHERE id=?"
+    "SELECT workflow_id, ended_at FROM workflow_runs WHERE id=?"
   );
   // Fetch the workflow data (terminal-time schema snapshot for Phase 8 readonly viewer).
   const getWorkflowData = db.prepare("SELECT data FROM workflows WHERE id=?");
@@ -167,6 +176,37 @@ export function createCapturingOnTerminal(db, fetchTaskReport = TaskReportAPI) {
         report: reportJson,
         schema_snapshot: schemaSnapshot,
       });
+
+      // --- Phase 5: broadcast run_terminal to SSE subscribers ---
+      // Fired AFTER the DB row is written so a concurrent GET /api/runs/:runID
+      // returns the terminal state. The broadcast carries the full report +
+      // schema_snapshot so the History Modal can render detail without a
+      // follow-up fetch (though it MAY refetch to be safe). Wrapped in
+      // try/catch so a bus failure can't crash onTerminal (which would leave
+      // the DB row in its pre-terminal state).
+      //
+      // ended_at is re-read from the DB (the UPDATE set it via datetime('now'))
+      // so the broadcast matches what GET /api/runs/:runID returns — using
+      // new Date().toISOString() here would drift from the SQL server time.
+      if (eventBus && runRow) {
+        try {
+          const after = getRunWorkflowId.get(runID);
+          eventBus.broadcast(runRow.workflow_id, {
+            type: "run_terminal",
+            runID,
+            status,
+            report: reportJson ? JSON.parse(reportJson) : null,
+            schema_snapshot: schemaSnapshot ? JSON.parse(schemaSnapshot) : null,
+            ended_at: after?.ended_at ?? null,
+          });
+        } catch (broadcastErr) {
+          console.error(
+            "[queue-adapter] run_terminal broadcast failed for run",
+            runID,
+            broadcastErr
+          );
+        }
+      }
     } catch (err) {
       // Defensive: onTerminal must never throw into the queue loop (the
       // queue wraps it in try/catch + .catch() backstop, but log here for
@@ -184,10 +224,12 @@ export function createCapturingOnTerminal(db, fetchTaskReport = TaskReportAPI) {
 
 /**
  * @param {import("better-sqlite3").Database} db
+ * @param {object} [eventBus] - Phase 5 SSE bus for run_terminal broadcasts.
+ *   Optional — if absent, onTerminal still writes the DB row but doesn't broadcast.
  * @returns {{runTask: Function, cancelTask: Function, onTerminal: Function}}
  *   The three callbacks for createRunQueue. Inject these into the factory.
  */
-export function createQueueAdapter(db) {
+export function createQueueAdapter(db, eventBus) {
   return {
     /**
      * Start a run via TaskRunAPI. Returns {taskID, done} — taskID is captured
@@ -213,8 +255,9 @@ export function createQueueAdapter(db) {
 
     /**
      * Phase 4: capture the full terminal snapshot into workflow_runs.
+     * Phase 5: broadcast run_terminal to SSE subscribers (if eventBus provided).
      * Delegates to `createCapturingOnTerminal` (shared with tests).
      */
-    onTerminal: createCapturingOnTerminal(db),
+    onTerminal: createCapturingOnTerminal(db, TaskReportAPI, eventBus),
   };
 }
