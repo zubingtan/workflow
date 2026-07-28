@@ -10,12 +10,13 @@ import { resolve } from "node:path";
  * edit doesn't silently break `docker compose up`:
  *
  *   1. Single service `app` building from local Dockerfile.
- *   2. Port 4001 exposed (overridable via ${PORT:-4001}).
+ *   2. Port 4000 exposed (overridable via ${PORT:-4000}, prod default per map #133 D1).
  *   3. Named volume `workflow-data` mounted at `/app/data`
  *      (matches T5's `WORKFLOW_DATA_DIR=/app/data`).
  *   4. `restart: unless-stopped`.
  *   5. Healthcheck hitting `/health/live`.
  *   6. API key env vars passed through from host shell (NOT hardcoded).
+ *   7. `PORT` env (not deprecated `SERVER_PORT`) drives the container port.
  *
  * A real `docker compose up` smoke test is out of scope for `node --test`
  * (needs Docker daemon) — left to CI / manual verification.
@@ -47,13 +48,33 @@ test("app service builds from local Dockerfile (build: .)", () => {
   assert.match(content, /build:\s*\.\s*$/m, "app must build from local context (build: .)");
 });
 
-test("exposes port 4001 with default fallback (overridable via PORT env)", () => {
+test("exposes port 4000 with default fallback (overridable via PORT env, map #133 D1)", () => {
   const content = readCompose();
-  // `${PORT:-4001}:${PORT:-4001}` lets users override without editing the file.
+  // `${PORT:-4000}:${PORT:-4000}` lets users override without editing the file.
+  // Prod default is 4000 (map #133 D1); dev=:4001, E2E=:4099.
   assert.match(
     content,
-    /\$\{PORT:-4001\}:\$\{PORT:-4001\}/,
-    "ports must be `${PORT:-4001}:${PORT:-4001}` (overridable via shell PORT env)"
+    /\$\{PORT:-4000\}:\$\{PORT:-4000\}/,
+    "ports must be `${PORT:-4000}:${PORT:-4000}` (overridable via shell PORT env, prod default 4000)"
+  );
+  assert.doesNotMatch(
+    content,
+    /\$\{PORT:-4001\}/,
+    "must NOT use port 4001 as compose default — that's the dev port now, not prod"
+  );
+});
+
+test("uses PORT env var (not deprecated SERVER_PORT) for the container port", () => {
+  const content = readCompose();
+  assert.match(
+    content,
+    /PORT:\s*\$\{PORT:-4000\}/,
+    "must set `PORT: ${PORT:-4000}` in environment (map #133 D1 — PORT replaces SERVER_PORT)"
+  );
+  assert.doesNotMatch(
+    content,
+    /SERVER_PORT/,
+    "must NOT reference SERVER_PORT — deprecated in favor of PORT (map #133 D1)"
   );
 });
 

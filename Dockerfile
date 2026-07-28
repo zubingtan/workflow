@@ -5,7 +5,7 @@
 # Multi-stage build:
 #   - prod-deps: pnpm install --prod (only runtime deps, no toolchain needed
 #     because better-sqlite3 v11 ships linux-x64 prebuilt for Node ABI v127)
-#   - build: full install + pnpm build:prod → dist/
+#   - build: full install + pnpm build → dist/
 #   - runner: copy node_modules from prod-deps, dist/ from build, server/ from ctx
 #
 # Base image: node:22.23.1-bookworm-slim (NOT alpine — see D5 decision in #121).
@@ -37,7 +37,7 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     pnpm rebuild better-sqlite3
 
 # ─── build (full deps + rsbuild build) ───────────────────────────────────────
-# Needs devDeps (typescript, @rsbuild/core, etc.) to run `pnpm build:prod`.
+# Needs devDeps (typescript, @rsbuild/core, etc.) to run `pnpm build`.
 # `--ignore-scripts` here too: husky's prepare fails without .git, and the
 # patched @flowgram.ai/runtime-js patch is applied by pnpm itself (not a script).
 FROM base AS build
@@ -46,7 +46,7 @@ COPY patches/ ./patches/
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     pnpm install --frozen-lockfile --ignore-scripts
 COPY . .
-RUN pnpm build:prod
+RUN pnpm build
 
 # ─── runner (production image) ───────────────────────────────────────────────
 FROM base AS runner
@@ -67,5 +67,6 @@ COPY package.json ./
 RUN mkdir -p /app/data
 VOLUME /app/data
 
-EXPOSE 4001
+# Prod default port (map #133 D1). docker-compose maps the same host port.
+EXPOSE 4000
 CMD ["node", "server/index.mjs"]

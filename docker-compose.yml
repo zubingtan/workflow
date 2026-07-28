@@ -12,22 +12,21 @@
 # in the DB (set via the Agents UI). Do NOT put secrets in a .env file next to
 # this compose file — that's what `environment:` passthrough avoids.
 #
-# Port override: `PORT=8080 docker compose up` listens on 8080 instead of 4001.
+# Port override: `PORT=8080 docker compose up` listens on 8080 instead of 4000.
 
 services:
   app:
     build: .
     ports:
-      - '${PORT:-4001}:${PORT:-4001}'
+      - '${PORT:-4000}:${PORT:-4000}'
     volumes:
       - workflow-data:/app/data
     environment:
       # fake-provider (dev mock) reads this to validate request Authorization
       # headers. The server does NOT use it — agent API keys live in the DB.
       FAKE_PROVIDER_API_KEY: ${FAKE_PROVIDER_API_KEY:-}
-      # Override SERVER_PORT if PORT is set, so the container listens on the
-      # same port the host maps.
-      SERVER_PORT: ${PORT:-4001}
+      # PORT drives both the container's listen port and the host mapping.
+      PORT: ${PORT:-4000}
     restart: unless-stopped
     healthcheck:
       test:
@@ -35,7 +34,7 @@ services:
           'CMD',
           'node',
           '-e',
-          "fetch('http://localhost:4001/health/live').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+          "fetch('http://localhost:4000/health/live').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
         ]
       interval: 30s
       timeout: 5s

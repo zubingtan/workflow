@@ -6,7 +6,7 @@
 
 - [ ] `pnpm ts-check` passes
 - [ ] `pnpm lint` passes
-- [ ] `pnpm build:prod` passes
+- [ ] `pnpm build` passes
 - [ ] Tests added/updated for behavior changes
 - [ ] `AGENTS.md` updated if conventions changed
 
