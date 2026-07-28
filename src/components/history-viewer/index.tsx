@@ -23,7 +23,12 @@ import * as api from '../../api';
  *        - `historyRunID` = runID
  *      The Editor switches to readonly + StaticHistoryRuntimeService.
  *
- * No `DemoTools` toolbar is mounted — the history view has no edit affordances.
+ * The `DemoTools` toolbar IS mounted (via `createPanelManagerPlugin`), but in
+ * history view the Readonly toggle and 历史 buttons are hidden, and all other
+ * edit affordances (AddNode, TestRun, Undo/Redo, drag, line-draw) are disabled
+ * by `playground.config.readonly`. The remaining toolbar buttons (FitView,
+ * Minimap, Zoom) are useful for inspecting the historical canvas.
+ *
  * A top bar with a 返回 button restores the History Modal (Phase 7 preserves
  * its scroll position because the Modal stays mounted underneath the overlay).
  *

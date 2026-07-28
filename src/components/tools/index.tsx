@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useContext } from 'react';
 
 import { useRefresh } from '@flowgram.ai/free-layout-editor';
 import { useClientContext } from '@flowgram.ai/free-layout-editor';
@@ -26,9 +26,11 @@ import { ProblemButton } from '../problem-panel';
 import { DownloadTool } from './download';
 import { useWorkflowId } from '../workflow-context';
 import { HistoryModal } from '../history-modal';
+import { IsHistoryViewContext } from '../../context';
 
 export const DemoTools = () => {
   const { history, playground } = useClientContext();
+  const isHistoryView = useContext(IsHistoryViewContext);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [minimapVisible, setMinimapVisible] = useState(true);
@@ -59,7 +61,10 @@ export const DemoTools = () => {
         <FitView />
         <MinimapSwitch minimapVisible={minimapVisible} setMinimapVisible={setMinimapVisible} />
         <Minimap visible={minimapVisible} />
-        <Readonly />
+        {/* Phase 8 (#160): hide the Readonly toggle in history view — the
+            user must not be able to un-disable edit affordances on a
+            historical snapshot. */}
+        {!isHistoryView && <Readonly />}
         <Comment />
         <Tooltip content="Undo">
           <IconButton
@@ -83,16 +88,20 @@ export const DemoTools = () => {
         <DownloadTool />
         <Divider layout="vertical" style={{ height: '16px' }} margin={3} />
         <AddNode disabled={playground.config.readonly} />
-        {/* Phase 7 (#159): History entry — to the RIGHT of Add Node per spec. */}
-        <Button
-          icon={<IconHistory />}
-          theme="borderless"
-          size="small"
-          disabled={!workflowId}
-          onClick={() => setHistoryVisible(true)}
-        >
-          历史
-        </Button>
+        {/* Phase 7 (#159): History entry — to the RIGHT of Add Node per spec.
+            Phase 8 (#160): hidden in history view (the viewer is already the
+            history detail; reopening the Modal from inside it is a no-op footgun). */}
+        {!isHistoryView && (
+          <Button
+            icon={<IconHistory />}
+            theme="borderless"
+            size="small"
+            disabled={!workflowId}
+            onClick={() => setHistoryVisible(true)}
+          >
+            历史
+          </Button>
+        )}
         <Divider layout="vertical" style={{ height: '16px' }} margin={3} />
         <TestRunButton disabled={playground.config.readonly} />
       </ToolSection>
