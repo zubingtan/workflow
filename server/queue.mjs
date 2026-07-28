@@ -100,6 +100,12 @@ export function createRunQueue({
   /**
    * Mark `current` terminal and, if there's a queued run, dequeue it. Called
    * from both normal runTask completion and the wall-clock guard.
+   *
+   * Phase 4: onTerminal may be async (fetches TaskReport + writes DB). The
+   * queue does NOT await it — if it did, a slow TaskReport fetch would block
+   * the next dequeue. Instead, onTerminal's own try/catch swallows errors,
+   * and we attach a .catch() here as a backstop so an async rejection can't
+   * become an unhandledRejection. The queue advances immediately.
    */
   function finishCurrent(workflowId, result) {
     const wf = workflows.get(workflowId);
@@ -108,11 +114,17 @@ export function createRunQueue({
     wf.current = null;
     // Notify the caller (Phase 4 writes workflow_runs.report here).
     try {
-      onTerminal(runID, result);
+      const ret = onTerminal(runID, result);
+      // If onTerminal returned a promise (async), attach a backstop catch so
+      // a rejection can't become unhandledRejection. The adapter's own
+      // try/catch is the primary defense; this is the safety net.
+      if (ret && typeof ret.catch === "function") {
+        ret.catch((err) => {
+          console.error("[queue] onTerminal async rejection for run", runID, err);
+        });
+      }
     } catch (err) {
-      // onTerminal must never throw into the queue loop (Phase 4 wraps in
-      // try/catch too, but defend here so a buggy callback can't stall the
-      // queue). Log to stderr; do not rethrow.
+      // Sync throw — log and continue (don't stall the queue).
       console.error("[queue] onTerminal threw for run", runID, err);
     }
     // Advance to the next queued run, if any.
@@ -174,14 +186,23 @@ export function createRunQueue({
       (result) => {
         const w = workflows.get(workflowId);
         if (!w || !w.current || w.current.runID !== runID) return;
-        finishCurrent(workflowId, result ?? { status: "success" });
+        // Phase 4: attach taskID so onTerminal can fetch the TaskReport.
+        finishCurrent(workflowId, {
+          ...(result ?? { status: "success" }),
+          taskID: w.current.taskID ?? started.taskID,
+        });
       },
       (err) => {
         const w = workflows.get(workflowId);
         if (!w || !w.current || w.current.runID !== runID) return;
+        // Phase 4 (#156 spec): AgentExecutionError.kind (agent_not_found /
+        // provider_error / internal_error) is the structured reason the spec
+        // asks for; fall back to message for non-AgentExecutionError throws.
+        const reason = err?.kind ?? err?.message ?? "run_error";
         finishCurrent(workflowId, {
           status: "failed",
-          reason: err?.message ?? "run_error",
+          reason,
+          taskID: w.current.taskID ?? started.taskID,
         });
       }
     );
@@ -292,9 +313,12 @@ export function createRunQueue({
             .then(() => cancelTask({ taskID: zombie.taskID }))
             .catch(() => {});
         }
+        // Phase 4: attach taskID so onTerminal can fetch the (possibly stale)
+        // TaskReport before writing the terminal row.
         finishCurrent(workflowId, {
           status: "failed",
           reason: "wall_clock_zombie",
+          taskID: zombie.taskID,
         });
       }
     }
