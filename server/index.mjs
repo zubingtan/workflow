@@ -14,6 +14,7 @@ import { createApp } from "./app.mjs";
 import { ensureSchema, markInflightRunsInterrupted } from "./db-schema.mjs";
 import { createRunQueue } from "./queue.mjs";
 import { createQueueAdapter } from "./queue-adapter.mjs";
+import { createRunsEventBus } from "./runs-events.mjs";
 
 // --- Config ---
 // PORT (cloud-native standard) replaces SERVER_PORT. The legacy name is
@@ -106,12 +107,18 @@ if (swept > 0) {
 // provides runTask (wraps TaskRunAPI + polls TaskReportAPI until terminal),
 // cancelTask (wraps TaskCancelAPI), and onTerminal (writes status + ended_at
 // to workflow_runs; Phase 4 will extend to full report capture).
-const queueAdapter = createQueueAdapter(db);
+// Phase 5: wire the SSE event bus. The queue fires run_status events via
+// onEvent on enqueue/dequeue/cancelQueued; the adapter's onTerminal broadcasts
+// run_terminal after the DB row is written. The app exposes the SSE endpoint
+// and REST history list/detail/delete.
+const eventBus = createRunsEventBus();
+const queueAdapter = createQueueAdapter(db, eventBus);
 const runQueue = createRunQueue({
   db,
   runTask: queueAdapter.runTask,
   cancelTask: queueAdapter.cancelTask,
   onTerminal: queueAdapter.onTerminal,
+  onEvent: (workflowId, event) => eventBus.broadcast(workflowId, event),
 });
 
 const app = createApp({
@@ -129,6 +136,7 @@ const app = createApp({
     return queueAdapter.cancelTask({ taskID });
   },
   getRunQueuePosition: (workflowId, runID) => runQueue.getQueuePosition(workflowId, runID),
+  eventBus,
 });
 
 // --- Start ---
@@ -178,7 +186,7 @@ if (IS_PROD) {
   // that appends AFTER rsbuild's own middlewares (including the SPA fallback).
   // Instead, wrap both in our own connect stack with Hono first.
   const honoListener = getRequestListener(app.fetch);
-  const API_PREFIXES = ["/health", "/agents", "/workflows", "/api/task", "/api/runs"];
+  const API_PREFIXES = ["/health", "/agents", "/workflows", "/api/task", "/api/runs", "/api/workflows"];
   const apiGate = (req, res, next) => {
     const path = (req.url ?? "").split("?")[0];
     if (API_PREFIXES.some((p) => path === p || path.startsWith(p + "/"))) {

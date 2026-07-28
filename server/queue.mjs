@@ -46,6 +46,16 @@ const DEFAULT_SWEEP_INTERVAL_MS = 60 * 1000;
  * @param {(runID: string, result: {status: string, reason?: string, taskID?: string}) => void} deps.onTerminal
  *   Called once per run when it reaches a terminal state. Phase 4 writes the
  *   row here.
+ * @param {(workflowId: string, event: object) => void} [deps.onEvent]
+ *   Phase 5: optional callback fired on every run state transition so the
+ *   caller (index.mjs) can broadcast SSE events. Events:
+ *     - {type:'run_status', runID, status:'queued', queued_at}
+ *     - {type:'run_status', runID, status:'running', started_at}
+ *     - {type:'run_status', runID, status:'terminated'} (cancelQueued)
+ *   The terminal event ({type:'run_terminal', ...}) is fired by the adapter's
+ *   onTerminal hook (after the DB row is written), NOT here — because the
+ *   terminal broadcast needs the full report + schema_snapshot which only the
+ *   adapter has access to.
  * @param {number} [deps.wallClockMs=30*60*1000] - zombie-run threshold.
  * @param {number} [deps.sweepIntervalMs=60*1000] - how often the wall-clock
  *   guard scans.
@@ -65,6 +75,7 @@ export function createRunQueue({
   runTask,
   cancelTask,
   onTerminal,
+  onEvent,
   wallClockMs = DEFAULT_WALL_CLOCK_MS,
   sweepIntervalMs = DEFAULT_SWEEP_INTERVAL_MS,
   now = Date.now,
@@ -86,6 +97,12 @@ export function createRunQueue({
   );
   const updateTaskID = db.prepare(
     "UPDATE workflow_runs SET task_id=? WHERE id=? AND task_id IS NULL"
+  );
+  // Phase 5: read the timestamps back for the SSE broadcast. The queue writes
+  // them with datetime('now') (SQLite server time) so reading them back keeps
+  // the broadcast consistent with what GET /api/runs/:runID returns.
+  const getRunTimestamps = db.prepare(
+    "SELECT queued_at, started_at FROM workflow_runs WHERE id=?"
   );
   // cancelQueued's UPDATE is scoped to status='queued' only — NOT the broader
   // "NOT IN (succeeded,failed,terminated)" guard. The broader guard would
@@ -152,6 +169,18 @@ export function createRunQueue({
     // the workflow as busy (otherwise two rapid enqueues could both dequeue).
     wf.current = { runID, taskID: null, startedAt: now(), payload };
     updateRunning.run(runID);
+    // Phase 5: fire run_status=running. Done after the DB write so a
+    // concurrent GET /api/runs/:runID sees the new status. started_at was
+    // just written by updateRunning; read it back for broadcast consistency.
+    if (typeof onEvent === "function") {
+      const ts = getRunTimestamps.get(runID);
+      onEvent(workflowId, {
+        type: "run_status",
+        runID,
+        status: "running",
+        started_at: ts?.started_at ?? null,
+      });
+    }
 
     let started;
     try {
@@ -211,6 +240,20 @@ export function createRunQueue({
   function enqueue(workflowId, runID, payload) {
     const wf = getWf(workflowId);
     wf.queue.push({ runID, payload });
+    // Phase 5: fire run_status=queued so the SSE bus broadcasts it. Done
+    // before dequeue() so subscribers see queued → running in order (the
+    // dequeue broadcast fires synchronously inside dequeue if no current).
+    // queued_at was written by POST /api/task/run; read it back so the
+    // broadcast matches what GET /api/runs/:runID returns.
+    if (typeof onEvent === "function") {
+      const ts = getRunTimestamps.get(runID);
+      onEvent(workflowId, {
+        type: "run_status",
+        runID,
+        status: "queued",
+        queued_at: ts?.queued_at ?? null,
+      });
+    }
     if (!wf.current) {
       dequeue(workflowId);
     }
@@ -241,6 +284,13 @@ export function createRunQueue({
           // but report false so the caller knows the DB wasn't terminated.
           if (!wf.current && wf.queue.length === 0) workflows.delete(workflowId);
           return false;
+        }
+        // Phase 5: fire run_status=terminated (cancelQueued path). The
+        // terminal broadcast (with full report) is NOT fired here because
+        // cancelQueued only writes status + ended_at — there's no TaskReport
+        // to attach (the run never started).
+        if (typeof onEvent === "function") {
+          onEvent(workflowId, { type: "run_status", runID, status: "terminated" });
         }
         // If the queue is now empty AND no current, drop the wf entry.
         if (!wf.current && wf.queue.length === 0) workflows.delete(workflowId);
