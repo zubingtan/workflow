@@ -26,15 +26,17 @@ import { GetGlobalVariableSchema } from './plugins/variable-panel-plugin';
 import { WorkflowManager, AgentManager } from './manage';
 import { initialData } from './initial-data';
 import { Editor } from './editor';
+import { AdminSettings } from './components/admin-settings';
 import * as api from './api';
 
 unstableSetCreateRoot(createRoot);
 
-type View = 'workflows' | 'agents' | 'editor';
+type View = 'workflows' | 'agents' | 'settings' | 'editor';
 
 const NAV_ITEMS: { key: View; label: string }[] = [
   { key: 'workflows', label: 'Workflows' },
   { key: 'agents', label: 'Agents' },
+  { key: 'settings', label: 'Settings' },
 ];
 
 function App() {
@@ -219,6 +221,8 @@ function App() {
           <WorkflowManager onOpen={(id) => requestNavigation(() => openWorkflow(id))} />
         ) : view === 'agents' ? (
           <AgentManager />
+        ) : view === 'settings' ? (
+          <AdminSettings />
         ) : (
           <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
             <div
