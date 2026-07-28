@@ -39,6 +39,27 @@ async function json<T>(res: Response): Promise<T> {
   return res.json();
 }
 
+/**
+ * Error carrying a structured `code` so the caller can branch on a specific
+ * backend refusal (e.g. `workflow_has_active_runs`). Used by `deleteWorkflow`
+ * so the manager can show a targeted toast instead of a generic message.
+ */
+export class ApiError extends Error {
+  code: string;
+
+  status: number;
+
+  detail?: unknown;
+
+  constructor(message: string, code: string, status: number, detail?: unknown) {
+    super(message);
+    this.name = 'ApiError';
+    this.code = code;
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
 // --- Workflows ---
 export const listWorkflows = () =>
   fetch(`${SERVER_URL}/workflows`).then((r) => json<WorkflowMeta[]>(r));
@@ -60,8 +81,19 @@ export const updateWorkflow = (id: string, patch: { name?: string; data?: any })
     body: JSON.stringify(patch),
   }).then((r) => json<WorkflowDetail>(r));
 
-export const deleteWorkflow = (id: string) =>
-  fetch(`${SERVER_URL}/workflows/${id}`, { method: 'DELETE' }).then((r) => json(r));
+export const deleteWorkflow = async (id: string) => {
+  const res = await fetch(`${SERVER_URL}/workflows/${id}`, { method: 'DELETE' });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw new ApiError(
+      body.error || `HTTP ${res.status}`,
+      body.error || `http_${res.status}`,
+      res.status,
+      body
+    );
+  }
+  return res.json();
+};
 
 export const copyWorkflow = (id: string) =>
   fetch(`${SERVER_URL}/workflows/${id}/copy`, { method: 'POST' }).then((r) =>

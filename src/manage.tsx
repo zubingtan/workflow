@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
   Button,
@@ -9,11 +9,15 @@ import {
   Typography,
   Space,
   Popconfirm,
+  Toast,
+  Tooltip,
 } from '@douyinfe/semi-ui';
 import { IconCopy, IconDelete, IconEdit, IconPlus, IconPlay } from '@douyinfe/semi-icons';
 
+import { useActiveRunCounts } from './use-active-run-counts';
 import { newWorkflowTemplate } from './new-workflow-template.mjs';
 import * as api from './api';
+import { ApiError } from './api';
 import { useAgentExecution } from './agent-execution/use-agent-execution';
 
 const PHASE_BADGE: Record<string, { text: string; color: string }> = {
@@ -246,9 +250,23 @@ export function WorkflowManager({ onOpen }: { onOpen: (id: string) => void }) {
 
   useEffect(() => reload(), [reload]);
 
+  // Phase 6 (#158): SSE-driven Delete-button gate. The hook opens one
+  // EventSource per visible workflow and tracks queued+running counts.
+  const workflowIds = useMemo(() => workflows.map((w) => w.id), [workflows]);
+  const activeCounts = useActiveRunCounts(workflowIds);
+
   const remove = async (id: string) => {
-    await api.deleteWorkflow(id);
-    reload();
+    try {
+      await api.deleteWorkflow(id);
+      reload();
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'workflow_has_active_runs') {
+        Toast.warning('请先取消运行中或排队中的实例再删除');
+        reload(); // re-sync in case counts drifted
+        return;
+      }
+      Toast.error(err instanceof Error ? err.message : 'Failed to delete workflow');
+    }
   };
 
   const copy = async (id: string) => {
@@ -296,21 +314,34 @@ export function WorkflowManager({ onOpen }: { onOpen: (id: string) => void }) {
           { title: 'Updated', dataIndex: 'updated_at' },
           {
             title: 'Actions',
-            render: (_, record: api.WorkflowMeta) => (
-              <Space>
-                <Button size="small" onClick={() => onOpen(record.id)}>
-                  Open
+            render: (_, record: api.WorkflowMeta) => {
+              const active = activeCounts[record.id] ?? 0;
+              const deleteDisabled = active > 0;
+              const deleteBtn = (
+                <Button size="small" type="danger" icon={<IconDelete />} disabled={deleteDisabled}>
+                  Delete
                 </Button>
-                <Button size="small" icon={<IconCopy />} onClick={() => copy(record.id)}>
-                  Copy
-                </Button>
-                <Popconfirm title="Delete this workflow?" onConfirm={() => remove(record.id)}>
-                  <Button size="small" type="danger" icon={<IconDelete />}>
-                    Delete
+              );
+              return (
+                <Space>
+                  <Button size="small" onClick={() => onOpen(record.id)}>
+                    Open
                   </Button>
-                </Popconfirm>
-              </Space>
-            ),
+                  <Button size="small" icon={<IconCopy />} onClick={() => copy(record.id)}>
+                    Copy
+                  </Button>
+                  {deleteDisabled ? (
+                    <Tooltip content="该 Workflow 有运行中或排队中的实例，请先取消">
+                      <span>{deleteBtn}</span>
+                    </Tooltip>
+                  ) : (
+                    <Popconfirm title="Delete this workflow?" onConfirm={() => remove(record.id)}>
+                      {deleteBtn}
+                    </Popconfirm>
+                  )}
+                </Space>
+              );
+            },
           },
         ]}
       />
