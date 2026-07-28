@@ -104,6 +104,15 @@ if (swept > 0) {
 // no longer needs process.env for credential resolution.
 // staticEnabled=false in dev because rsbuild serves the SPA bundle via its
 // own middleware (see dev-mode branch below). Prod enables serveStatic.
+// enqueueRun: Phase 2 placeholder — records the enqueue (the INSERT into
+// workflow_runs already happened in /api/task/run) but does NOT drive the
+// run yet. Saved-workflow runs stay 'queued' until Phase 3 wires the real
+// per-workflow serial queue here. The placeholder is a no-op so the contract
+// (hook is always called on enqueue) holds in prod, not just in tests.
+const enqueueRunPlaceholder = (_workflowId, _runID, _payload) => {
+  // Phase 3 replaces this with createRunQueue({db, runTask, ...}).enqueue(...)
+};
+
 const app = createApp({
   db,
   agentDir: AGENT_DIR,
@@ -111,6 +120,7 @@ const app = createApp({
   staticDir: STATIC_DIR,
   runAgentExecution,
   createAgentSessionForAgent,
+  enqueueRun: enqueueRunPlaceholder,
 });
 
 // --- Start ---

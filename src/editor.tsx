@@ -16,12 +16,14 @@ export const Editor = ({
   data,
   ctxRef,
   onDirty,
+  workflowId,
 }: {
   data: FlowDocumentJSON;
   ctxRef?: { current: any };
   onDirty?: () => void;
+  workflowId?: string;
 }) => {
-  const editorProps = useEditorProps(data, nodeRegistries, ctxRef, onDirty);
+  const editorProps = useEditorProps(data, nodeRegistries, ctxRef, onDirty, workflowId);
   return (
     <div className="doc-free-feature-overview">
       <FreeLayoutEditorProvider {...editorProps}>

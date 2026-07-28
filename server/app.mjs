@@ -80,6 +80,9 @@ function workflowHashFromSchema(schema) {
  * @param {object} [deps.createAgentSessionForAgent] - injected for tests
  * @param {(c: object, handler: (stream: object) => Promise<void>) => Promise<void>} [deps.streamSSE]
  *   Inject a fake streamSSE for tests to bypass Hono's streaming layer.
+ * @param {(workflowId: string, runID: string, payload: {schema: string, inputs: object}) => void} [deps.enqueueRun]
+ *   Phase 2 injects a placeholder; Phase 3 replaces it with the real
+ *   per-workflow serial queue. Called when a saved-workflow run is enqueued.
  * @returns {Hono}
  */
 export function createApp({
@@ -90,6 +93,7 @@ export function createApp({
   runAgentExecution,
   createAgentSessionForAgent,
   streamSSE,
+  enqueueRun,
 }) {
   const app = new Hono();
 
@@ -101,43 +105,24 @@ export function createApp({
     ...(streamSSE ? { streamSSE } : {}),
   });
 
-  // --- Per-workflow task mutex (#56 decision 4) ---
-  const runningTasks = new Map();
-  const workflowLocks = new Map();
-  const TASK_TTL_MS = 5 * 60 * 1000;
-  const TASK_SWEEP_DELAY_MS = 60 * 1000;
+  // --- Draft-run lock (minimal, draft-only) ---
+  // #144 decision: the schema-hash 409 `workflow_busy` mutex is REMOVED for
+  // saved workflows — the per-workflow serial queue (Phase 3) owns their
+  // serialization. Draft runs (no workflowId, low stakes, ephemeral) keep a
+  // minimal per-process schema-hash lock so two concurrent draft Test Runs of
+  // the SAME unsaved schema don't clobber each other. Different schemas race
+  // freely (intended — drafts are throwaway). No TTL sweep: drafts are
+  // short-lived and the lock is released on terminal report/cancel.
+  const draftLocks = new Map(); // wfHash → taskID
 
-  function releaseTaskLock(taskID) {
-    const entry = runningTasks.get(taskID);
-    if (!entry) return;
-    runningTasks.delete(taskID);
-    if (workflowLocks.get(entry.workflowHash) === taskID) {
-      workflowLocks.delete(entry.workflowHash);
+  // Release the draft lock for a given taskID. Called from /api/task/report
+  // (on terminal status) and /api/task/cancel (on success). Saved-workflow
+  // terminal capture is owned by Phase 4's onTerminal hook, NOT these routes.
+  function releaseDraftLockByTaskID(taskID) {
+    for (const [hash, tid] of draftLocks) {
+      if (tid === taskID) { draftLocks.delete(hash); return; }
     }
   }
-
-  function markTaskTerminated(taskID) {
-    const entry = runningTasks.get(taskID);
-    if (!entry || entry.terminatedAt) return;
-    entry.terminatedAt = Date.now();
-    if (workflowLocks.get(entry.workflowHash) === taskID) {
-      workflowLocks.delete(entry.workflowHash);
-    }
-  }
-
-  const sweepTimer = setInterval(() => {
-    const now = Date.now();
-    for (const [taskID, entry] of runningTasks) {
-      if (entry.terminatedAt) {
-        if (now - entry.terminatedAt > TASK_SWEEP_DELAY_MS) {
-          runningTasks.delete(taskID);
-        }
-      } else if (now - entry.startedAt > TASK_TTL_MS) {
-        markTaskTerminated(taskID);
-      }
-    }
-  }, 60_000);
-  sweepTimer.unref?.();
 
   // --- CORS (dev origin; harmless in prod where same-origin) ---
   app.use("*", async (c, next) => {
@@ -306,24 +291,61 @@ export function createApp({
     try { body = await c.req.json(); } catch { return c.json({ error: "invalid JSON" }, 400); }
     if (!body?.schema) return c.json({ error: "schema is required" }, 400);
     const schema = typeof body.schema === "string" ? body.schema : JSON.stringify(body.schema);
+    const inputs = body.inputs ?? {};
 
-    const wfHash = workflowHashFromSchema(schema);
-    const existingTaskID = workflowLocks.get(wfHash);
-    if (existingTaskID && runningTasks.has(existingTaskID)) {
-      return c.json({ code: "workflow_busy", message: "workflow already running", taskID: existingTaskID }, 409);
+    // --- Saved-workflow path: enqueue (Phase 3 drives the queue) ---
+    if (body.workflowId) {
+      // FK guard: refuse unknown workflowId (also catches FK violations at
+      // insert time — gives a clean 404 instead of a 500 from SQLite).
+      const wf = db.prepare("SELECT id FROM workflows WHERE id=?").get(body.workflowId);
+      if (!wf) return c.json({ error: "workflow not found", workflowId: body.workflowId }, 404);
+
+      const runID = nanoid(12);
+      db.prepare(
+        "INSERT INTO workflow_runs (id, workflow_id, status, queued_at) VALUES (?, ?, 'queued', datetime('now'))"
+      ).run(runID, body.workflowId);
+
+      // Hand off to the queue. Phase 2's placeholder just records the enqueue;
+      // Phase 3 replaces `enqueueRun` with the real serial-queue driver that
+      // dequeues + calls TaskRunAPI + captures terminal (Phase 4).
+      if (typeof enqueueRun === "function") {
+        enqueueRun(body.workflowId, runID, { schema, inputs });
+      }
+
+      // Return the runID (NOT the runtime taskID — that's filled when the
+      // queue dequeues). status='queued' signals the Test Run panel to show
+      // "排队中" (Phase 7 owns the UI).
+      return c.json({ runID, status: "queued" });
     }
+
+    // --- Draft path (no workflowId): immediate execution, minimal lock ---
+    // Drafts are ephemeral / unsaved, so they bypass the queue and
+    // workflow_runs entirely. A per-process schema-hash lock prevents two
+    // concurrent draft Test Runs of the SAME unsaved schema from clobbering
+    // each other (low stakes — drafts are throwaway). Different unsaved
+    // schemas race freely.
+    const wfHash = workflowHashFromSchema(schema);
+    const existingDraftTaskID = draftLocks.get(wfHash);
+    if (existingDraftTaskID) {
+      return c.json({ code: "workflow_busy", message: "draft already running", taskID: existingDraftTaskID }, 409);
+    }
+    // Acquire the lock SYNCHRONOUSLY before the await, using a placeholder
+    // taskID. Without this, two concurrent draft submits of the same schema
+    // would both pass the check above (TOCTOU) and run in parallel — the
+    // very race the lock exists to prevent. Patched to the real taskID once
+    // TaskRunAPI resolves.
     const placeholderID = `pending_${nanoid(10)}`;
-    runningTasks.set(placeholderID, { workflowHash: wfHash, taskID: placeholderID, startedAt: Date.now() });
-    workflowLocks.set(wfHash, placeholderID);
+    draftLocks.set(wfHash, placeholderID);
 
     try {
-      const result = await TaskRunAPI({ schema, inputs: body.inputs ?? {} });
-      runningTasks.delete(placeholderID);
-      runningTasks.set(result.taskID, { workflowHash: wfHash, taskID: result.taskID, startedAt: Date.now() });
-      workflowLocks.set(wfHash, result.taskID);
-      return c.json(result);
+      const result = await TaskRunAPI({ schema, inputs });
+      draftLocks.set(wfHash, result.taskID);
+      // Alias taskID as runID so the frontend's runID-based logic works for
+      // both paths (saved-workflow uses runID=nanoid(12); draft uses
+      // runID=taskID). status='running' since draft execution is synchronous.
+      return c.json({ ...result, runID: result.taskID, status: "running" });
     } catch (err) {
-      releaseTaskLock(placeholderID);
+      releaseDraftLockByTaskID(placeholderID);
       return c.json(taskErrorResponse(err, "task run failed"), 500);
     }
   });
@@ -333,8 +355,10 @@ export function createApp({
     if (!taskID) return c.json({ error: "taskID is required" }, 400);
     try {
       const report = await TaskReportAPI({ taskID });
+      // Draft-lock release on terminal. Saved-workflow terminal capture is
+      // owned by Phase 4 (queue's onTerminal hook) — NOT this route.
       if (report && (report.status === "success" || report.status === "failed" || report.status === "cancelled")) {
-        releaseTaskLock(taskID);
+        releaseDraftLockByTaskID(taskID);
       }
       return c.json(report);
     } catch (err) {
@@ -359,7 +383,11 @@ export function createApp({
     if (!body?.taskID) return c.json({ error: "taskID is required" }, 400);
     try {
       const result = await TaskCancelAPI({ taskID: body.taskID });
-      if (result?.success) releaseTaskLock(body.taskID);
+      // Draft-lock release on cancel. Saved-workflow cancel goes through the
+      // unified /api/runs/:runID/cancel endpoint (Phase 3), NOT this route.
+      if (result?.success) {
+        releaseDraftLockByTaskID(body.taskID);
+      }
       return c.json(result);
     } catch (err) {
       return c.json(taskErrorResponse(err, "cancel failed"), 500);
