@@ -4,7 +4,7 @@ import { Modal, Toast, Empty, Spin } from '@douyinfe/semi-ui';
 
 import * as api from '../../api';
 import { RunsTable, type RunRow } from './runs-table';
-import { HistoryViewer } from '../history-viewer';
+import { ReadonlyViewer as HistoryViewer } from '../readonly-viewer';
 
 /**
  * Phase 7 (#159): central History Modal for a workflow.

@@ -22,6 +22,8 @@ export const Editor = ({
   workflowId,
   historyReport,
   historyRunID,
+  liveRunID,
+  liveWorkflowId,
 }: {
   data: FlowDocumentJSON;
   ctxRef?: { current: any };
@@ -31,6 +33,10 @@ export const Editor = ({
    * editor renders readonly with StaticHistoryRuntimeService. */
   historyReport?: IReport;
   historyRunID?: string;
+  /** #181: live-running run ID. When present (and no historyReport), the
+   * editor renders readonly with LiveHistoryRuntimeService subscribed to SSE. */
+  liveRunID?: string;
+  liveWorkflowId?: string;
 }) => {
   const editorProps = useEditorProps(
     data,
@@ -38,9 +44,13 @@ export const Editor = ({
     ctxRef,
     onDirty,
     workflowId,
-    historyReport ? { historyReport, historyRunID } : undefined
+    liveRunID
+      ? { liveRunID, liveWorkflowId }
+      : historyReport
+      ? { historyReport, historyRunID }
+      : undefined
   );
-  const isHistory = !!historyReport;
+  const isHistory = !!historyReport || !!liveRunID;
   return (
     <WorkflowIdContext.Provider value={workflowId ?? null}>
       <IsHistoryViewContext.Provider value={isHistory}>

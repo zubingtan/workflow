@@ -5,5 +5,7 @@
 
 export { createRuntimePlugin } from './create-runtime-plugin';
 export { createHistoryRuntimePlugin } from './create-history-runtime-plugin';
+export { createLiveHistoryRuntimePlugin } from './create-live-history-runtime-plugin';
 export { StaticHistoryRuntimeService } from './runtime-service/static-history';
+export { LiveHistoryRuntimeService } from './runtime-service/live-history';
 export { WorkflowRuntimeClient } from './client';
