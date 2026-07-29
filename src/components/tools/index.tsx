@@ -13,7 +13,6 @@ import { IconUndo, IconRedo, IconHistory } from '@douyinfe/semi-icons';
 import { TestRunButton } from '../testrun/testrun-button';
 import { AddNode } from '../add-node';
 import { IsHistoryViewContext } from '../../context';
-import { LayoutDirection } from '../../assets/icon-layout-direction';
 import { ZoomSelect } from './zoom-select';
 import { SwitchLine } from './switch-line';
 import { ToolContainer, ToolSection } from './styles';
@@ -36,10 +35,10 @@ export const DemoTools = () => {
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [minimapVisible, setMinimapVisible] = useState(true);
-  // #190: Layout direction for the toolbar Auto Layout button. 'LR' is the
-  // default to preserve existing behavior; the toggle flips between 'LR'
-  // (horizontal) and 'TB' (vertical). Per-session only — no persistence.
-  const [layoutDirection, setLayoutDirection] = useState<LayoutDirection>('LR');
+  // #190: layout direction now lives in LayoutDirectionContext (provided by
+  // the Editor), so AutoLayout and LayoutDirectionSwitch read from it instead
+  // of a local useState. This lets the useEditorProps ADD_NODE listener
+  // (registered in onInit) see the latest direction via a ref mirror.
   // Phase 7 (#159): History Modal entry from the editor toolbar.
   const workflowId = useWorkflowId();
   const [historyVisible, setHistoryVisible] = useState(false);
@@ -61,8 +60,8 @@ export const DemoTools = () => {
     <ToolContainer className="workflow-tools">
       <ToolSection>
         <Interactive />
-        <AutoLayout direction={layoutDirection} />
-        <LayoutDirectionSwitch direction={layoutDirection} setDirection={setLayoutDirection} />
+        <AutoLayout />
+        <LayoutDirectionSwitch />
         <SwitchLine />
         <ZoomSelect />
         <FitView />

@@ -3,14 +3,18 @@
  * SPDX-License-Identifier: MIT
  */
 
+import { type MutableRefObject } from 'react';
+
 import { IReport } from '@flowgram.ai/runtime-interface';
 import { DockedPanelLayer } from '@flowgram.ai/panel-manager-plugin';
 import { EditorRenderer, FreeLayoutEditorProvider } from '@flowgram.ai/free-layout-editor';
 
 import '@flowgram.ai/free-layout-editor/index.css';
 import './styles/index.css';
+import { LayoutDirection } from './utils/rotate-ports';
 import { FlowDocumentJSON } from './typings';
 import { nodeRegistries } from './nodes';
+import { LayoutDirectionProvider, useLayoutDirection } from './hooks/use-layout-direction';
 import { useEditorProps } from './hooks';
 import { IsHistoryViewContext } from './context';
 import { WorkflowIdContext } from './components/workflow-context';
@@ -25,6 +29,7 @@ export const Editor = ({
   liveRunID,
   liveWorkflowId,
   onLiveTerminal,
+  directionRef,
 }: {
   data: FlowDocumentJSON;
   ctxRef?: { current: any };
@@ -42,7 +47,72 @@ export const Editor = ({
    * The ReadonlyViewer uses this to refetch + remount in static mode without
    * opening a second SSE connection (HTTP/1.1 connection exhaustion fix). */
   onLiveTerminal?: () => void;
+  /** #190: ref owned by app.tsx that mirrors the current layout direction so
+   * `saveWorkflow` can persist it into the workflow JSON. Only the main
+   * editor participates in direction switching. */
+  directionRef?: MutableRefObject<LayoutDirection>;
 }) => {
+  const isHistory = !!historyReport || !!liveRunID;
+  // #190: the persisted workflow direction seeds LayoutDirectionContext.
+  // Absent on legacy workflows → default 'LR' (no behavior change).
+  // Only the main editor participates in direction switching; history/live
+  // view is readonly and uses the JSON direction only for seed positions
+  // (no port rotation, so we don't pass a directionRef to useEditorProps).
+  const initialDirection: LayoutDirection = isHistory || !data.direction ? 'LR' : data.direction;
+
+  return (
+    <WorkflowIdContext.Provider value={workflowId ?? null}>
+      <IsHistoryViewContext.Provider value={isHistory}>
+        <LayoutDirectionProvider initialDirection={initialDirection} externalRef={directionRef}>
+          <div className="doc-free-feature-overview">
+            <FreeLayoutEditorProviderWithDirection
+              data={data}
+              ctxRef={ctxRef}
+              onDirty={onDirty}
+              workflowId={workflowId}
+              historyReport={historyReport}
+              historyRunID={historyRunID}
+              liveRunID={liveRunID}
+              liveWorkflowId={liveWorkflowId}
+              onLiveTerminal={onLiveTerminal}
+              isHistory={isHistory}
+            />
+          </div>
+        </LayoutDirectionProvider>
+      </IsHistoryViewContext.Provider>
+    </WorkflowIdContext.Provider>
+  );
+};
+
+/**
+ * Inner component that runs inside LayoutDirectionProvider so it can read
+ * `directionRef` from context and pass it into `useEditorProps` (whose
+ * `onInit` registers the ADD_NODE listener + `onLoaded` port-rotation hook).
+ */
+const FreeLayoutEditorProviderWithDirection = ({
+  data,
+  ctxRef,
+  onDirty,
+  workflowId,
+  historyReport,
+  historyRunID,
+  liveRunID,
+  liveWorkflowId,
+  onLiveTerminal,
+  isHistory,
+}: {
+  data: FlowDocumentJSON;
+  ctxRef?: { current: any };
+  onDirty?: () => void;
+  workflowId?: string;
+  historyReport?: IReport;
+  historyRunID?: string;
+  liveRunID?: string;
+  liveWorkflowId?: string;
+  onLiveTerminal?: () => void;
+  isHistory: boolean;
+}) => {
+  const { directionRef } = useLayoutDirection();
   const editorProps = useEditorProps(
     data,
     nodeRegistries,
@@ -53,22 +123,17 @@ export const Editor = ({
       ? { liveRunID, liveWorkflowId, onLiveTerminal }
       : historyReport
       ? { historyReport, historyRunID }
-      : undefined
+      : undefined,
+    // #190: only the main editor participates in port rotation.
+    isHistory ? undefined : directionRef
   );
-  const isHistory = !!historyReport || !!liveRunID;
   return (
-    <WorkflowIdContext.Provider value={workflowId ?? null}>
-      <IsHistoryViewContext.Provider value={isHistory}>
-        <div className="doc-free-feature-overview">
-          <FreeLayoutEditorProvider {...editorProps}>
-            <div className="demo-container">
-              <DockedPanelLayer>
-                <EditorRenderer className="demo-editor" />
-              </DockedPanelLayer>
-            </div>
-          </FreeLayoutEditorProvider>
-        </div>
-      </IsHistoryViewContext.Provider>
-    </WorkflowIdContext.Provider>
+    <FreeLayoutEditorProvider {...editorProps}>
+      <div className="demo-container">
+        <DockedPanelLayer>
+          <EditorRenderer className="demo-editor" />
+        </DockedPanelLayer>
+      </div>
+    </FreeLayoutEditorProvider>
   );
 };

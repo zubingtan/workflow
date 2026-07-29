@@ -13,6 +13,7 @@ import {
 } from '@flowgram.ai/free-layout-editor';
 import { IFlowValue } from '@flowgram.ai/form-materials';
 
+import { type LayoutDirection } from '../utils/rotate-ports';
 import { type JsonSchema } from './json-schema';
 import { WorkflowNodeType } from '../nodes';
 
@@ -72,9 +73,16 @@ export interface FlowDocumentJSON {
   nodes: FlowNodeJSON[];
   edges: WorkflowEdgeJSON[];
   /**
+   * #190: canvas layout direction persisted with the workflow so reopening a
+   * vertical workflow keeps both node positions and port anchors vertical.
+   * Absent on legacy workflows → treated as `'LR'` (default, no behavior
+   * change). Written to the top-level JSON alongside `globalVariable`.
+   */
+  direction?: LayoutDirection;
+  /**
    * Global Variable Schema Definition
    *
-   * Warning: In real occasion, it's better to store the schema and value of these global variables in a reliable place, since the value of a variable might be leaked in saved schema.
+   * Warning: In real occasion, it's better to store the schema and value of these global variables in a reliable place, since the value of a global variable might be leaked in saved schema.
    */
   globalVariable?: JsonSchema;
 }
