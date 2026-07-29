@@ -100,12 +100,12 @@ test.describe('Agent management', () => {
     // --- Delete: remove both copies ---
     // Delete the copy first (the second row), then the original. Semi uses a
     // Popconfirm for delete — click Delete to open the confirm, then confirm.
-    // Semi Popconfirm's confirm button text is "确定" (Chinese for "OK") and
-    // cancel is "取消" — these are Semi's default locale strings.
+    // Semi Popconfirm's confirm button text is "OK" (en_US locale is set app-wide
+    // via LocaleProvider in src/app.tsx).
     const rows = page.locator('tr', { hasText: editedName });
     // Delete the second row (the copy).
     await rows.nth(1).getByRole('button', { name: 'Delete' }).click();
-    await page.getByRole('button', { name: '确定' }).click();
+    await page.getByRole('button', { name: 'OK' }).click();
     await expect(page.locator('tr', { hasText: editedName })).toHaveCount(1, {
       timeout: 5_000,
     });
@@ -115,7 +115,7 @@ test.describe('Agent management', () => {
       .first()
       .getByRole('button', { name: 'Delete' })
       .click();
-    await page.getByRole('button', { name: '确定' }).click();
+    await page.getByRole('button', { name: 'OK' }).click();
     await expect(page.getByText(editedName, { exact: true })).toHaveCount(0, {
       timeout: 5_000,
     });

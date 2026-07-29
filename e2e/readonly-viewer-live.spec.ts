@@ -16,7 +16,7 @@ import {
  *
  * Acceptance scenario from map #178:
  *   - Create a workflow where node A runs for ~20s (fake-provider timeout mode).
- *   - While the run is in-flight, open History → click 查看详情 on the running
+ *   - While the run is in-flight, open History → click View Detail on the running
  *     instance.
  *   - ReadonlyViewer opens in live mode, mounts the Editor with
  *     LiveHistoryRuntimeService, and the LLM node's NodeStatusBar renders
@@ -26,7 +26,7 @@ import {
  *   - sleepMs = 20000: long enough to reliably open the viewer + assert
  *     Processing before the run terminates, even in the full suite with
  *     serial workers. Cancellation at the end speeds up teardown.
- *   - Assertion: wait for "运行详情" header (proves ReadonlyViewer mounted)
+ *   - Assertion: wait for "Run Detail" header (proves ReadonlyViewer mounted)
  *     then wait for "Running" text (proves SSE run_progress delivered a
  *     Processing NodeReport that LiveHistoryRuntimeService fired into the
  *     NodeStatusBar).
@@ -77,14 +77,14 @@ test.describe('ReadonlyViewer live mode', () => {
     await page.goto('/');
     await page.getByText('Workflows', { exact: true }).first().click();
     const wfRow = page.locator('tr', { hasText: uniqueName }).first();
-    await wfRow.getByRole('button', { name: '历史' }).click();
-    await expect(page.getByText('运行历史').first()).toBeVisible({ timeout: 5_000 });
+    await wfRow.getByRole('button', { name: 'History' }).click();
+    await expect(page.getByText('Run History').first()).toBeVisible({ timeout: 5_000 });
 
-    // --- Click 查看详情 on the (running) row ---
-    await page.getByRole('button', { name: '查看详情' }).first().click();
+    // --- Click View Detail on the (running) row ---
+    await page.getByRole('button', { name: 'View Detail' }).first().click();
 
     // --- Assert ReadonlyViewer mounted (header shows runID) ---
-    await expect(page.getByText(/运行详情/).first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/Run Detail/).first()).toBeVisible({ timeout: 10_000 });
 
     // --- Assert the Editor canvas mounted in live mode ---
     // The readonly editor mounts the FlowGram canvas. The LLM node's

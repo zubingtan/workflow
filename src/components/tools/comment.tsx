@@ -41,15 +41,15 @@ export const Comment = () => {
     async (mouseEvent: React.MouseEvent<HTMLButtonElement>) => {
       setTooltipVisible(false);
       const canvasPosition = calcNodePosition(mouseEvent);
-      // create comment node - 创建节点
+      // create comment node
       const node = document.createWorkflowNodeByType(WorkflowNodeType.Comment, canvasPosition);
-      // wait comment node render - 等待节点渲染
+      // wait comment node render
       await delay(16);
-      // select comment node - 选中节点
+      // select comment node
       selectService.selectNode(node);
-      // maybe touch event - 可能是触摸事件
+      // maybe touch event
       if (mouseEvent.detail !== 0) {
-        // start drag -开始拖拽
+        // start drag
         dragService.startDragSelectedNodes(mouseEvent);
       }
     },

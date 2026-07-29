@@ -74,7 +74,7 @@ export const TestRunSidePanel: FC<TestRunSidePanelProps> = () => {
     <div className={styles['testrun-panel-running']}>
       <IconSpin spin size="large" />
       <div className={styles.text}>
-        {queuePosition > 0 ? `排队中，第 ${queuePosition} 位` : 'Running...'}
+        {queuePosition > 0 ? `Queued, position ${queuePosition}` : 'Running...'}
       </div>
     </div>
   );

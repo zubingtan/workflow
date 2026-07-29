@@ -31,25 +31,25 @@ export function AdminSettings() {
 
   const save = async () => {
     if (value == null) {
-      Toast.warning('请输入超时值（毫秒）');
+      Toast.warning('Please enter a timeout value (ms)');
       return;
     }
     if (!Number.isInteger(value) || value <= 0) {
-      Toast.error('必须为正整数');
+      Toast.error('Must be a positive integer');
       return;
     }
     const MAX = 24 * 60 * 60 * 1000;
     if (value > MAX) {
-      Toast.error(`不能超过 24 小时（${MAX} 毫秒）`);
+      Toast.error(`Cannot exceed 24 hours (${MAX} ms)`);
       return;
     }
     setSaving(true);
     try {
       await api.updateSettings({ node_timeout_default_ms: value });
-      Toast.success('已保存');
+      Toast.success('Saved');
       reload();
     } catch (err: any) {
-      Toast.error(err?.message || '保存失败');
+      Toast.error(err?.message || 'Save failed');
     } finally {
       setSaving(false);
     }
@@ -66,14 +66,15 @@ export function AdminSettings() {
   return (
     <div style={{ padding: 24, maxWidth: 560 }}>
       <Typography.Title heading={4} style={{ marginBottom: 16 }}>
-        全局设置
+        Global Settings
       </Typography.Title>
       <Typography.Paragraph type="tertiary" style={{ marginBottom: 24 }}>
-        节点超时默认值用于没有单独设置超时的节点。每个节点可在节点表单中单独覆盖此值。
+        The node timeout default applies to nodes that do not set their own timeout. Each node can
+        override this value in its node form.
       </Typography.Paragraph>
       <div style={{ marginBottom: 12 }}>
         <Typography.Text size="small" strong>
-          节点超时默认值（毫秒）
+          Node Timeout Default (ms)
         </Typography.Text>
         <InputNumber
           value={value ?? undefined}
@@ -84,12 +85,12 @@ export function AdminSettings() {
           style={{ width: '100%', marginTop: 4 }}
         />
         <Typography.Text type="tertiary" size="small">
-          1 分钟 = 60000 毫秒；10 分钟 = 600000 毫秒；0 或留空表示使用内置默认（10 分钟）
+          1 min = 60000 ms; 10 min = 600000 ms; 0 or empty uses the built-in default (10 min)
         </Typography.Text>
       </div>
       <div style={{ marginTop: 16 }}>
         <Button theme="solid" loading={saving} onClick={save}>
-          保存
+          Save
         </Button>
       </div>
     </div>

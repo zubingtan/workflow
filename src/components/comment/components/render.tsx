@@ -51,30 +51,29 @@ export const CommentRender: FC<{
       onMouseEnter={updateOverflow}
       onMouseDown={(e) => {
         setTimeout(() => {
-          // 防止 selectNode 拦截事件，导致 slate 编辑器无法聚焦
+          // Prevent selectNode from intercepting the event, which would stop the slate editor from focusing
           selectNode(e);
-          // eslint-disable-next-line @typescript-eslint/no-magic-numbers -- delay
         }, 20);
       }}
     >
       <Form control={formControl}>
         <>
-          {/* 背景 */}
+          {/* Background */}
           <CommentContainer focused={focused} style={{ height }}>
             <Field name={CommentEditorFormField.Note}>
               {({ field }: FieldRenderProps<string>) => (
                 <>
-                  {/** 编辑器 */}
+                  {/** Editor */}
                   <CommentEditor model={model} value={field.value} onChange={field.onChange} />
-                  {/* 内容拖拽区域（点击后隐藏） */}
+                  {/* Content drag area (hidden after click) */}
                   <ContentDragArea model={model} focused={focused} overflow={overflow} />
-                  {/* 更多按钮 */}
+                  {/* More button */}
                   <MoreButton node={node} focused={focused} deleteNode={deleteNode} />
                 </>
               )}
             </Field>
           </CommentContainer>
-          {/* 边框 */}
+          {/* Border */}
           <BorderArea model={model} overflow={overflow} onResize={onResize} />
         </>
       </Form>

@@ -33,7 +33,7 @@ export class DeleteShortcut implements ShortcutsHandler {
   private historyService: HistoryService;
 
   /**
-   * initialize delete shortcut - 初始化删除快捷键
+   * initialize delete shortcut
    */
   constructor(context: FreeLayoutPluginContext) {
     this.playgroundConfig = context.playground.config;
@@ -44,7 +44,7 @@ export class DeleteShortcut implements ShortcutsHandler {
   }
 
   /**
-   * execute delete operation - 执行删除操作
+   * execute delete operation
    */
   public async execute(nodes?: WorkflowNodeEntity[]): Promise<void> {
     if (this.readonly) {
@@ -60,7 +60,7 @@ export class DeleteShortcut implements ShortcutsHandler {
     }
     // Merge actions to redo/undo
     this.historyService.startTransaction();
-    // delete selected entities - 删除选中实体
+    // delete selected entities
     selection.forEach((entity) => {
       if (entity instanceof WorkflowNodeEntity) {
         this.removeNode(entity);
@@ -70,20 +70,20 @@ export class DeleteShortcut implements ShortcutsHandler {
         entity.dispose();
       }
     });
-    // filter out disposed entities - 过滤掉已删除的实体
+    // filter out disposed entities
     this.selectService.selection = this.selectService.selection.filter((s) => !s.disposed);
     this.historyService.endTransaction();
   }
 
   /**
-   * readonly - 是否只读
+   * readonly
    */
   private get readonly(): boolean {
     return this.playgroundConfig.readonly;
   }
 
   /**
-   * validate if nodes can be deleted - 验证节点是否可以删除
+   * validate if nodes can be deleted
    */
   private isValid(nodes: WorkflowNodeEntity[]): boolean {
     const hasSystemNodes = nodes.some((n) =>
@@ -100,7 +100,7 @@ export class DeleteShortcut implements ShortcutsHandler {
   }
 
   /**
-   * remove node from workflow - 从工作流中删除节点
+   * remove node from workflow
    */
   private removeNode(node: WorkflowNodeEntity): void {
     if (!this.document.canRemove(node)) {
@@ -116,7 +116,7 @@ export class DeleteShortcut implements ShortcutsHandler {
   }
 
   /**
-   * remove line from workflow - 从工作流中删除连线
+   * remove line from workflow
    */
   private removeLine(line: WorkflowLineEntity): void {
     if (!this.document.linesManager.canRemove(line)) {

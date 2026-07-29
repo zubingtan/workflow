@@ -24,7 +24,7 @@ export const CommentEditor: FC<ICommentEditor> = (props) => {
   const placeholder = usePlaceholder({ model });
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
 
-  // 同步编辑器内部值变化
+  // Sync internal editor value changes
   useEffect(() => {
     const disposer = model.on((params) => {
       if (params.type !== CommentEditorEvent.Change) {

@@ -17,7 +17,7 @@ import { ReadonlyViewer as HistoryViewer } from '../readonly-viewer';
  *     `workflow_deleted` closes the Modal.
  * On `onClose` / unmount: close the EventSource.
  *
- * The detail viewer (HistoryViewer) is Phase 8 — for now the 查看详情 action
+ * The detail viewer (HistoryViewer) is Phase 8 — for now the View Detail action
  * is hidden behind a TODO that Phase 8 will wire. Non-terminal rows show a
  * placeholder until terminal.
  */
@@ -164,7 +164,7 @@ export function HistoryModal({
 
   return (
     <Modal
-      title="运行历史"
+      title="Run History"
       visible={visible}
       onCancel={onClose}
       footer={null}
@@ -177,7 +177,7 @@ export function HistoryModal({
           <Spin size="large" />
         </div>
       ) : rows.length === 0 ? (
-        <Empty description="暂无运行记录" style={{ padding: 48 }} />
+        <Empty description="No runs yet" style={{ padding: 48 }} />
       ) : (
         <RunsTable
           rows={rows}
@@ -188,7 +188,7 @@ export function HistoryModal({
       )}
       {/* Phase 8 (#160): full-screen readonly viewer overlay. Rendered above
           the Modal (z-index 1100 > Modal's 1000). The Modal stays mounted
-          underneath so its scroll position is preserved on 返回. */}
+          underneath so its scroll position is preserved on Back. */}
       {selectedRunID && (
         <HistoryViewer runID={selectedRunID} onClose={() => setSelectedRunID(null)} />
       )}

@@ -18,7 +18,6 @@ import { WorkflowNodeType } from '../nodes';
 
 /**
  * You can customize the data of the node, and here you can use JsonSchema to define the input and output of the node
- * 你可以自定义节点的 data 业务数据, 这里演示 通过 JsonSchema 来定义节点的输入/输出
  */
 export interface FlowNodeJSON extends FlowNodeJSONDefault {
   data: {
@@ -47,7 +46,6 @@ export interface FlowNodeJSON extends FlowNodeJSONDefault {
 
 /**
  * You can customize your own node meta
- * 你可以自定义节点的meta
  */
 export interface FlowNodeMeta extends WorkflowNodeMeta {
   sidebarDisabled?: boolean;
@@ -58,7 +56,6 @@ export interface FlowNodeMeta extends WorkflowNodeMeta {
 
 /**
  * You can customize your own node registry
- * 你可以自定义节点的注册器
  */
 export interface FlowNodeRegistry extends FlowNodeRegistryDefault {
   meta: FlowNodeMeta;
@@ -76,10 +73,8 @@ export interface FlowDocumentJSON {
   edges: WorkflowEdgeJSON[];
   /**
    * Global Variable Schema Definition
-   * 全局变量的 Schema 定义
    *
    * Warning: In real occasion, it's better to store the schema and value of these global variables in a reliable place, since the value of a variable might be leaked in saved schema.
-   * 注意：在真实场景下，全局变量的 Schema 定义和值都应该存储在更可靠的地方，因为全局变量的值可能会泄露在保存的 Schema 中。
    */
   globalVariable?: JsonSchema;
 }

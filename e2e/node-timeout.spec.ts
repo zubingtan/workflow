@@ -49,7 +49,7 @@ test.describe('Node timeout', () => {
   test('admin settings UI edits the global node_timeout_default_ms', async ({ page }) => {
     await page.goto('/');
     await page.getByText('Settings', { exact: true }).click();
-    await expect(page.getByText('全局设置').first()).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText('Global Settings').first()).toBeVisible({ timeout: 5_000 });
 
     const beforeRes = await fetch('http://localhost:4099/api/settings');
     const before = await beforeRes.json();
@@ -58,7 +58,7 @@ test.describe('Node timeout', () => {
     const newValue = 123_000;
     const input = page.getByRole('spinbutton').first();
     await input.fill(String(newValue));
-    await page.getByRole('button', { name: '保存' }).click();
+    await page.getByRole('button', { name: 'Save' }).click();
 
     await expect
       .poll(async () => {
@@ -93,8 +93,8 @@ test.describe('Node timeout', () => {
     await expect(page.getByText('Dropdown test').first()).toBeVisible({ timeout: 10_000 });
     await page.getByText('Dropdown test').first().click();
 
-    // The form should show the "节点超时" label and the Select dropdown.
-    await expect(page.getByText('节点超时').first()).toBeVisible({ timeout: 5_000 });
-    await expect(page.getByText('用全局默认').first()).toBeVisible();
+    // The form should show the "Node Timeout" label and the Select dropdown.
+    await expect(page.getByText('Node Timeout').first()).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText('Use global default').first()).toBeVisible();
   });
 });

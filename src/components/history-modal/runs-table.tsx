@@ -5,8 +5,8 @@ import type { RunMeta, RunStatus } from '../../api';
 /**
  * Phase 7 (#159): the runs table inside the History Modal.
  *
- * Columns: 提交时间 / 状态 (5 badges) / 排队时长 / 运行耗时 / 操作.
- * Row actions: 查看详情 (all) / 取消运行 (queued|running) / 删除 (terminal).
+ * Columns: Submitted / Status (5 badges) / Queue Time / Run Time / Actions.
+ * Row actions: View Detail (all) / Cancel Run (queued|running) / Delete (terminal).
  */
 
 // The table row shape is exactly the REST list payload (RunMeta).
@@ -35,11 +35,11 @@ type TagColor =
   | 'white';
 
 const STATUS_BADGE: Record<RunStatus, { text: string; color: TagColor; pulse?: boolean }> = {
-  queued: { text: '排队中', color: 'grey' },
-  running: { text: '运行中', color: 'blue', pulse: true },
-  succeeded: { text: '成功', color: 'green' },
-  failed: { text: '失败', color: 'red' },
-  terminated: { text: '已取消', color: 'orange' },
+  queued: { text: 'Queued', color: 'grey' },
+  running: { text: 'Running', color: 'blue', pulse: true },
+  succeeded: { text: 'Succeeded', color: 'green' },
+  failed: { text: 'Failed', color: 'red' },
+  terminated: { text: 'Cancelled', color: 'orange' },
 };
 
 function formatTime(ts: string | null): string {
@@ -81,12 +81,12 @@ export function RunsTable({
       pagination={false}
       columns={[
         {
-          title: '提交时间',
+          title: 'Submitted',
           dataIndex: 'queued_at',
           render: (v: string | null) => formatTime(v),
         },
         {
-          title: '状态',
+          title: 'Status',
           dataIndex: 'status',
           render: (status: RunStatus) => {
             const badge = STATUS_BADGE[status] ?? { text: status, color: 'grey' };
@@ -104,17 +104,17 @@ export function RunsTable({
           },
         },
         {
-          title: '排队时长',
+          title: 'Queue Time',
           key: 'queue_duration',
           render: (_, row: RunRow) => formatDuration(row.queued_at, row.started_at),
         },
         {
-          title: '运行耗时',
+          title: 'Run Time',
           key: 'run_duration',
           render: (_, row: RunRow) => formatDuration(row.started_at, row.ended_at),
         },
         {
-          title: '操作',
+          title: 'Actions',
           key: 'actions',
           render: (_, row: RunRow) => {
             const isActive = row.status === 'queued' || row.status === 'running';
@@ -123,26 +123,26 @@ export function RunsTable({
             return (
               <Space>
                 <Button size="small" onClick={() => onViewDetail(row.id)}>
-                  查看详情
+                  View Detail
                 </Button>
                 {isActive && (
-                  <Popconfirm title="确认取消该运行？" onConfirm={() => onCancelRun(row.id)}>
+                  <Popconfirm title="Cancel this run?" onConfirm={() => onCancelRun(row.id)}>
                     <Button size="small" type="danger" theme="light">
-                      取消运行
+                      Cancel Run
                     </Button>
                   </Popconfirm>
                 )}
                 {isTerminal ? (
-                  <Popconfirm title="删除该运行记录？" onConfirm={() => onDeleteRun(row.id)}>
+                  <Popconfirm title="Delete this run record?" onConfirm={() => onDeleteRun(row.id)}>
                     <Button size="small" type="danger">
-                      删除
+                      Delete
                     </Button>
                   </Popconfirm>
                 ) : (
-                  <Tooltip content="运行结束后可删除">
+                  <Tooltip content="Available after the run finishes">
                     <span>
                       <Button size="small" disabled>
-                        删除
+                        Delete
                       </Button>
                     </span>
                   </Tooltip>

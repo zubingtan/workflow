@@ -15,7 +15,7 @@ export const useVisible = (params: {
   const playground = usePlayground();
   const { line, selected = false, hovered } = params;
   if (line.disposed) {
-    // 在 dispose 后，再去获取 line.to | line.from 会导致错误创建端口
+    // After dispose, reading line.to | line.from would cause ports to be created incorrectly
     return false;
   }
   if (playground.config.readonly) {

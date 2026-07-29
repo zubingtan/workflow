@@ -40,7 +40,6 @@ export const GroupNodeRegistry: FlowNodeRegistry = {
     expandable: false,
     /**
      * It cannot be added through the panel
-     * 不能通过面板添加
      */
     nodePanelVisible: false,
   },

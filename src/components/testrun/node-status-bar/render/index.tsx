@@ -31,7 +31,7 @@ export const NodeStatusRender: FC<NodeStatusRenderProps> = ({ report }) => {
   const snapshots = report.snapshots || [];
   const currentSnapshot = snapshots[currentSnapshotIndex] || snapshots[0];
 
-  // 节点 5 个状态
+  // Node has 5 states
   const isNodePending = nodeStatus === WorkflowStatus.Pending;
   const isNodeProcessing = nodeStatus === WorkflowStatus.Processing;
   const isNodeFailed = nodeStatus === WorkflowStatus.Failed;
@@ -115,7 +115,7 @@ export const NodeStatusRender: FC<NodeStatusRenderProps> = ({ report }) => {
       );
     }
 
-    // 超过5个时，前5个显示为按钮，剩余的放在下拉选择中
+    // When more than 5, the first 5 render as buttons; the rest go in a dropdown
     return (
       <>
         {count}

@@ -39,7 +39,7 @@ export const useControlTips = () => {
   }, [close, globalStore]);
 
   useEffect(() => {
-    // 监听移入
+    // Listen for move-in events
     const inDisposer = nodeIntoContainerService.on((e) => {
       if (e.type !== NodeIntoContainerType.In) {
         return;
@@ -48,7 +48,7 @@ export const useControlTips = () => {
         show();
       }
     });
-    // 监听移出事件
+    // Listen for move-out events
     const outDisposer = nodeIntoContainerService.on((e) => {
       if (e.type !== NodeIntoContainerType.Out) {
         return;

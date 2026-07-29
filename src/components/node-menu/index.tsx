@@ -39,7 +39,7 @@ export const NodeMenu: FC<NodeMenuProps> = ({ node, deleteNode, updateTitleEdit 
   const tools = usePlaygroundTools();
 
   const rerenderMenu = useCallback(() => {
-    // force destroy component - 强制销毁组件触发重新渲染
+    // force destroy component to trigger a re-render
     setVisible(false);
     requestAnimationFrame(() => {
       setVisible(true);
@@ -50,18 +50,18 @@ export const NodeMenu: FC<NodeMenuProps> = ({ node, deleteNode, updateTitleEdit 
     async (e: MouseEvent) => {
       e.stopPropagation();
       const sourceParent = node.parent;
-      // move out of container - 移出容器
+      // move out of container
       nodeIntoContainerService.moveOutContainer({ node });
       await delay(16);
-      // clear invalid lines - 清除非法线条
+      // clear invalid lines
       await nodeIntoContainerService.clearInvalidLines({
         dragNode: node,
         sourceParent,
       });
       rerenderMenu();
-      // select node - 选中节点
+      // select node
       selectService.selectNode(node);
-      // start drag node - 开始拖拽
+      // start drag node
       dragService.startDragSelectedNodes(e);
     },
     [nodeIntoContainerService, node, rerenderMenu]

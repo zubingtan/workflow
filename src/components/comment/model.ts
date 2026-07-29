@@ -15,15 +15,15 @@ export class CommentEditorModel {
 
   private editor: HTMLTextAreaElement;
 
-  /** 注册事件 */
+  /** Register event listener */
   public on = this.emitter.event;
 
-  /** 获取当前值 */
+  /** Get current value */
   public get value(): string {
     return this.innerValue;
   }
 
-  /** 外部设置模型值 */
+  /** Set model value from outside */
   public setValue(value: string = CommentEditorDefaultValue): void {
     if (!this.initialized) {
       return;
@@ -39,7 +39,7 @@ export class CommentEditorModel {
     });
   }
 
-  /** 外部设置模型值 */
+  /** Set initial model value from outside */
   public setInitValue(value: string = CommentEditorDefaultValue): void {
     if (!this.initialized) {
       return;
@@ -62,12 +62,12 @@ export class CommentEditorModel {
     this.editor = el;
   }
 
-  /** 获取编辑器 DOM 节点 */
+  /** Get the editor DOM node */
   public get element(): HTMLTextAreaElement {
     return this.editor;
   }
 
-  /** 编辑器聚焦/失焦 */
+  /** Focus/blur the editor */
   public setFocus(focused: boolean): void {
     if (!this.initialized) {
       return;
@@ -83,40 +83,41 @@ export class CommentEditorModel {
     }
   }
 
-  /** 选择末尾 */
+  /** Select the end of the text */
   public selectEnd(): void {
     if (!this.initialized) {
       return;
     }
-    // 获取文本长度
+    // Get the text length
     const length = this.editor.value.length;
-    // 将选择范围设置为文本末尾(开始位置和结束位置都是文本长度)
+    // Set the selection range to the end of the text (start and end are both the text length)
     this.editor.setSelectionRange(length, length);
   }
 
-  /** 获取聚焦状态 */
+  /** Get focus state */
   public get focused(): boolean {
     return document.activeElement === this.editor;
   }
 
-  /** 取消选择文本 */
+  /** Deselect text */
   private deselect(): void {
     const selection: Selection | null = window.getSelection();
 
-    // 清除所有选择区域
+    // Clear all selection ranges
     if (selection) {
       selection.removeAllRanges();
     }
   }
 
-  /** 是否初始化 */
+  /** Whether initialized */
   private get initialized(): boolean {
     return Boolean(this.editor);
   }
 
   /**
-   * 同步编辑器实例内容
-   * > **NOTICE:** *为确保不影响性能，应仅在外部值变更导致编辑器值与模型值不一致时调用*
+   * Sync the editor instance content
+   * > **NOTICE:** *To avoid performance impact, only call when an external value change leaves the
+   *   editor value out of sync with the model value.*
    */
   private syncEditorValue(): void {
     if (!this.initialized) {

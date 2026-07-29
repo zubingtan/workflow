@@ -23,7 +23,7 @@ export const GroupBackground: FC<GroupBackgroundProps> = ({ node, style, selecte
   useEffect(() => {
     const styleElement = document.createElement('style');
 
-    // 使用独特的选择器
+    // Use a unique selector
     const styleContent = `
       .workflow-group-render[data-group-id="${node.id}"] .workflow-group-background {
         border: 1px solid ${color['300']};
