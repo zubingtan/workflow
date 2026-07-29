@@ -48,7 +48,7 @@ export class PasteShortcut implements ShortcutsHandler {
   private playground: Playground;
 
   /**
-   * initialize paste shortcut handler - 初始化粘贴快捷键处理器
+   * initialize paste shortcut handler
    */
   constructor(context: FreeLayoutPluginContext) {
     this.playgroundConfig = context.playground.config;
@@ -62,7 +62,7 @@ export class PasteShortcut implements ShortcutsHandler {
   }
 
   /**
-   * execute paste action - 执行粘贴操作
+   * execute paste action
    */
   public async execute(): Promise<WorkflowNodeEntity[] | undefined> {
     if (this.readonly) {
@@ -81,17 +81,17 @@ export class PasteShortcut implements ShortcutsHandler {
         content: 'Copy successfully',
         showClose: false,
       });
-      // wait for nodes to render - 等待节点渲染
+      // wait for nodes to render
       await this.nextTick();
-      // scroll to visible area - 滚动到可视区域
+      // scroll to visible area
       this.scrollNodesToView(nodes);
     }
     return nodes;
   }
 
-  /** apply clipboard data - 应用剪切板数据 */
+  /** apply clipboard data */
   public apply(data: WorkflowClipboardData): WorkflowNodeEntity[] {
-    // extract raw json from clipboard data - 从剪贴板数据中提取原始JSON
+    // extract raw json from clipboard data
     const { json: rawJSON } = data;
     const json = generateUniqueWorkflow({
       json: rawJSON,
@@ -100,7 +100,7 @@ export class PasteShortcut implements ShortcutsHandler {
 
     const offset = this.calcPasteOffset(data.bounds);
     let parent = this.getSelectedContainer();
-    // loop 不支持嵌套
+    // Loop nodes do not support nesting
     if (parent && json.nodes.some((n) => !canContainNode(n.type, parent!.flowNodeType))) {
       parent = undefined;
     }
@@ -109,14 +109,13 @@ export class PasteShortcut implements ShortcutsHandler {
       parent,
     });
     this.selectNodes(nodes);
-    // 这里需要 focus 画布才能继续使用快捷键
-    // The focus canvas is needed here to continue using the shortcuts
+    // The canvas must be focused here so shortcuts keep working
     this.playground.node.focus();
     return nodes;
   }
 
   /**
-   * readonly - 是否只读
+   * readonly
    */
   private get readonly(): boolean {
     return this.playgroundConfig.readonly;
@@ -129,14 +128,14 @@ export class PasteShortcut implements ShortcutsHandler {
       });
       return false;
     }
-    // Cross-domain means different environments, different plugins, cannot be copied - 跨域名表示不同环境，上架插件不同，不能复制
+    // Cross-domain means different environments with different installed plugins, so paste is not allowed
     if (data.source.host !== window.location.host) {
       Toast.error({
         content: 'Cannot paste nodes from different host',
       });
       return false;
     }
-    // Check container - 检查容器
+    // Check container
     const parent = this.getSelectedContainer();
     for (const nodeJSON of data.json.nodes) {
       const res = this.dragService.canDropToNode({
@@ -154,22 +153,23 @@ export class PasteShortcut implements ShortcutsHandler {
     return true;
   }
 
-  /** try to read clipboard - 尝试读取剪贴板 */
+  /** try to read clipboard */
   private async tryReadClipboard(): Promise<WorkflowClipboardData | undefined> {
     try {
-      // need user permission to access clipboard, may throw NotAllowedError - 需要用户授予网页剪贴板读取权限, 如果用户没有授予权限, 代码可能会抛出异常 NotAllowedError
+      // Reading the clipboard requires user permission; if the user has not granted it,
+      // this may throw a NotAllowedError.
       const text: string = (await navigator.clipboard.readText()) || '';
       const clipboardData: WorkflowClipboardData = JSON.parse(text);
       return clipboardData;
     } catch (e) {
-      // clipboard data is not fixed, no need to show error - 这里本身剪贴板里的数据就不固定，所以没必要报错
+      // Clipboard contents are arbitrary, so there is no need to surface an error here.
       return;
     }
   }
 
-  /** calculate paste offset - 计算粘贴偏移 */
+  /** calculate paste offset */
   private calcPasteOffset(boundsData: WorkflowClipboardRect): IPoint {
-    // extract bounds data - 提取边界数据
+    // extract bounds data
     const { x, y, width, height } = boundsData;
     const rect = new Rectangle(x, y, width, height);
     const { center } = rect;
@@ -181,7 +181,7 @@ export class PasteShortcut implements ShortcutsHandler {
   }
 
   /**
-   * apply offset to node positions - 应用偏移到节点位置
+   * apply offset to node positions
    */
   private applyOffset(params: {
     json: WorkflowJSON;
@@ -193,7 +193,7 @@ export class PasteShortcut implements ShortcutsHandler {
       if (!nodeJSON.meta?.position) {
         return;
       }
-      // calculate new position - 计算新位置
+      // calculate new position
       let position = {
         x: nodeJSON.meta.position.x + offset.x,
         y: nodeJSON.meta.position.y + offset.y,
@@ -209,18 +209,18 @@ export class PasteShortcut implements ShortcutsHandler {
     });
   }
 
-  /** get selected container node - 获取鼠标选中的容器 */
+  /** get selected container node */
   private getSelectedContainer(): WorkflowNodeEntity | undefined {
     const { activatedNode } = this.selectService;
     return activatedNode?.getNodeMeta<WorkflowNodeMeta>().isContainer ? activatedNode : undefined;
   }
 
-  /** select nodes - 选中节点 */
+  /** select nodes */
   private selectNodes(nodes: WorkflowNodeEntity[]): void {
     this.selectService.selection = nodes;
   }
 
-  /** scroll to nodes - 滚动到节点 */
+  /** scroll to nodes */
   private async scrollNodesToView(nodes: WorkflowNodeEntity[]): Promise<void> {
     const nodeBounds = nodes.map((node) => node.getData(FlowNodeTransformData).bounds);
     await this.document.playgroundConfig.scrollToView({
@@ -228,9 +228,9 @@ export class PasteShortcut implements ShortcutsHandler {
     });
   }
 
-  /** wait for next frame - 等待下一帧 */
+  /** wait for next frame */
   private async nextTick(): Promise<void> {
-    // 16ms is one render frame - 16ms 为一个渲染帧
+    // 16ms is one render frame
     const frameTime = 16;
     await delay(frameTime);
     await new Promise((resolve) => requestAnimationFrame(resolve));

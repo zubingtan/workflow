@@ -24,7 +24,7 @@ export const useModel = () => {
 
   const model = useMemo(() => new CommentEditorModel(), []);
 
-  // 同步失焦状态
+  // Sync the blur state
   useEffect(() => {
     if (focused) {
       return;
@@ -32,14 +32,14 @@ export const useModel = () => {
     model.setFocus(focused);
   }, [focused, model]);
 
-  // 同步表单值初始化
+  // Sync form value initialization
   useEffect(() => {
     const value = formModel.getValueIn<string>(CommentEditorFormField.Note);
-    model.setInitValue(value); // 设置初始值
-    model.selectEnd(); // 设置初始化光标位置
+    model.setInitValue(value); // Set initial value
+    model.selectEnd(); // Set initial cursor position
   }, [formModel, model]);
 
-  // 同步表单外部值变化：undo/redo/协同
+  // Sync external form value changes: undo/redo/collaboration
   useEffect(() => {
     const disposer = formModel.onFormValuesChange(({ name }) => {
       if (name !== CommentEditorFormField.Note && name !== '') {

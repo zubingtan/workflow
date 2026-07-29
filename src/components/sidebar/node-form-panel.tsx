@@ -55,7 +55,6 @@ export const NodeFormPanel: React.FC<NodeFormPanelProps> = ({ nodeId }) => {
   useEffect(() => {
     const toDispose = selection.onSelectionChanged(() => {
       /**
-       * 如果没有选中任何节点，则自动关闭侧边栏
        * If no node is selected, the sidebar is automatically closed
        */
       if (selection.selection.length === 0) {

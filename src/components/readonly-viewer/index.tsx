@@ -27,7 +27,7 @@ import * as api from '../../api';
  * Chrome's HTTP/1.1 6-connection-per-origin limit and caused getRun fetches
  * to hang indefinitely (observed in E2E with 6+ workflows).
  *
- * A top bar with a 返回 button restores the History Modal (Phase 7 preserves
+ * A top bar with a Back button restores the History Modal (Phase 7 preserves
  * its scroll position because the Modal stays mounted underneath the overlay).
  *
  * The overlay is `position: fixed` at z-index above the Semi Modal (which is
@@ -121,12 +121,12 @@ export function ReadonlyViewer({ runID, onClose }: { runID: string; onClose: () 
         }}
       >
         <Button icon={<IconArrowLeft />} theme="borderless" onClick={onClose}>
-          返回
+          Back
         </Button>
-        <Typography.Text strong>运行详情 — {runID}</Typography.Text>
+        <Typography.Text strong>Run Detail — {runID}</Typography.Text>
         {detail && (
           <Typography.Text type="tertiary" size="small">
-            状态: {detail.status}
+            Status: {detail.status}
           </Typography.Text>
         )}
         {/* #181: Cancel button — only visible while the run is actively running. */}
@@ -140,7 +140,7 @@ export function ReadonlyViewer({ runID, onClose }: { runID: string; onClose: () 
               });
             }}
           >
-            取消运行
+            Cancel Run
           </Button>
         )}
       </div>
@@ -161,7 +161,7 @@ export function ReadonlyViewer({ runID, onClose }: { runID: string; onClose: () 
               workflowId={detail!.workflow_id}
             />
           ) : (
-            <Empty description="终态数据缺失" style={{ padding: 48 }} />
+            <Empty description="Terminal data missing" style={{ padding: 48 }} />
           )
         ) : liveSchema ? (
           <Editor
@@ -172,7 +172,7 @@ export function ReadonlyViewer({ runID, onClose }: { runID: string; onClose: () 
             onLiveTerminal={handleLiveTerminal}
           />
         ) : (
-          <Empty description="加载运行中..." style={{ padding: 48 }} />
+          <Empty description="Loading run..." style={{ padding: 48 }} />
         )}
       </div>
     </div>

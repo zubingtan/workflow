@@ -73,15 +73,15 @@ function AgentSelect({
 }
 
 const PHASE_BADGE: Record<string, { text: string; color: string }> = {
-  succeeded: { text: '成功', color: 'var(--semi-color-success)' },
-  cancelled: { text: '已取消', color: 'var(--semi-color-tertiary)' },
-  failed: { text: '失败', color: 'var(--semi-color-danger)' },
+  succeeded: { text: 'Succeeded', color: 'var(--semi-color-success)' },
+  cancelled: { text: 'Cancelled', color: 'var(--semi-color-tertiary)' },
+  failed: { text: 'Failed', color: 'var(--semi-color-danger)' },
 };
 
 /** Tool event row — collapsed detail by default (UX-B). */
 function ToolEventRow({ ev }: { ev: ToolEvent }) {
   const [expanded, setExpanded] = useState(false);
-  const label = ev.type === 'tool_start' ? '调用' : '返回';
+  const label = ev.type === 'tool_start' ? 'Call' : 'Return';
   return (
     <div style={{ marginTop: 4 }}>
       <Button
@@ -134,11 +134,11 @@ function AgentOutput({ agentId, prompt }: { agentId: string; prompt: string }) {
           disabled={!canRun || exec.isRunning}
           loading={exec.isRunning}
         >
-          {exec.isRunning ? '执行中...' : '运行 Agent'}
+          {exec.isRunning ? 'Running...' : 'Run Agent'}
         </Button>
         {exec.isRunning && (
           <Button size="small" theme="borderless" onClick={exec.cancel}>
-            取消
+            Cancel
           </Button>
         )}
         {PHASE_BADGE[exec.phase] && (
@@ -193,8 +193,8 @@ function LLMFormRender({ form }: FormRenderProps<FlowNodeJSON>) {
 
   // Phase 9 (#161): per-node timeout override. Stored as node.data.timeoutOverride
   //   - number > 0 → that many ms
-  //   - null       → "no timeout" (不超时)
-  //   - undefined  → use global default (用全局默认)
+  //   - null       → "no timeout"
+  //   - undefined  → use global default
   // The backend's resolveTimeoutMs reads this with precedence:
   //   node.data.timeoutOverride > settings.global_default > env > 10min
   const timeoutOverride: number | null | undefined = nodeData?.timeoutOverride;
@@ -209,7 +209,7 @@ function LLMFormRender({ form }: FormRenderProps<FlowNodeJSON>) {
       // Clear → use global default (remove the key so fallback kicks in).
       updateData({ timeoutOverride: undefined });
     } else if (v === 'none') {
-      // 不超时 → null signals "no timeout" to the backend.
+      // No timeout → null signals "no timeout" to the backend.
       updateData({ timeoutOverride: null });
     } else {
       const n = typeof v === 'number' ? v : Number(v);
@@ -251,7 +251,7 @@ function LLMFormRender({ form }: FormRenderProps<FlowNodeJSON>) {
         </Field>
         <div style={{ marginBottom: 12 }}>
           <Typography.Text size="small" strong>
-            节点超时
+            Node Timeout
           </Typography.Text>
           <Select
             value={timeoutSelectValue}
@@ -260,12 +260,12 @@ function LLMFormRender({ form }: FormRenderProps<FlowNodeJSON>) {
             style={{ width: '100%' }}
             size="small"
             optionList={[
-              { label: '用全局默认', value: 'default' },
-              { label: '1 分钟', value: '60000' },
-              { label: '5 分钟', value: '300000' },
-              { label: '10 分钟', value: '600000' },
-              { label: '30 分钟', value: '1800000' },
-              { label: '不超时', value: 'none' },
+              { label: 'Use global default', value: 'default' },
+              { label: '1 min', value: '60000' },
+              { label: '5 min', value: '300000' },
+              { label: '10 min', value: '600000' },
+              { label: '30 min', value: '1800000' },
+              { label: 'No timeout', value: 'none' },
             ]}
           />
         </div>

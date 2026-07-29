@@ -29,9 +29,9 @@ import { ApiError } from './api';
 import { useAgentExecution } from './agent-execution/use-agent-execution';
 
 const PHASE_BADGE: Record<string, { text: string; color: string }> = {
-  succeeded: { text: '成功', color: 'var(--semi-color-success)' },
-  cancelled: { text: '已取消', color: 'var(--semi-color-tertiary)' },
-  failed: { text: '失败', color: 'var(--semi-color-danger)' },
+  succeeded: { text: 'Succeeded', color: 'var(--semi-color-success)' },
+  cancelled: { text: 'Cancelled', color: 'var(--semi-color-tertiary)' },
+  failed: { text: 'Failed', color: 'var(--semi-color-danger)' },
 };
 
 // ---------- Agent list + CRUD ----------
@@ -174,11 +174,11 @@ function AgentFormModal({
               onClick={exec.run}
               disabled={!canTest || exec.isRunning}
             >
-              {exec.isRunning ? '测试中...' : '测试'}
+              {exec.isRunning ? 'Testing...' : 'Test'}
             </Button>
             {exec.isRunning && (
               <Button theme="borderless" onClick={exec.cancel}>
-                取消
+                Cancel
               </Button>
             )}
             {PHASE_BADGE[exec.phase] && (
@@ -278,7 +278,7 @@ export function WorkflowManager({ onOpen }: { onOpen: (id: string) => void }) {
       reload();
     } catch (err) {
       if (err instanceof ApiError && err.code === 'workflow_has_active_runs') {
-        Toast.warning('请先取消运行中或排队中的实例再删除');
+        Toast.warning('Cancel running or queued runs before deleting');
         reload(); // re-sync in case counts drifted
         return;
       }
@@ -353,10 +353,10 @@ export function WorkflowManager({ onOpen }: { onOpen: (id: string) => void }) {
                     icon={<IconHistory />}
                     onClick={() => setHistoryFor(record.id)}
                   >
-                    历史
+                    History
                   </Button>
                   {deleteDisabled ? (
-                    <Tooltip content="该 Workflow 有运行中或排队中的实例，请先取消">
+                    <Tooltip content="This workflow has running or queued runs — cancel them first">
                       <span>{deleteBtn}</span>
                     </Tooltip>
                   ) : (

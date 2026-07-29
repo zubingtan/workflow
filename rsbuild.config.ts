@@ -37,7 +37,7 @@ export default defineConfig({
     },
   },
   html: {
-    title: 'demo-free-layout',
+    title: 'Workflow',
     tags: [
       // FOUC prevention — inline synchronous script in <body> BEFORE the React
       // mount point (#root). Runs before the bundle loads so the first paint

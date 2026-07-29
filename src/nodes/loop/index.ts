@@ -26,12 +26,10 @@ export const LoopNodeRegistry: FlowNodeRegistry = {
   meta: {
     /**
      * Mark as subcanvas
-     * 子画布标记
      */
     isContainer: true,
     /**
      * The subcanvas default size setting
-     * 子画布默认大小设置
      */
     size: {
       width: 424,
@@ -40,7 +38,6 @@ export const LoopNodeRegistry: FlowNodeRegistry = {
     // autoResizeDisable: true,
     /**
      * The subcanvas padding setting
-     * 子画布 padding 设置
      */
     padding: (transform) => {
       if (!transform.isContainer) {
@@ -60,14 +57,13 @@ export const LoopNodeRegistry: FlowNodeRegistry = {
     },
     /**
      * Controls the node selection status within the subcanvas
-     * 控制子画布内的节点选中状态
      */
     selectable(node: WorkflowNodeEntity, mousePos?: PositionSchema): boolean {
       if (!mousePos) {
         return true;
       }
       const transform = node.getData<FlowNodeTransformData>(FlowNodeTransformData);
-      // 鼠标开始时所在位置不包括当前节点时才可选中
+      // Only selectable when the mouse start position is outside the current node's bounds
       return !transform.bounds.contains(mousePos.x, mousePos.y);
     },
     // expandable: false, // disable expanded

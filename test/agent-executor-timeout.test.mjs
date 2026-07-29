@@ -151,7 +151,7 @@ test('user cancel (workflow signal abort) BEFORE timeout → returns normally wi
 });
 
 test('node timeout=0 means no timeout (runAgentExecution may take forever — but here it succeeds)', async () => {
-  // timeoutOverride=0 is treated as "no timeout" per spec ("不超时" option).
+  // timeoutOverride=0 is treated as "no timeout" per spec ("No timeout" option).
   async function* fakeSucceed({ signal }) {
     yield { type: 'content_delta', content: 'hi' };
     yield { type: 'terminal', phase: 'succeeded', partialText: 'hi', toolEvents: [] };
@@ -181,7 +181,7 @@ test('resolveTimeoutMs precedence: node.data.timeoutOverride > settings > env > 
     { node: { data: {} }, settings: null, env: null, expected: 10 * 60 * 1000 },
     // timeoutOverride=0 means "no timeout" → resolveTimeoutMs returns 0.
     { node: { data: { timeoutOverride: 0 } }, settings: 30, env: null, expected: 0 },
-    // timeoutOverride=null also means "no timeout" (不超时 option) — spec §5.
+    // timeoutOverride=null also means "no timeout" (No timeout option) — spec §5.
     { node: { data: { timeoutOverride: null } }, settings: 30, env: null, expected: 0 },
     // timeoutOverride=undefined falls through to settings (use-global-default).
     { node: { data: { timeoutOverride: undefined } }, settings: 30, env: null, expected: 30 },

@@ -13,12 +13,12 @@ import {
  * Phase 10 (#162) E2E: history viewer (Phase 8 readonly editor).
  *
  * Acceptance items covered:
- *   - "查看详情" opens full-screen readonly editor with historical canvas (Phase 8)
+ *   - "View Detail" opens full-screen readonly editor with historical canvas (Phase 8)
  *   - Node detail reuses AgentOutput rendering; non-LLM JSON fallback (Phase 8)
  */
 
 test.describe('History viewer', () => {
-  test('submit run → wait terminal → 查看详情 → readonly editor renders historical canvas', async ({
+  test('submit run → wait terminal → View Detail → readonly editor renders historical canvas', async ({
     page,
   }) => {
     const agentId = await createAgent();
@@ -37,30 +37,30 @@ test.describe('History viewer', () => {
     await page.goto('/');
     await page.getByText('Workflows', { exact: true }).first().click();
     const wfRow = page.locator('tr', { hasText: 'E2E Viewer WF' }).first();
-    await wfRow.getByRole('button', { name: '历史' }).click();
-    await expect(page.getByText('运行历史').first()).toBeVisible({ timeout: 5_000 });
+    await wfRow.getByRole('button', { name: 'History' }).click();
+    await expect(page.getByText('Run History').first()).toBeVisible({ timeout: 5_000 });
 
-    // --- Click 查看详情 on the first row ---
-    await page.getByRole('button', { name: '查看详情' }).first().click();
+    // --- Click View Detail on the first row ---
+    await page.getByRole('button', { name: 'View Detail' }).first().click();
 
     // --- Assert the history viewer overlay renders ---
-    // The overlay shows "运行详情 — <runID>" and a 返回 button. This proves
+    // The overlay shows "Run Detail — <runID>" and a Back button. This proves
     // the HistoryViewer component mounted and fetched the run detail (the
     // title includes the runID from the API response).
-    await expect(page.getByText(/运行详情/).first()).toBeVisible({ timeout: 10_000 });
-    // The 返回 button has an IconArrowLeft img, so its accessible name is
-    // "arrow_left 返回". Match by text to be icon-name-agnostic.
-    await expect(page.getByRole('button', { name: /返回/ })).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText(/Run Detail/).first()).toBeVisible({ timeout: 10_000 });
+    // The Back button has an IconArrowLeft img, so its accessible name is
+    // "arrow_left Back". Match by text to be icon-name-agnostic.
+    await expect(page.getByRole('button', { name: /Back/ })).toBeVisible({ timeout: 5_000 });
 
     // --- Assert the run detail was fetched (status shown in the header) ---
     // Accept any terminal status — the run already reached terminal in
     // waitForTerminal above; here we just verify the header rendered it.
-    await expect(page.getByText(/状态:\s*(succeeded|failed|terminated)/)).toBeVisible({
+    await expect(page.getByText(/Status:\s*(succeeded|failed|terminated)/)).toBeVisible({
       timeout: 5_000,
     });
 
-    // --- Click 返回 to close the viewer ---
-    await page.getByRole('button', { name: /返回/ }).click();
-    await expect(page.getByText(/运行详情/)).toHaveCount(0, { timeout: 5_000 });
+    // --- Click Back to close the viewer ---
+    await page.getByRole('button', { name: /Back/ }).click();
+    await expect(page.getByText(/Run Detail/)).toHaveCount(0, { timeout: 5_000 });
   });
 });

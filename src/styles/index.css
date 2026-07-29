@@ -90,7 +90,7 @@ body,
 }
 
 /* Toolbar breathing room so it doesn't hug adjacent widgets */
-.demo-free-layout-tools {
+.workflow-tools {
   padding: 4px 8px;
   gap: 4px;
 }

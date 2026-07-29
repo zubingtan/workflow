@@ -52,7 +52,7 @@ export const DemoTools = () => {
   }, [playground]);
 
   return (
-    <ToolContainer className="demo-free-layout-tools">
+    <ToolContainer className="workflow-tools">
       <ToolSection>
         <Interactive />
         <AutoLayout />

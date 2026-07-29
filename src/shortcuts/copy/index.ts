@@ -48,7 +48,7 @@ export class CopyShortcut implements ShortcutsHandler {
   }
 
   /**
-   * execute copy operation - 执行复制操作
+   * execute copy operation
    */
   public async execute(): Promise<void> {
     if (this.readonly || (await this.hasSelectedText())) {
@@ -62,7 +62,7 @@ export class CopyShortcut implements ShortcutsHandler {
   }
 
   /**
-   * create clipboard data - 转换为剪贴板数据
+   * create clipboard data
    */
   public toClipboardData(nodes?: WorkflowNodeEntity[]): WorkflowClipboardData {
     const validNodes = this.getValidNodes(nodes ? nodes : this.selectedNodes);
@@ -78,14 +78,14 @@ export class CopyShortcut implements ShortcutsHandler {
   }
 
   /**
-   * readonly - 是否只读
+   * readonly
    */
   private get readonly(): boolean {
     return this.playgroundConfig.readonly;
   }
 
   /**
-   * has selected text - 是否有文字被选中
+   * has selected text
    */
   private async hasSelectedText(): Promise<boolean> {
     if (!window.getSelection()?.toString()) {
@@ -99,7 +99,7 @@ export class CopyShortcut implements ShortcutsHandler {
   }
 
   /**
-   * get selected nodes - 获取选中的节点
+   * get selected nodes
    */
   private get selectedNodes(): WorkflowNodeEntity[] {
     return this.selectService.selection.filter(
@@ -108,7 +108,7 @@ export class CopyShortcut implements ShortcutsHandler {
   }
 
   /**
-   * validate selected nodes - 验证选中的节点
+   * validate selected nodes
    */
   private isValid(nodes: WorkflowNodeEntity[]): boolean {
     if (nodes.length === 0) {
@@ -121,7 +121,7 @@ export class CopyShortcut implements ShortcutsHandler {
   }
 
   /**
-   * get valid nodes - 获取有效的节点
+   * get valid nodes
    */
   private getValidNodes(nodes: WorkflowNodeEntity[]): WorkflowNodeEntity[] {
     return nodes.filter((n) => {
@@ -138,7 +138,7 @@ export class CopyShortcut implements ShortcutsHandler {
   }
 
   /**
-   * get source data - 获取来源数据
+   * get source data
    */
   private toSource(): WorkflowClipboardSource {
     return {
@@ -147,7 +147,7 @@ export class CopyShortcut implements ShortcutsHandler {
   }
 
   /**
-   * convert nodes to JSON - 将节点转换为JSON
+   * convert nodes to JSON
    */
   private toJSON(nodes: WorkflowNodeEntity[]): WorkflowJSON {
     const nodeJSONs = this.getNodeJSONs(nodes);
@@ -159,7 +159,7 @@ export class CopyShortcut implements ShortcutsHandler {
   }
 
   /**
-   * get JSON representation of nodes - 获取节点的JSON表示
+   * get JSON representation of nodes
    */
   private getNodeJSONs(nodes: WorkflowNodeEntity[]): WorkflowNodeJSON[] {
     const nodeJSONs = nodes.map((node) =>
@@ -171,7 +171,7 @@ export class CopyShortcut implements ShortcutsHandler {
   }
 
   /**
-   * get JSON representation of group node - 获取分组节点的JSON
+   * get JSON representation of group node
    */
   private getGroupNodeJSON(node: WorkflowNodeEntity): WorkflowNodeJSON {
     const rawJSON = this.document.toNodeJSON(node);
@@ -182,7 +182,7 @@ export class CopyShortcut implements ShortcutsHandler {
   }
 
   /**
-   * get edges of all nodes - 获取所有节点的边
+   * get edges of all nodes
    */
   private getEdgeJSONs(nodes: WorkflowNodeEntity[]): WorkflowEdgeJSON[] {
     const lineSet = new Set<WorkflowLineEntity>();
@@ -206,7 +206,7 @@ export class CopyShortcut implements ShortcutsHandler {
   }
 
   /**
-   * expand group nodes - 展开分组子节点
+   * expand group nodes
    */
   private expandGroupNodes(nodes: WorkflowNodeEntity[]): WorkflowNodeEntity[] {
     return nodes.flatMap((node) => {
@@ -218,7 +218,7 @@ export class CopyShortcut implements ShortcutsHandler {
   }
 
   /**
-   * get bounding rectangle of all nodes - 获取所有节点的边界矩形
+   * get bounding rectangle of all nodes
    */
   private getEntireBounds(nodes: WorkflowNodeEntity[]): WorkflowClipboardRect {
     const bounds = nodes.map((node) => node.getData<TransformData>(TransformData).bounds);
@@ -232,7 +232,7 @@ export class CopyShortcut implements ShortcutsHandler {
   }
 
   /**
-   * write data to clipboard - 将数据写入剪贴板
+   * write data to clipboard
    */
   private async write(data: WorkflowClipboardData): Promise<void> {
     try {
@@ -244,7 +244,7 @@ export class CopyShortcut implements ShortcutsHandler {
   }
 
   /**
-   * show success notification - 显示成功通知
+   * show success notification
    */
   private notifySuccess(): void {
     const startEndNodeTypes: WorkflowNodeType[] = [

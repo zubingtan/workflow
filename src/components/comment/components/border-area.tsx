@@ -23,7 +23,7 @@ export const BorderArea: FC<IBorderArea> = (props) => {
 
   return (
     <div style={{ zIndex: 999 }}>
-      {/* 左边 */}
+      {/* Left */}
       <DragArea
         style={{
           position: 'absolute',
@@ -34,18 +34,18 @@ export const BorderArea: FC<IBorderArea> = (props) => {
         }}
         model={model}
       />
-      {/* 右边 */}
+      {/* Right */}
       <DragArea
         style={{
           position: 'absolute',
           right: -10,
           top: 10,
           height: 'calc(100% - 20px)',
-          width: overflow ? 10 : 20, // 防止遮挡滚动条
+          width: overflow ? 10 : 20, // Avoid covering the scrollbar
         }}
         model={model}
       />
-      {/* 上边 */}
+      {/* Top */}
       <DragArea
         style={{
           position: 'absolute',
@@ -56,7 +56,7 @@ export const BorderArea: FC<IBorderArea> = (props) => {
         }}
         model={model}
       />
-      {/* 下边 */}
+      {/* Bottom */}
       <DragArea
         style={{
           position: 'absolute',
@@ -67,7 +67,7 @@ export const BorderArea: FC<IBorderArea> = (props) => {
         }}
         model={model}
       />
-      {/** 左上角 */}
+      {/** Top-left corner */}
       <ResizeArea
         style={{
           position: 'absolute',
@@ -79,7 +79,7 @@ export const BorderArea: FC<IBorderArea> = (props) => {
         getDelta={({ x, y }) => ({ top: y, right: 0, bottom: 0, left: x })}
         onResize={onResize}
       />
-      {/** 右上角 */}
+      {/** Top-right corner */}
       <ResizeArea
         style={{
           position: 'absolute',
@@ -91,7 +91,7 @@ export const BorderArea: FC<IBorderArea> = (props) => {
         getDelta={({ x, y }) => ({ top: y, right: x, bottom: 0, left: 0 })}
         onResize={onResize}
       />
-      {/** 右下角 */}
+      {/** Bottom-right corner */}
       <ResizeArea
         style={{
           position: 'absolute',
@@ -103,7 +103,7 @@ export const BorderArea: FC<IBorderArea> = (props) => {
         getDelta={({ x, y }) => ({ top: 0, right: x, bottom: y, left: 0 })}
         onResize={onResize}
       />
-      {/** 左下角 */}
+      {/** Bottom-left corner */}
       <ResizeArea
         style={{
           position: 'absolute',

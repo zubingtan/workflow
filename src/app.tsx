@@ -8,8 +8,9 @@ import { unstableSetCreateRoot } from '@flowgram.ai/form-materials';
 // physically exists at that path — rsbuild resolves it via the filesystem.
 // If this breaks in a future Semi upgrade, switch to a relative path.
 import '@douyinfe/semi-ui/dist/css/semi.min.css';
-import { Button, Typography, Spin, Toast, Modal } from '@douyinfe/semi-ui';
-import { IconArrowLeft, IconMoon, IconSave, IconSun } from '@douyinfe/semi-icons';
+import en_US from '@douyinfe/semi-ui/lib/es/locale/source/en_US';
+import { Button, Typography, Spin, Toast, Modal, Input, LocaleProvider } from '@douyinfe/semi-ui';
+import { IconArrowLeft, IconEdit, IconMoon, IconSave, IconSun } from '@douyinfe/semi-icons';
 
 // Theme CSS files — order matters (ADR-0002):
 //   semi.min.css → semi-bridge.css → tokens.css → theme-dark.css
@@ -48,6 +49,10 @@ function App() {
   const [saving, setSaving] = useState(false);
   const [currentWorkflowId, setCurrentWorkflowId] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
+  // Inline rename state for the editor top-bar workflow name span.
+  // `renaming` toggles the input; `renameDraft` holds the in-flight value.
+  const [renaming, setRenaming] = useState(false);
+  const [renameDraft, setRenameDraft] = useState('');
   const [confirmNav, setConfirmNav] = useState<{
     visible: boolean;
     action: (() => void) | null;
@@ -76,6 +81,7 @@ function App() {
     setView('editor');
     setCurrentWorkflowId(id);
     setDirty(false);
+    setRenaming(false);
     ctxRef.current = null;
     try {
       const wf = await api.getWorkflow(id);
@@ -115,6 +121,43 @@ function App() {
       setSaving(false);
     }
   }, [currentWorkflowId]);
+
+  // Inline rename: click the workflow name span to edit it in place.
+  // Enter or blur commits (name-only PATCH, canvas dirty state untouched);
+  // Escape cancels. Empty input is rejected with a toast and reverts.
+  const startRename = useCallback(() => {
+    setRenameDraft(workflowName);
+    setRenaming(true);
+  }, [workflowName]);
+
+  const commitRename = useCallback(async () => {
+    const trimmed = renameDraft.trim();
+    if (!trimmed) {
+      Toast.warning('Workflow name cannot be empty');
+      setRenaming(false);
+      return;
+    }
+    if (trimmed === workflowName) {
+      setRenaming(false);
+      return;
+    }
+    if (!currentWorkflowId) {
+      setRenaming(false);
+      return;
+    }
+    try {
+      await api.updateWorkflow(currentWorkflowId, { name: trimmed });
+      setWorkflowName(trimmed);
+    } catch (err: any) {
+      Toast.error(err?.message || 'Failed to rename workflow');
+    } finally {
+      setRenaming(false);
+    }
+  }, [renameDraft, workflowName, currentWorkflowId]);
+
+  const cancelRename = useCallback(() => {
+    setRenaming(false);
+  }, []);
 
   const requestNavigation = useCallback(
     (action: () => void) => {
@@ -243,7 +286,38 @@ function App() {
               >
                 Back
               </Button>
-              <Typography.Text strong>{workflowName}</Typography.Text>
+              {renaming ? (
+                <Input
+                  value={renameDraft}
+                  onChange={setRenameDraft}
+                  onBlur={commitRename}
+                  onEnterPress={commitRename}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      e.preventDefault();
+                      cancelRename();
+                    }
+                  }}
+                  autoFocus
+                  size="small"
+                  style={{ width: 220 }}
+                />
+              ) : (
+                <Typography.Text
+                  strong
+                  onClick={startRename}
+                  style={{
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                  }}
+                  title="Click to rename"
+                >
+                  {workflowName}
+                  <IconEdit size="small" style={{ opacity: 0.5 }} />
+                </Typography.Text>
+              )}
               <div style={{ marginLeft: 'auto' }}>
                 <Button
                   icon={<IconSave />}
@@ -312,4 +386,8 @@ function App() {
 }
 
 const app = createRoot(document.getElementById('root')!);
-app.render(<App />);
+app.render(
+  <LocaleProvider locale={en_US}>
+    <App />
+  </LocaleProvider>
+);

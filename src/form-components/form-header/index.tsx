@@ -35,7 +35,7 @@ export function FormHeader() {
     closePanel();
   };
   useEffect(() => {
-    // 折叠 loop 子节点
+    // Collapse loop child nodes
     if (node.flowNodeType === 'loop') {
       toggleLoopExpanded(node, expanded);
     }

@@ -17,12 +17,12 @@ import {
   WorkflowNodeMeta,
   FlowNodeBaseType,
 } from '@flowgram.ai/free-layout-editor';
-// hook to get panel position from mouse event - 从鼠标事件获取面板位置的 hook
+// hook to get panel position from mouse event
 const useGetPanelPosition = () => {
   const playground = usePlayground();
   return useCallback(
     (targetBoundingRect: DOMRect): PositionSchema =>
-      // convert mouse position to canvas position - 将鼠标位置转换为画布位置
+      // convert mouse position to canvas position
       playground.config.getPosFromMouseEvent({
         clientX: targetBoundingRect.left + 64,
         clientY: targetBoundingRect.top - 7,
@@ -30,7 +30,7 @@ const useGetPanelPosition = () => {
     [playground]
   );
 };
-// hook to handle node selection - 处理节点选择的 hook
+// hook to handle node selection
 const useSelectNode = () => {
   const selectService = useService(WorkflowSelectService);
   return useCallback(
@@ -38,7 +38,7 @@ const useSelectNode = () => {
       if (!node) {
         return;
       }
-      // select the target node - 选择目标节点
+      // select the target node
       selectService.selectNode(node);
     },
     [selectService]
@@ -61,7 +61,7 @@ const getContainerNode = (selectService: WorkflowSelectService) => {
   return parentNode;
 };
 
-// main hook for adding new nodes - 添加新节点的主 hook
+// main hook for adding new nodes
 export const useAddNode = () => {
   const workflowDocument = useService(WorkflowDocument);
   const nodePanelService = useService<WorkflowNodePanelService>(WorkflowNodePanelService);
@@ -72,17 +72,17 @@ export const useAddNode = () => {
 
   return useCallback(
     async (targetBoundingRect: DOMRect): Promise<void> => {
-      // calculate panel position based on target element - 根据目标元素计算面板位置
+      // calculate panel position based on target element
       const panelPosition = getPanelPosition(targetBoundingRect);
       const containerNode = getContainerNode(selectService);
       await new Promise<void>((resolve) => {
-        // call the node panel service to show the panel - 调用节点面板服务来显示面板
+        // call the node panel service to show the panel
         nodePanelService.callNodePanel({
           position: panelPosition,
           enableMultiAdd: true,
           containerNode,
           panelProps: {},
-          // handle node selection from panel - 处理从面板中选择节点
+          // handle node selection from panel
           onSelect: async (panelParams?: NodePanelResult) => {
             if (!panelParams) {
               return;
@@ -94,16 +94,16 @@ export const useAddNode = () => {
                   y: 200,
                 })
               : undefined;
-            // create new workflow node based on selected type - 根据选择的类型创建新的工作流节点
+            // create new workflow node based on selected type
             const node: WorkflowNodeEntity = workflowDocument.createWorkflowNodeByType(
               nodeType,
-              position, // position undefined means create node in center of canvas - position undefined 可以在画布中间创建节点
+              position, // position undefined means create node in center of canvas
               nodeJSON ?? ({} as WorkflowNodeJSON),
               containerNode?.id
             );
             select(node);
           },
-          // handle panel close - 处理面板关闭
+          // handle panel close
           onClose: () => {
             resolve();
           },

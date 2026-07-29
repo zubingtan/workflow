@@ -63,7 +63,7 @@ test.describe('Delete workflow with active runs', () => {
     // The tooltip explains why. Hover the Delete button to reveal it (Semi
     // Tooltip shows on hover by default).
     await deleteBtn.hover();
-    await expect(page.getByText('该 Workflow 有运行中或排队中的实例').first()).toBeVisible({
+    await expect(page.getByText('This workflow has running or queued runs').first()).toBeVisible({
       timeout: 5_000,
     });
 

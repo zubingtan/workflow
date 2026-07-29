@@ -33,7 +33,7 @@ export const useSize = () => {
   const [width, setWidth] = useState(formSize?.width ?? size.width);
   const [height, setHeight] = useState(formSize?.height ?? size.height);
 
-  // 初始化表单值
+  // Initialize form values
   useEffect(() => {
     const initSize = formModel.getValueIn<{ width: number; height: number }>(
       CommentEditorFormField.Size
@@ -46,7 +46,7 @@ export const useSize = () => {
     }
   }, [formModel, width, height]);
 
-  // 同步表单外部值变化：初始化/undo/redo/协同
+  // Sync external form value changes: init/undo/redo/collaboration
   useEffect(() => {
     const disposer = formModel.onFormValuesChange(({ name }) => {
       if (name !== CommentEditorFormField.Size && name !== '') {
@@ -93,7 +93,7 @@ export const useSize = () => {
       const newWidth = Math.max(minWidth, resizeState.originalWidth + right - left);
       const newHeight = Math.max(minHeight, resizeState.originalHeight + bottom - top);
 
-      // 如果宽度或高度小于最小值，则不更新偏移量
+      // If width or height is below the minimum, do not update the offset
       const newOffsetX =
         (left > 0 || right < 0) && newWidth <= minWidth
           ? resizeState.offsetX
@@ -109,11 +109,11 @@ export const useSize = () => {
       resizeState.offsetX = newOffsetX;
       resizeState.offsetY = newOffsetY;
 
-      // 更新状态
+      // Update state
       setWidth(newWidth);
       setHeight(newHeight);
 
-      // 更新偏移量
+      // Update offset
       transform.update({
         position: {
           x: newPositionX,

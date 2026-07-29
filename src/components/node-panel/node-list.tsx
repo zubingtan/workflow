@@ -68,7 +68,7 @@ const NodesWrap = styled.div`
 
 interface NodeListProps {
   onSelect: NodePanelRenderProps['onSelect'];
-  fromPort?: WorkflowPortEntity; // 从哪个端口添加 From which port to add
+  fromPort?: WorkflowPortEntity; // From which port to add
   containerNode?: WorkflowNodeEntity;
 }
 
@@ -93,8 +93,7 @@ export const NodeList: FC<NodeListProps> = (props) => {
             return register.meta.onlyInContainer === containerNode?.flowNodeType;
           }
           /**
-           * 循环节点无法嵌套循环节点
-           * Loop node cannot nest loop node
+           * Loop nodes cannot be nested inside other loop nodes
            */
           if (containerNode && !canContainNode(register.type, containerNode.flowNodeType)) {
             return false;

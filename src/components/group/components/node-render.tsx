@@ -30,7 +30,7 @@ export const GroupNodeRender = () => {
   const nodeHeight = height ?? 0;
 
   useEffect(() => {
-    // prevent lines in outside cannot be selected - 防止外层线条不可选中
+    // Prevent outer lines from being unselectable
     const element = node.renderData.node;
     element.style.pointerEvents = 'none';
   }, [node]);

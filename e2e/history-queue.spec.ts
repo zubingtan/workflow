@@ -55,27 +55,27 @@ test.describe('History + serial queue', () => {
     await page.goto('/');
     await page.getByText('Workflows', { exact: true }).first().click();
     const wfRow = page.locator('tr', { hasText: 'E2E Queue WF' }).first();
-    await wfRow.getByRole('button', { name: '历史' }).click();
+    await wfRow.getByRole('button', { name: 'History' }).click();
 
     // --- Assert the Modal renders ---
-    await expect(page.getByText('运行历史').first()).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText('Run History').first()).toBeVisible({ timeout: 5_000 });
 
     // --- Assert status badges present (at least one of the 5) ---
     // Semi's Tag renders with role/structure that doesn't always match `span`;
     // use getByText which is element-type agnostic.
-    const badgeTexts = ['排队中', '运行中', '成功', '失败', '已取消'];
+    const badgeTexts = ['Queued', 'Running', 'Succeeded', 'Failed', 'Cancelled'];
     const anyBadge = page.getByText(new RegExp(badgeTexts.join('|'))).first();
     await expect(anyBadge).toBeVisible({ timeout: 5_000 });
 
-    // --- Assert 查看详情 button present ---
-    await expect(page.getByRole('button', { name: '查看详情' }).first()).toBeVisible();
+    // --- Assert View Detail button present ---
+    await expect(page.getByRole('button', { name: 'View Detail' }).first()).toBeVisible();
 
     // --- Verify via the editor toolbar entry too ---
     await page.keyboard.press('Escape');
     await wfRow.getByRole('button', { name: 'Open' }).click();
     await expect(page.getByRole('button', { name: 'History' })).toBeVisible({ timeout: 10_000 });
     await page.getByRole('button', { name: 'History' }).click();
-    await expect(page.getByText('运行历史').first()).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText('Run History').first()).toBeVisible({ timeout: 5_000 });
   });
 
   test('draft Test Run does NOT enter queue/history', async ({ page }) => {
@@ -89,7 +89,7 @@ test.describe('History + serial queue', () => {
     await firstRow.getByRole('button', { name: 'Open' }).click();
     await expect(page.getByRole('button', { name: 'History' })).toBeVisible({ timeout: 10_000 });
     await page.getByRole('button', { name: 'History' }).click();
-    await expect(page.getByText('运行历史').first()).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText('Run History').first()).toBeVisible({ timeout: 5_000 });
     await page.keyboard.press('Escape');
   });
 });

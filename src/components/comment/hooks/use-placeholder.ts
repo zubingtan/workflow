@@ -13,7 +13,7 @@ export const usePlaceholder = (params: { model: CommentEditorModel }): string | 
 
   const [placeholder, setPlaceholder] = useState<string | undefined>('Enter a comment...');
 
-  // 监听 change 事件
+  // Listen for change events
   useEffect(() => {
     const changeDisposer = model.on((params) => {
       if (params.type !== CommentEditorEvent.Change && params.type !== CommentEditorEvent.Init) {
