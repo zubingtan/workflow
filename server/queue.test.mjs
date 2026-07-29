@@ -341,3 +341,129 @@ test("getRunningTaskID returns the taskID of a running run (for cancel endpoint)
   resolve1({ status: "success" });
   await new Promise((r) => setTimeout(r, 10));
 });
+
+// --- #179: SSE node progress (getCurrentReport + run_progress broadcast) ---
+
+/**
+ * Build a minimal IReport with the given per-node statuses.
+ * `nodes` is `{ nodeID: { status, snapshots?: N } }`.
+ */
+function makeReport(nodes) {
+  const reports = {};
+  for (const [id, n] of Object.entries(nodes)) {
+    reports[id] = {
+      id,
+      status: n.status,
+      terminated: false,
+      startTime: 1,
+      timeCost: 0,
+      snapshots: Array.from({ length: n.snapshots ?? 0 }, () => ({})),
+    };
+  }
+  return {
+    id: "report_1",
+    inputs: {},
+    outputs: {},
+    workflowStatus: { status: "processing", terminated: false, startTime: 1, timeCost: 0 },
+    reports,
+    messages: {},
+  };
+}
+
+test("#179 getCurrentReport: null for unknown / queued / terminal runs", () => {
+  const { db } = setupDb();
+  seedRun(db, "run_1");
+  const fake = makeFakeRunTask();
+  const queue = createRunQueue({
+    db,
+    runTask: fake.runTask,
+    cancelTask: makeFakeCancelTask().cancelTask,
+    onTerminal: () => {},
+  });
+  // Not running yet (queued, no dequeue yet) — but enqueue triggers dequeue
+  // synchronously, so check BEFORE enqueue for the queued-state test.
+  // Actually enqueue dequeues immediately; to test "unknown", just ask for a
+  // runID that doesn't exist.
+  assert.equal(queue.getCurrentReport("run_missing"), null, "unknown run → null");
+});
+
+test("#179 getCurrentReport: returns the latest cached IReport for a running run", async () => {
+  const { db } = setupDb();
+  seedRun(db, "run_1");
+  const fake = makeFakeRunTask();
+  const queue = createRunQueue({
+    db,
+    runTask: fake.runTask,
+    cancelTask: makeFakeCancelTask().cancelTask,
+    onTerminal: () => {},
+  });
+  const resolve1 = fake.block("run_1");
+  queue.enqueue("wf_1", "run_1", { schema: "{}", inputs: {} });
+  await new Promise((r) => setTimeout(r, 5));
+
+  // Initially null — no progress fired yet.
+  assert.equal(queue.getCurrentReport("run_1"), null, "no progress yet → null");
+
+  const r1 = makeReport({ nodeA: { status: "processing" } });
+  fake.emitProgress("run_1", r1);
+  assert.equal(queue.getCurrentReport("run_1"), r1, "cached after first progress");
+
+  const r2 = makeReport({ nodeA: { status: "succeeded", snapshots: 1 } });
+  fake.emitProgress("run_1", r2);
+  assert.equal(queue.getCurrentReport("run_1"), r2, "updated after second progress");
+
+  resolve1({ status: "success" });
+  await new Promise((r) => setTimeout(r, 10));
+  // Terminal: finishCurrent cleared wf.current → cache gone.
+  assert.equal(queue.getCurrentReport("run_1"), null, "cleared after terminal");
+});
+
+test("#179 run_progress: broadcast fires on first progress + on per-node change, not on no-op", async () => {
+  const { db } = setupDb();
+  seedRun(db, "run_1");
+  const fake = makeFakeRunTask();
+  const events = [];
+  const queue = createRunQueue({
+    db,
+    runTask: fake.runTask,
+    cancelTask: makeFakeCancelTask().cancelTask,
+    onTerminal: () => {},
+    onEvent: (wfId, ev) => events.push(ev),
+  });
+  const resolve1 = fake.block("run_1");
+  queue.enqueue("wf_1", "run_1", { schema: "{}", inputs: {} });
+  await new Promise((r) => setTimeout(r, 5));
+  // enqueue fires run_status=queued (synchronously), then dequeue fires
+  // run_status=running (after the DB UPDATE + the await on runTask resolves
+  // the taskID). Both are present by the time we check.
+  assert.deepEqual(
+    events.filter((e) => e.type === "run_status").map((e) => e.status),
+    ["queued", "running"],
+    "enqueue+dequeue fired queued then running"
+  );
+
+  // First progress → broadcast (prev was null → reportChanged returns true).
+  const r1 = makeReport({ nodeA: { status: "processing" } });
+  fake.emitProgress("run_1", r1);
+  assert.equal(events.filter((e) => e.type === "run_progress").length, 1, "first progress broadcast");
+  assert.equal(events.at(-1).report, r1, "broadcast carries the IReport");
+  assert.equal(events.at(-1).runID, "run_1");
+
+  // Same status, same snapshot count → NO broadcast.
+  fake.emitProgress("run_1", r1);
+  assert.equal(events.filter((e) => e.type === "run_progress").length, 1, "no-op progress not broadcast");
+
+  // Snapshot count grew → broadcast.
+  const r2 = makeReport({ nodeA: { status: "processing", snapshots: 1 } });
+  fake.emitProgress("run_1", r2);
+  assert.equal(events.filter((e) => e.type === "run_progress").length, 2, "snapshot growth broadcast");
+
+  // Status changed → broadcast.
+  const r3 = makeReport({ nodeA: { status: "succeeded", snapshots: 1 } });
+  fake.emitProgress("run_1", r3);
+  assert.equal(events.filter((e) => e.type === "run_progress").length, 3, "status change broadcast");
+
+  resolve1({ status: "success" });
+  await new Promise((r) => setTimeout(r, 10));
+});
+

@@ -34,6 +34,31 @@ const DEFAULT_WALL_CLOCK_MS = 30 * 60 * 1000; // 30 minutes
 const DEFAULT_SWEEP_INTERVAL_MS = 60 * 1000;
 
 /**
+ * #179: compare two IReports' per-node status + snapshot-length to decide
+ * whether a run_progress SSE event should fire. Returns true on first poll
+ * (prev is null/undefined) so the initial state is always broadcast. After
+ * that, returns true only if any node's status changed or any node's
+ * snapshot count grew (matches the client's updateReport diff logic in
+ * runtime-service/index.ts:305-316).
+ */
+function reportChanged(prev, next) {
+  if (!prev) return true;
+  const prevReports = prev.reports ?? {};
+  const nextReports = next.reports ?? {};
+  const prevKeys = Object.keys(prevReports);
+  const nextKeys = Object.keys(nextReports);
+  if (prevKeys.length !== nextKeys.length) return true;
+  for (const k of nextKeys) {
+    const p = prevReports[k];
+    const n = nextReports[k];
+    if (!p) return true; // new node appeared
+    if (p.status !== n.status) return true;
+    if ((p.snapshots?.length ?? 0) !== (n.snapshots?.length ?? 0)) return true;
+  }
+  return false;
+}
+
+/**
  * @param {object} deps
  * @param {import("better-sqlite3").Database} deps.db
  * @param {(workflowId: string, runID: string, payload: {schema: string, inputs: object}) => Promise<{taskID: string, done: Promise<{status: string, reason?: string}>}> | {taskID: string, done: Promise<{status: string, reason?: string}>}} deps.runTask
@@ -52,6 +77,11 @@ const DEFAULT_SWEEP_INTERVAL_MS = 60 * 1000;
  *     - {type:'run_status', runID, status:'queued', queued_at}
  *     - {type:'run_status', runID, status:'running', started_at}
  *     - {type:'run_status', runID, status:'terminated'} (cancelQueued)
+ *     - {type:'run_progress', runID, report: IReport} (#179: per-node
+ *       progress, fired on each poll tick where per-node status/snapshot
+ *       count changed; carries the full intermediate IReport so clients can
+ *       reuse updateReport logic. NOT fired on the terminal tick — the
+ *       terminal report is delivered via run_terminal.)
  *   The terminal event ({type:'run_terminal', ...}) is fired by the adapter's
  *   onTerminal hook (after the DB row is written), NOT here — because the
  *   terminal broadcast needs the full report + schema_snapshot which only the
@@ -67,6 +97,7 @@ const DEFAULT_SWEEP_INTERVAL_MS = 60 * 1000;
  *   getQueuePosition: (workflowId: string, runID: string) => number,
  *   isActive: () => boolean,
  *   activeRunCount: (workflowId: string) => number,
+ *   getCurrentReport: (runID: string) => object | null,
  *   dispose: () => void,
  * }}
  */
@@ -184,7 +215,21 @@ export function createRunQueue({
 
     let started;
     try {
-      started = await runTask(workflowId, runID, payload);
+      // #179: onProgress caches the intermediate IReport on wf.current.lastReport
+      // (for late-subscriber catch-up via getCurrentReport) AND broadcasts a
+      // run_progress SSE event — but only when per-node status or snapshot
+      // count actually changed, to avoid flooding subscribers with no-op
+      // events every 500ms during a long-stuck node.
+      const onProgress = (report) => {
+        const c = workflows.get(workflowId)?.current;
+        if (!c || c.runID !== runID) return; // run already advanced/cleared
+        const prev = c.lastReport;
+        c.lastReport = report;
+        if (typeof onEvent === "function" && reportChanged(prev, report)) {
+          onEvent(workflowId, { type: "run_progress", runID, report });
+        }
+      };
+      started = await runTask(workflowId, runID, payload, onProgress);
     } catch (err) {
       // runTask threw (e.g. bad schema) — treat as failed. Guard: another
       // dequeue or wall-clock sweep may have already cleared `current` while
@@ -380,6 +425,20 @@ export function createRunQueue({
     workflows.clear();
   }
 
+  /**
+   * #179: the latest intermediate IReport for a running run, or null if the
+   * run is not running / has no report yet. Used by the SSE init frame to
+   * catch up a late subscriber on the current per-node state. Cleared
+   * implicitly when finishCurrent sets wf.current = null (run_terminal
+   * carries the terminal report, so the cached intermediate is obsolete).
+   */
+  function getCurrentReport(runID) {
+    for (const wf of workflows.values()) {
+      if (wf.current?.runID === runID) return wf.current.lastReport ?? null;
+    }
+    return null;
+  }
+
   return {
     enqueue,
     cancelQueued,
@@ -387,6 +446,7 @@ export function createRunQueue({
     getQueuePosition,
     isActive,
     activeRunCount,
+    getCurrentReport,
     dispose,
   };
 }

@@ -11,15 +11,23 @@
  * immediately with {status:'success'} unless `block(runID)` was called before
  * enqueue. `block(runID)` marks the run as blocking and returns a resolve
  * function; call that function (after enqueue) to settle `done`.
+ *
+ * #179: captures the `onProgress` callback passed by the queue so tests can
+ * fire intermediate IReports via `emitProgress(runID, report)`. The callback
+ * is stored per-runID; calling emitProgress invokes it synchronously (the
+ * real pollUntilTerminal is async, but the queue's onProgress logic is sync
+ * — caching + broadcast — so sync invocation tests the exact same path).
  */
 export function makeFakeRunTask() {
   const calls = [];
   let counter = 0;
   const resolvers = new Map(); // runID → resolve fn (set inside runTask)
+  const progressCallbacks = new Map(); // runID → onProgress fn (#179)
   const shouldBlock = new Set(); // runIDs marked blocking via block()
-  const runTask = (workflowId, runID, payload) => {
+  const runTask = (workflowId, runID, payload, onProgress) => {
     const taskID = `task_${++counter}`;
     calls.push({ workflowId, runID, payload, taskID });
+    if (typeof onProgress === "function") progressCallbacks.set(runID, onProgress);
     const done = shouldBlock.has(runID)
       ? new Promise((res) => resolvers.set(runID, res))
       : Promise.resolve({ status: "success" });
@@ -37,6 +45,11 @@ export function makeFakeRunTask() {
           res(result);
         }
       };
+    },
+    /** #179: fire an intermediate IReport to the queue's onProgress callback. */
+    emitProgress(runID, report) {
+      const cb = progressCallbacks.get(runID);
+      if (cb) cb(report);
     },
   };
 }
