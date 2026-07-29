@@ -9,25 +9,33 @@
  * createSession closure, iterates runAgentExecution's events, and projects the
  * single terminal event to FlowGram's expected return/throw shape (#77).
  */
-import { AsyncLocalStorage } from "node:async_hooks";
-import { mkdirSync, writeFileSync, existsSync, cpSync, renameSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
-import { registerNodeExecutor, TaskRunAPI, TaskReportAPI, TaskCancelAPI, TaskValidateAPI, TaskResultAPI } from "@flowgram.ai/runtime-js";
-import { runAgentExecution as defaultRunAgentExecution } from "./agent-execution.mjs";
-import { getAgentById } from "./agent-catalog.mjs";
-import { persistExecution } from "./execution-store.mjs";
-import { getMem0Host, getMem0ApiKey } from "./settings.mjs";
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { mkdirSync, writeFileSync, existsSync, cpSync, renameSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import {
+  registerNodeExecutor,
+  TaskRunAPI,
+  TaskReportAPI,
+  TaskCancelAPI,
+  TaskValidateAPI,
+  TaskResultAPI,
+} from '@flowgram.ai/runtime-js';
+import { runAgentExecution as defaultRunAgentExecution } from './agent-execution.mjs';
+import { getAgentById } from './agent-catalog.mjs';
+import { persistExecution } from './execution-store.mjs';
+import { getMem0Host, getMem0ApiKey } from './settings.mjs';
 import {
   compileStrictSchema,
   createStructuredOutputExtension,
   StructuredOutputCapabilityError,
-} from "./structured-output.mjs";
+} from './structured-output.mjs';
+import { executeFeishuBot } from './feishu-executor.mjs';
 
 // API shapes that can honor the structured output contract (#248).
 // The model registry pins `api` per registered model; anything outside these
 // two shapes fails fast at session creation with a capability error.
-const STRUCTURED_OUTPUT_API_SHAPES = new Set(["openai-completions", "openai-responses"]);
+const STRUCTURED_OUTPUT_API_SHAPES = new Set(['openai-completions', 'openai-responses']);
 
 // AsyncLocalStorage carries the workflow_run_id from the queue-adapter
 // through the FlowGram TaskRunAPI call chain into the AgentExecutor,
@@ -46,15 +54,15 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
  * Returns true if extension is available, false otherwise.
  */
 export function ensureMem0Extension(agentSessionDir) {
-  const targetDir = join(agentSessionDir, "extensions", "pi-extension-mem0");
-  if (existsSync(join(targetDir, "index.js"))) return true; // already present
+  const targetDir = join(agentSessionDir, 'extensions', 'pi-extension-mem0');
+  if (existsSync(join(targetDir, 'index.js'))) return true; // already present
 
   const candidates = [
-    "/opt/pi-extension-mem0",
-    join(__dirname, "..", "packages", "pi-extension-mem0", "dist"),
+    '/opt/pi-extension-mem0',
+    join(__dirname, '..', 'packages', 'pi-extension-mem0', 'dist'),
   ];
   for (const src of candidates) {
-    if (existsSync(join(src, "index.js"))) {
+    if (existsSync(join(src, 'index.js'))) {
       mkdirSync(targetDir, { recursive: true });
       cpSync(src, targetDir, { recursive: true });
       return true;
@@ -86,8 +94,8 @@ export function writeMem0Config(agentSessionDir, { agentId, runId, host, apiKey 
     dream: { enabled: false },
   };
   mkdirSync(agentSessionDir, { recursive: true });
-  const target = join(agentSessionDir, "mem0-config.json");
-  const tmp = join(agentSessionDir, ".mem0-config.json.tmp");
+  const target = join(agentSessionDir, 'mem0-config.json');
+  const tmp = join(agentSessionDir, '.mem0-config.json.tmp');
   writeFileSync(tmp, JSON.stringify(config, null, 2));
   renameSync(tmp, target); // atomic on POSIX
 }
@@ -98,9 +106,9 @@ export function writeMem0Config(agentSessionDir, { agentId, runId, host, apiKey 
  * Resolve api_key: "$ENV_VAR" → process.env lookup; otherwise literal value.
  */
 export function resolveApiKey(rawValue) {
-  if (!rawValue) return "";
-  if (rawValue.startsWith("$")) {
-    return process.env[rawValue.slice(1)] ?? "";
+  if (!rawValue) return '';
+  if (rawValue.startsWith('$')) {
+    return process.env[rawValue.slice(1)] ?? '';
   }
   return rawValue;
 }
@@ -121,61 +129,73 @@ export function resolveApiKey(rawValue) {
  *   provider request is sent).
  */
 export async function createAgentSessionForAgent(agent, agentDir, mem0, structured) {
-  const { createAgentSession, ModelRuntime, SessionManager, SettingsManager, DefaultResourceLoader } =
-    await import("@earendil-works/pi-coding-agent");
+  const {
+    createAgentSession,
+    ModelRuntime,
+    SessionManager,
+    SettingsManager,
+    DefaultResourceLoader,
+  } = await import('@earendil-works/pi-coding-agent');
 
-  const config = typeof agent.config === "string" ? JSON.parse(agent.config) : (agent.config ?? {});
+  const config = typeof agent.config === 'string' ? JSON.parse(agent.config) : agent.config ?? {};
   const provider = config.provider ?? {};
   const sessionOptions = config.session_options ?? {};
   const piSettings = config.pi_settings ?? {};
 
   const apiKey = resolveApiKey(provider.api_key);
-  const model = provider.model || "gpt-4o";
+  const model = provider.model || 'gpt-4o';
   const pricing = provider.pricing ?? { input: 0, output: 0 };
 
   // 0. Capability check (#248): the model's API shape must expose a
   // json_schema structured output slot. Fail fast BEFORE any provider request
   // — no fallback to json_object or plain text.
-  const modelApi = provider.api ?? "openai-completions";
+  const modelApi = provider.api ?? 'openai-completions';
   if (structured && !STRUCTURED_OUTPUT_API_SHAPES.has(modelApi)) {
     throw new StructuredOutputCapabilityError({
-      provider: provider.name ?? "custom",
+      provider: provider.name ?? 'custom',
       model,
       endpoint: provider.base_url,
       apiShape: modelApi,
-      detail: "model API shape has no json_schema structured output slot",
+      detail: 'model API shape has no json_schema structured output slot',
     });
   }
 
   // 1. ModelRuntime — register custom provider
   const modelRuntime = await ModelRuntime.create({ modelsPath: null });
-  modelRuntime.registerProvider("custom", {
-    name: agent.name || "custom",
+  modelRuntime.registerProvider('custom', {
+    name: agent.name || 'custom',
     baseUrl: provider.base_url,
     apiKey,
     api: modelApi,
-    models: [{
-      id: model,
-      name: model,
-      api: modelApi,
-      reasoning: false,
-      input: ["text"],
-      cost: { input: pricing.input ?? 0, output: pricing.output ?? 0, cacheRead: pricing.cacheRead ?? 0, cacheWrite: pricing.cacheWrite ?? 0 },
-      contextWindow: 128000,
-      maxTokens: 8192,
-    }],
+    models: [
+      {
+        id: model,
+        name: model,
+        api: modelApi,
+        reasoning: false,
+        input: ['text'],
+        cost: {
+          input: pricing.input ?? 0,
+          output: pricing.output ?? 0,
+          cacheRead: pricing.cacheRead ?? 0,
+          cacheWrite: pricing.cacheWrite ?? 0,
+        },
+        contextWindow: 128000,
+        maxTokens: 8192,
+      },
+    ],
   });
 
   // 2. SettingsManager — inject pi_settings (transparent passthrough)
   const settingsManager = SettingsManager.inMemory({
     ...piSettings,
-    defaultProjectTrust: "always", // forced for headless
+    defaultProjectTrust: 'always', // forced for headless
   });
 
   // 3. SessionManager — persist sessions per-agent
   const agentSessionDir = agent.id ? `${agentDir}/${agent.id}` : agentDir;
   const sessionDir = `${agentSessionDir}/sessions`;
-  const { mkdirSync: _mkdir } = await import("node:fs");
+  const { mkdirSync: _mkdir } = await import('node:fs');
   _mkdir(sessionDir, { recursive: true });
   const sessionManager = SessionManager.create(agentSessionDir, sessionDir);
 
@@ -204,7 +224,7 @@ export async function createAgentSessionForAgent(agent, agentDir, mem0, structur
       ? [
           createStructuredOutputExtension({
             compiled: structured,
-            provider: provider.name ?? "custom",
+            provider: provider.name ?? 'custom',
             model,
             endpoint: provider.base_url,
           }),
@@ -218,7 +238,7 @@ export async function createAgentSessionForAgent(agent, agentDir, mem0, structur
     cwd: agentSessionDir,
     agentDir: agentSessionDir,
     modelRuntime,
-    model: modelRuntime.getModel("custom", model),
+    model: modelRuntime.getModel('custom', model),
     sessionManager,
     settingsManager,
     resourceLoader,
@@ -242,7 +262,7 @@ export async function createAgentSessionForAgent(agent, agentDir, mem0, structur
   //    the execution layer can classify them as capability errors instead of
   //    silently sending an unshaped request.
   await result.session.bindExtensions({
-    mode: "print",
+    mode: 'print',
     onError: (err) => {
       result.session._lastExtensionError = err;
     },
@@ -260,7 +280,7 @@ export async function createAgentSessionForAgent(agent, agentDir, mem0, structur
 export class AgentExecutionError extends Error {
   constructor({ kind, message, detail }) {
     super(message);
-    this.name = "AgentExecutionError";
+    this.name = 'AgentExecutionError';
     this.kind = kind;
     this.detail = detail;
   }
@@ -301,7 +321,7 @@ class AgentExecutor {
     resolveTimeoutMs: resolveTimeoutMsFn = resolveTimeoutMs,
     settingsProvider = null,
   }) {
-    this.type = "llm";
+    this.type = 'llm';
     this.db = db;
     this.agentDir = agentDir;
     this.createSession = createSession;
@@ -314,15 +334,18 @@ class AgentExecutor {
     const startedAt = new Date().toISOString();
     const { agentId, prompt } = context.inputs;
     if (!agentId) {
-      throw new AgentExecutionError({ kind: "agent_not_found", message: "agentId is required" });
+      throw new AgentExecutionError({ kind: 'agent_not_found', message: 'agentId is required' });
     }
     if (!prompt) {
-      throw new AgentExecutionError({ kind: "agent_not_found", message: "prompt is required" });
+      throw new AgentExecutionError({ kind: 'agent_not_found', message: 'prompt is required' });
     }
 
     const agent = getAgentById(this.db, agentId);
     if (!agent) {
-      throw new AgentExecutionError({ kind: "agent_not_found", message: `agent not found: ${agentId}` });
+      throw new AgentExecutionError({
+        kind: 'agent_not_found',
+        message: `agent not found: ${agentId}`,
+      });
     }
 
     // Structured output contract (#248/#249): compile the node's declared
@@ -335,11 +358,11 @@ class AgentExecutor {
     let structured = null;
     try {
       structured = compileStrictSchema(
-        context.node?.declare?.outputs ?? context.node?.data?.outputs,
+        context.node?.declare?.outputs ?? context.node?.data?.outputs
       );
     } catch (err) {
       throw new AgentExecutionError({
-        kind: "structured_output_error",
+        kind: 'structured_output_error',
         message: `invalid structured output schema: ${err?.message ?? String(err)}`,
       });
     }
@@ -348,9 +371,14 @@ class AgentExecutor {
     // mem0 config: read from settings table + runId from workflowRunContext (#218)
     const mem0Host = this.db ? getMem0Host(this.db) : null;
     const mem0ApiKey = this.db ? getMem0ApiKey(this.db) : null;
-    const mem0 = (mem0Host && mem0ApiKey)
-      ? { host: mem0Host, apiKey: mem0ApiKey, runId: workflowRunContext.getStore()?.runId ?? null }
-      : undefined;
+    const mem0 =
+      mem0Host && mem0ApiKey
+        ? {
+            host: mem0Host,
+            apiKey: mem0ApiKey,
+            runId: workflowRunContext.getStore()?.runId ?? null,
+          }
+        : undefined;
     const createSessionBound = (agentCfg, dir) =>
       this.createSession(agentCfg, dir, mem0, structured);
 
@@ -370,7 +398,7 @@ class AgentExecutor {
     // single-consumer case; avoids the multi-consumer pitfall.
     const timeoutMs = this.resolveTimeoutMs(context.node, this.settingsProvider);
     const workflowSignal = context.signal;
-    const useTimeout = typeof timeoutMs === "number" && timeoutMs > 0;
+    const useTimeout = typeof timeoutMs === 'number' && timeoutMs > 0;
 
     let terminal;
     let timedOut = false;
@@ -383,7 +411,7 @@ class AgentExecutor {
       combinedSignal = AbortSignal.any([workflowSignal ?? new AbortController().signal, ac.signal]);
       timer = setTimeout(() => {
         timedOut = true;
-        ac.abort("node_timeout");
+        ac.abort('node_timeout');
       }, timeoutMs);
     }
 
@@ -400,7 +428,7 @@ class AgentExecutor {
       // signal.aborted path, which yields a `cancelled` terminal — the loop
       // then exits naturally. No Promise.race needed (see impl note above).
       for await (const ev of events) {
-        if (ev.type === "terminal") {
+        if (ev.type === 'terminal') {
           terminal = ev;
           break;
         }
@@ -413,7 +441,10 @@ class AgentExecutor {
       // leak a raw Error to FlowGram's engine, which would race TaskCancelAPI).
       throw err instanceof AgentExecutionError
         ? err
-        : new AgentExecutionError({ kind: "internal_error", message: err?.message ?? "internal error" });
+        : new AgentExecutionError({
+            kind: 'internal_error',
+            message: err?.message ?? 'internal error',
+          });
     } finally {
       if (timer) clearTimeout(timer);
       // #66 lesson: session.abort() is awaitable. But here we don't own the
@@ -426,8 +457,8 @@ class AgentExecutor {
     if (!terminal) {
       // Iterable ended without a terminal (shared module bug). Defensive.
       throw new AgentExecutionError({
-        kind: "internal_error",
-        message: "Agent Execution ended without a terminal event",
+        kind: 'internal_error',
+        message: 'Agent Execution ended without a terminal event',
       });
     }
 
@@ -436,17 +467,22 @@ class AgentExecutor {
       const workflowRunId = workflowRunContext.getStore()?.runId ?? null;
       persistExecution(this.db, {
         agentId,
-        status: timedOut && !workflowSignal?.aborted ? "failed"
-          : terminal.phase === "succeeded" ? "succeeded"
-          : terminal.phase === "cancelled" ? "cancelled" : "failed",
-        triggerType: "workflow_node",
+        status:
+          timedOut && !workflowSignal?.aborted
+            ? 'failed'
+            : terminal.phase === 'succeeded'
+            ? 'succeeded'
+            : terminal.phase === 'cancelled'
+            ? 'cancelled'
+            : 'failed',
+        triggerType: 'workflow_node',
         workflowRunId,
         sessionFile: terminal.sessionFile ?? null,
         startedAt,
         endedAt: new Date().toISOString(),
       });
     } catch (persistErr) {
-      console.error("[runtime-adapter] persistExecution failed", persistErr);
+      console.error('[runtime-adapter] persistExecution failed', persistErr);
     }
 
     // Phase 9 (#161/#66): timeout classification. If the per-node AbortController
@@ -456,10 +492,10 @@ class AgentExecutor {
     // its `cancelled` projection (terminated:"cancelled") — #66 precedence.
     if (timedOut && ac?.signal.aborted && !workflowSignal?.aborted) {
       throw new AgentExecutionError({
-        kind: "timeout",
+        kind: 'timeout',
         message: `node timed out after ${timeoutMs}ms`,
         detail: {
-          reason: "node_timeout",
+          reason: 'node_timeout',
           partialText: terminal.partialText,
           toolEvents: terminal.toolEvents,
         },
@@ -472,7 +508,7 @@ class AgentExecutor {
     // validated projection of declared fields only — `result` is NOT
     // synthesized; the raw final text stays in _executionDetail.finalText.
     switch (terminal.phase) {
-      case "succeeded":
+      case 'succeeded':
         if (terminal.outputs) {
           return {
             outputs: {
@@ -490,20 +526,20 @@ class AgentExecutor {
             _executionDetail: { toolEvents: terminal.toolEvents },
           },
         };
-      case "cancelled":
+      case 'cancelled':
         return {
           outputs: {
             result: terminal.partialText,
-            _executionDetail: { toolEvents: terminal.toolEvents, terminated: "cancelled" },
+            _executionDetail: { toolEvents: terminal.toolEvents, terminated: 'cancelled' },
           },
         };
-      case "failed":
+      case 'failed':
         throw new AgentExecutionError(
-          terminal.error ?? { kind: "provider_error", message: "Agent Execution failed" },
+          terminal.error ?? { kind: 'provider_error', message: 'Agent Execution failed' }
         );
       default:
         throw new AgentExecutionError({
-          kind: "internal_error",
+          kind: 'internal_error',
           message: `unknown terminal phase: ${terminal.phase}`,
         });
     }
@@ -514,11 +550,29 @@ export function createAgentExecutor(options) {
   return new AgentExecutor(options);
 }
 
-// --- Register the custom executor (must be called before any TaskRun) ---
+// --- FeishuBotExecutor: sends messages via Feishu bot API ---
+class FeishuBotExecutor {
+  constructor() {
+    this.type = 'feishu-bot';
+  }
+
+  async execute(context) {
+    const { inputs, node } = context;
+    try {
+      return await executeFeishuBot({ nodeData: node.data, inputs });
+    } catch (err) {
+      throw new AgentExecutionError({
+        kind: 'provider_error',
+        message: err?.message ?? 'Feishu bot execution failed',
+      });
+    }
+  }
+}
+
+// --- Register the custom executors (must be called before any TaskRun) ---
 export function initRuntime(db, agentDir, settingsProvider = null) {
-  registerNodeExecutor(
-    createAgentExecutor({ db, agentDir, settingsProvider })
-  );
+  registerNodeExecutor(createAgentExecutor({ db, agentDir, settingsProvider }));
+  registerNodeExecutor(new FeishuBotExecutor());
 }
 
 export { TaskRunAPI, TaskReportAPI, TaskCancelAPI, TaskValidateAPI, TaskResultAPI };
