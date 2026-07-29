@@ -31,13 +31,31 @@ export class LiveHistoryRuntimeService extends WorkflowRuntimeService {
     { nodeID: string; status: string; nodeResultLength: number }
   > = new Map();
 
+  // #182: callback invoked when a run_terminal event for our runID arrives.
+  // Set by the ReadonlyViewer so it can refetch + remount in static mode
+  // WITHOUT opening a second SSE connection (HTTP/1.1 connection exhaustion
+  // was observed in E2E: 6 useActiveRunCounts SSE + 1 modal SSE + 1 viewer
+  // SSE + 1 live-history SSE = 9 > Chrome's 6-connection per-origin limit,
+  // causing getRun fetch to hang indefinitely).
+  private onTerminalCb?: () => void;
+
+  /**
+   * Register a callback to be invoked when the SSE stream delivers a
+   * `run_terminal` event for this run. The callback should trigger a refetch
+   * of the run detail + Editor remount in static mode.
+   */
+  public setOnTerminal(cb: () => void): void {
+    this.onTerminalCb = cb;
+  }
+
   /**
    * Open the SSE subscription. Called by `createLiveHistoryRuntimePlugin`'s
    * `onInit` (after the editor mounts). The stream delivers:
    *   - `init {activeRuns: [{runID, status, report}]}` — late-subscriber catch-up
    *   - `run_progress {runID, report}` — per-node progress
-   *   - `run_terminal {runID, status}` — terminal transition (handled by the
-   *     ReadonlyViewer component, which refetches and remounts in static mode)
+   *   - `run_terminal {runID, status}` — terminal transition. We invoke the
+   *     `onTerminal` callback (set by ReadonlyViewer) so the component can
+   *     refetch + remount in static mode. This avoids a second SSE connection.
    */
   public subscribe(runID: string, workflowId: string): void {
     this.liveRunID = runID;
@@ -68,9 +86,15 @@ export class LiveHistoryRuntimeService extends WorkflowRuntimeService {
       if (type === 'run_progress' && report) {
         applyRunProgress(report, this.prevNodeStatus, (nr) => this.fireNodeReport(nr));
       }
-      // run_terminal is handled by the ReadonlyViewer component (it refetches
-      // and remounts). We don't fire anything here — the terminal report
-      // arrives via the remount's StaticHistoryRuntimeService.
+      if (type === 'run_terminal') {
+        // #182: invoke the component's terminal callback instead of opening
+        // a second SSE connection in the ReadonlyViewer.
+        try {
+          this.onTerminalCb?.();
+        } catch {
+          /* swallow — callback errors must not crash the SSE handler */
+        }
+      }
     };
   }
 

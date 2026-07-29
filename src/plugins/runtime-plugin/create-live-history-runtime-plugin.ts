@@ -22,6 +22,11 @@ import {
 export interface LiveHistoryRuntimePluginOptions {
   runID: string;
   workflowId: string;
+  // #182: callback invoked when the SSE stream delivers run_terminal for our
+  // runID. The ReadonlyViewer uses this to refetch + remount in static mode
+  // without opening a second SSE connection (avoids HTTP/1.1 connection
+  // exhaustion when the manager page already has N SSE subscriptions open).
+  onTerminal?: () => void;
 }
 
 export const createLiveHistoryRuntimePlugin = definePluginCreator<
@@ -47,6 +52,9 @@ export const createLiveHistoryRuntimePlugin = definePluginCreator<
   },
   onInit(ctx, options) {
     const svc = ctx.get<LiveHistoryRuntimeService>(WorkflowRuntimeService);
+    if (typeof options.onTerminal === 'function') {
+      svc.setOnTerminal(options.onTerminal);
+    }
     svc.subscribe(options.runID, options.workflowId);
   },
   onDispose() {
