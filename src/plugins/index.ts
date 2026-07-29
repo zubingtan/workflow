@@ -4,6 +4,10 @@
  */
 
 export { createContextMenuPlugin } from './context-menu-plugin';
-export { createRuntimePlugin, createHistoryRuntimePlugin } from './runtime-plugin';
+export {
+  createRuntimePlugin,
+  createHistoryRuntimePlugin,
+  createLiveHistoryRuntimePlugin,
+} from './runtime-plugin';
 export { createVariablePanelPlugin } from './variable-panel-plugin';
 export { createPanelManagerPlugin } from './panel-manager-plugin';

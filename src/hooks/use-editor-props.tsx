@@ -32,6 +32,7 @@ import { WorkflowRuntimeService } from '../plugins/runtime-plugin/runtime-servic
 import {
   createRuntimePlugin,
   createHistoryRuntimePlugin,
+  createLiveHistoryRuntimePlugin,
   createContextMenuPlugin,
   createVariablePanelPlugin,
   createPanelManagerPlugin,
@@ -48,6 +49,10 @@ export interface UseEditorPropsOptions {
   historyReport?: IReport;
   /** The runID the historyReport belongs to (for display only). */
   historyRunID?: string;
+  /** #181: live-running run ID. When present (and no historyReport), the
+   * editor renders readonly with LiveHistoryRuntimeService subscribed to SSE. */
+  liveRunID?: string;
+  liveWorkflowId?: string;
 }
 
 export function useEditorProps(
@@ -80,8 +85,9 @@ export function useEditorProps(
        * Phase 8 (#160): history view forces readonly so all edit affordances
        * (drag, add-node, delete, form inputs) are auto-disabled by the
        * existing gates documented in research/readonly-editor-history.md §1c.
+       * #181: live-running view also forces readonly.
        */
-      readonly: !!history?.historyReport,
+      readonly: !!(history?.historyReport || history?.liveRunID),
       /**
        * Line support both-way connection (default true)
        * 线条支持双向连接
@@ -395,8 +401,16 @@ export function useEditorProps(
          * Phase 8 (#160): in history view, swap to the read-only
          * StaticHistoryRuntimeService (no polling, no taskRun) so the canvas
          * renders the historical terminal snapshot.
+         *
+         * #181: in live-running view, swap to LiveHistoryRuntimeService which
+         * subscribes to the SSE event stream and fires per-node progress.
          */
-        history?.historyReport
+        history?.liveRunID && history?.liveWorkflowId
+          ? createLiveHistoryRuntimePlugin({
+              runID: history.liveRunID,
+              workflowId: history.liveWorkflowId,
+            })
+          : history?.historyReport
           ? createHistoryRuntimePlugin({
               report: history.historyReport,
               runID: history.historyRunID,
