@@ -99,6 +99,10 @@ function workflowHashFromSchema(schema) {
  * @param {(workflowId: string, runID: string) => number} [deps.getRunQueuePosition]
  *   Phase 3: 1-based queue position for a queued run (0 if running/terminal/missing).
  *   Used by GET /api/runs/:runID to show "Queued, position N" in the Test Run panel.
+ * @param {(runID: string) => object | null} [deps.getRunningReport]
+ *   #179: the latest intermediate IReport for a running run, or null. Used by
+ *   the SSE init frame to catch up a late subscriber on the current per-node
+ *   state (which node is Processing). Null for queued/terminal/missing runs.
  * @param {object} [deps.eventBus] - Phase 5 SSE bus for run status broadcasts.
  *   Optional — if absent, the SSE endpoint returns 503 (disabled). Tests pass
  *   a fake bus to exercise the SSE endpoint without a real HTTP server.
@@ -116,6 +120,7 @@ export function createApp({
   cancelQueuedRun,
   cancelRunningRun,
   getRunQueuePosition,
+  getRunningReport,
   eventBus,
 }) {
   const app = new Hono();
@@ -559,14 +564,31 @@ export function createApp({
         // started) immediately reflects the correct Delete-button state.
         // Without this, the hook's count stays 0 until the next run_status
         // event arrives — which may never come for an already-running run.
+        //
+        // #179: the init frame now also carries the latest intermediate
+        // IReport for each running run (via queue.getCurrentReport) so a late
+        // subscriber opening a ReadonlyViewer mid-run immediately sees which
+        // node is Processing — without this, the subscriber would only see
+        // FUTURE run_progress events and miss the current state. The report
+        // is null for queued runs (no per-node state yet) and for runs where
+        // the queue hasn't polled yet (first poll is 500ms after dequeue).
+        // `activeRunIDs` (string[]) is kept for backward-compat with existing
+        // consumers (useActiveRunCounts); new consumers read `activeRuns`.
         try {
-          const activeIds = db
+          const activeRows = db
             .prepare(
-              "SELECT id FROM workflow_runs WHERE workflow_id=? AND status IN ('queued','running')"
+              "SELECT id, status FROM workflow_runs WHERE workflow_id=? AND status IN ('queued','running')"
             )
-            .all(workflowId)
-            .map((r) => r.id);
-          const initPayload = JSON.stringify({ type: "init", activeRunIDs: activeIds });
+            .all(workflowId);
+          const activeRunIDs = activeRows.map((r) => r.id);
+          const activeRuns = activeRows.map((r) => ({
+            runID: r.id,
+            status: r.status,
+            report: r.status === "running" && typeof getRunningReport === "function"
+              ? (getRunningReport(r.id) ?? null)
+              : null,
+          }));
+          const initPayload = JSON.stringify({ type: "init", activeRunIDs, activeRuns });
           controller.enqueue(encoder.encode(`data: ${initPayload}\n\n`));
         } catch (initErr) {
           console.error("[runs/events] init frame failed", initErr);

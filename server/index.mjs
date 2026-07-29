@@ -140,6 +140,7 @@ const app = createApp({
     return queueAdapter.cancelTask({ taskID });
   },
   getRunQueuePosition: (workflowId, runID) => runQueue.getQueuePosition(workflowId, runID),
+  getRunningReport: (runID) => runQueue.getCurrentReport(runID),
   eventBus,
 });
 

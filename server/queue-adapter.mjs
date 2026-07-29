@@ -74,11 +74,18 @@ function classifyTerminal(report) {
  * carrying the report forward from the poll that detected termination, we
  * avoid the second fetch entirely.
  *
+ * #179: `onProgress(report)` is invoked on each non-terminal poll tick with
+ * the full IReport. The caller (queue.mjs) caches it on `wf.current.lastReport`
+ * for late-subscriber catch-up AND broadcasts a `run_progress` SSE event when
+ * per-node status/snapshot-length changes. The terminal tick does NOT fire
+ * onProgress — the terminal report is delivered via `run_terminal` (broadcast
+ * by onTerminal after the DB write).
+ *
  * This mirrors the browser's syncTaskReport loop (runtime-service/index.ts)
  * but server-side — the browser polls to update the Test Run panel; the
  * server polls to observe terminal for the queue's onTerminal callback.
  */
-function pollUntilTerminal(taskID) {
+function pollUntilTerminal(taskID, onProgress) {
   return new Promise((resolve, reject) => {
     const interval = setInterval(async () => {
       try {
@@ -97,6 +104,20 @@ function pollUntilTerminal(taskID) {
           // Carry the full report so onTerminal doesn't need to re-fetch
           // (the runtime may have GC'd it by the time onTerminal runs).
           resolve({ ...classifyTerminal(report), _report: report });
+        } else if (typeof onProgress === "function") {
+          // Non-terminal tick: surface the intermediate report so the caller
+          // can cache it + broadcast node progress. Errors here must NOT crash
+          // the poll loop — onProgress is best-effort (SSE broadcast failure
+          // shouldn't fail the run).
+          try {
+            onProgress(report);
+          } catch (progressErr) {
+            console.error(
+              "[queue-adapter] onProgress callback failed for task",
+              taskID,
+              progressErr
+            );
+          }
         }
       } catch (err) {
         clearInterval(interval);
@@ -257,8 +278,12 @@ export function createQueueAdapter(db, eventBus) {
     /**
      * Start a run via TaskRunAPI. Returns {taskID, done} — taskID is captured
      * synchronously (after TaskRunAPI resolves), done settles at terminal.
+     *
+     * #179: `onProgress(report)` is forwarded to pollUntilTerminal; the queue
+     * (queue.mjs dequeue) passes a callback that caches the report on
+     * wf.current.lastReport and broadcasts run_progress SSE events.
      */
-    async runTask(workflowId, runID, payload) {
+    async runTask(workflowId, runID, payload, onProgress) {
       const { schema, inputs } = payload;
       const result = await TaskRunAPI({ schema, inputs });
       const taskID = result?.taskID;
@@ -267,7 +292,7 @@ export function createQueueAdapter(db, eventBus) {
       }
       // `done` settles when the run reaches a terminal state (poll-based).
       // The queue's wall-clock guard is the backstop if this never settles.
-      const done = pollUntilTerminal(taskID);
+      const done = pollUntilTerminal(taskID, onProgress);
       return { taskID, done };
     },
 

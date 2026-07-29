@@ -200,7 +200,8 @@ test("GET /api/workflows/:id/runs/events opens an SSE stream and writes initial 
   assert.equal(res.headers.get("Connection"), "keep-alive");
 
   // The bus writes an initial :ping to flush headers, then the endpoint
-  // writes an `init` frame with the current active-run IDs (Phase 10 #162).
+  // writes an `init` frame with the current active-run IDs (Phase 10 #162)
+  // AND activeRuns (#179: per-run report for late-subscriber catch-up).
   // Both may arrive in the same chunk or separate chunks — accumulate text
   // until we've seen both.
   const reader = res.body.getReader();
@@ -214,7 +215,61 @@ test("GET /api/workflows/:id/runs/events opens an SSE stream and writes initial 
   assert.ok(text.includes(":ping\n\n"), "initial :ping flushed headers");
   assert.ok(text.includes('"type":"init"'), "init frame sent after subscribe");
   assert.ok(text.includes('"activeRunIDs":[]'), "init frame carries empty activeRunIDs for fresh wf");
+  assert.ok(text.includes('"activeRuns":[]'), "#179 init frame carries empty activeRuns for fresh wf");
   await reader.cancel();
+});
+
+test("#179 init frame carries activeRuns with per-run report for running runs (late-subscriber catch-up)", async () => {
+  const { db, dir } = setupDb();
+  const eventBus = createRunsEventBus();
+  // Seed one queued + one running run.
+  db.prepare(
+    "INSERT INTO workflow_runs (id, workflow_id, status, queued_at) VALUES ('run_q', 'wf_1', 'queued', datetime('now'))"
+  ).run();
+  db.prepare(
+    "INSERT INTO workflow_runs (id, workflow_id, status, queued_at, started_at) VALUES ('run_r', 'wf_1', 'running', datetime('now'), datetime('now'))"
+  ).run();
+  // Fake getRunningReport: returns a per-node report only for run_r.
+  const fakeReport = {
+    id: "r",
+    workflowStatus: { status: "processing", terminated: false, startTime: 1, timeCost: 0 },
+    reports: { nodeA: { id: "nodeA", status: "processing", terminated: false, startTime: 1, timeCost: 0, snapshots: [] } },
+    inputs: {},
+    outputs: {},
+    messages: {},
+  };
+  const app = createApp({
+    db,
+    agentDir: dir,
+    eventBus,
+    getRunningReport: (runID) => (runID === "run_r" ? fakeReport : null),
+  });
+
+  const res = await app.fetch(
+    new Request("http://localhost/api/workflows/wf_1/runs/events")
+  );
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  while (!text.includes('"type":"init"')) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    text += decoder.decode(value, { stream: true });
+  }
+  await reader.cancel();
+
+  // Parse the init frame's data payload.
+  const initDataLine = text.split("\n").find((l) => l.startsWith("data: ") && l.includes('"type":"init"'));
+  assert.ok(initDataLine, "init frame present");
+  const init = JSON.parse(initDataLine.slice("data: ".length));
+  assert.deepEqual(init.activeRunIDs, ["run_q", "run_r"], "activeRunIDs lists both active runs");
+  assert.equal(init.activeRuns.length, 2, "activeRuns has one entry per active run");
+  const qRun = init.activeRuns.find((r) => r.runID === "run_q");
+  const rRun = init.activeRuns.find((r) => r.runID === "run_r");
+  assert.equal(qRun.status, "queued");
+  assert.equal(qRun.report, null, "queued run has null report (no per-node state yet)");
+  assert.equal(rRun.status, "running");
+  assert.deepEqual(rRun.report, fakeReport, "running run carries the cached IReport for late-subscriber catch-up");
 });
 
 test("GET /api/workflows/:id/runs/events returns 404 for a missing workflow", async () => {

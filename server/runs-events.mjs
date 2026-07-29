@@ -13,11 +13,23 @@
  * Events:
  *   - run_status: {type:'run_status', runID, status, queued_at?, started_at?}
  *       Broadcast on enqueue (queued), dequeue (running), cancelQueued (terminated).
+ *   - run_progress: {type:'run_progress', runID, report: IReport}
+ *       #179: broadcast on each server-side poll tick where per-node status or
+ *       snapshot count changed. Carries the full intermediate IReport so
+ *       clients can reuse their updateReport logic. NOT fired on the terminal
+ *       tick — the terminal report is delivered via run_terminal. Source: the
+ *       queue's onProgress callback (pollUntilTerminal → runTask → dequeue).
  *   - run_terminal: {type:'run_terminal', runID, status, report, schema_snapshot, ended_at}
  *       Broadcast from onTerminal after the DB row is written.
  *   - workflow_deleted: {type:'workflow_deleted', workflowId}
  *       Broadcast via broadcastAll when a workflow is deleted (Phase 6 wires
  *       this into DELETE /api/workflows/:id).
+ *
+ * Init frame (sent once on subscribe, not via broadcast):
+ *   {type:'init', activeRunIDs: string[], activeRuns: Array<{runID, status, report}>}
+ *   #179: `activeRuns` carries the latest intermediate IReport for each running
+ *   run (via queue.getCurrentReport) so a late subscriber immediately sees the
+ *   current per-node state. `activeRunIDs` is kept for backward-compat.
  *
  * Out of scope: cross-server broadcast (single-process only; no Redis).
  */
