@@ -38,6 +38,14 @@ export class WorkflowRuntimeServerClient implements IRuntimeClient {
     this.config = config;
   }
 
+  /**
+   * #180: expose the configured workflowId so WorkflowRuntimeService can
+   * subscribe to the per-workflow SSE event stream. Undefined for draft runs.
+   */
+  public getWorkflowId(): string | undefined {
+    return this.config.workflowId;
+  }
+
   public async [FlowGramAPIName.TaskRun](input: TaskRunInput): Promise<TaskRunOutput | undefined> {
     // Merge workflowId into the body when configured (saved-workflow path).
     // Backend: POST /api/task/run splits on body.workflowId presence
