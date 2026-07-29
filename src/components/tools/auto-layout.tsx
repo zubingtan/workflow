@@ -8,9 +8,10 @@ import { useCallback } from 'react';
 import { usePlayground, usePlaygroundTools } from '@flowgram.ai/free-layout-editor';
 import { IconButton, Tooltip } from '@douyinfe/semi-ui';
 
+import { LayoutDirection } from '../../assets/icon-layout-direction';
 import { IconAutoLayout } from '../../assets/icon-auto-layout';
 
-export const AutoLayout = () => {
+export const AutoLayout = ({ direction }: { direction: LayoutDirection }) => {
   const tools = usePlaygroundTools();
   const playground = usePlayground();
   const autoLayout = useCallback(async () => {
@@ -22,13 +23,13 @@ export const AutoLayout = () => {
       enableAnimation: true,
       animationDuration: 1000,
       layoutConfig: {
-        rankdir: 'LR',
+        rankdir: direction,
         align: undefined,
         nodesep: 100,
         ranksep: 100,
       },
     });
-  }, [tools]);
+  }, [tools, direction]);
 
   return (
     <Tooltip content={'Auto Layout'}>
@@ -38,6 +39,7 @@ export const AutoLayout = () => {
         theme="borderless"
         onClick={autoLayout}
         icon={IconAutoLayout}
+        aria-label="Auto Layout"
       />
     </Tooltip>
   );
