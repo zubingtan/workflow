@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 
 import { debounce } from 'lodash-es';
 import { IReport } from '@flowgram.ai/runtime-interface';
@@ -53,6 +53,10 @@ export interface UseEditorPropsOptions {
    * editor renders readonly with LiveHistoryRuntimeService subscribed to SSE. */
   liveRunID?: string;
   liveWorkflowId?: string;
+  /** #182: callback invoked when the live SSE stream delivers run_terminal.
+   * The ReadonlyViewer uses this to refetch + remount in static mode without
+   * opening a second SSE connection (HTTP/1.1 connection exhaustion fix). */
+  onLiveTerminal?: () => void;
 }
 
 export function useEditorProps(
@@ -63,6 +67,13 @@ export function useEditorProps(
   workflowId?: string,
   history?: UseEditorPropsOptions
 ): FreeLayoutProps {
+  // #182: keep the latest onLiveTerminal in a ref so the empty-deps useMemo
+  // (which captures the plugin config at mount time) always invokes the
+  // current callback. Without this, a re-render with a new callback closure
+  // (e.g. after detail state changes) would be ignored.
+  const onLiveTerminalRef = useRef(history?.onLiveTerminal);
+  onLiveTerminalRef.current = history?.onLiveTerminal;
+
   return useMemo<FreeLayoutProps>(
     () => ({
       /**
@@ -409,6 +420,10 @@ export function useEditorProps(
           ? createLiveHistoryRuntimePlugin({
               runID: history.liveRunID,
               workflowId: history.liveWorkflowId,
+              // #182: pass a wrapper that reads from the ref so the plugin
+              // always calls the latest onLiveTerminal (the ref is updated on
+              // every render, but the plugin config is captured once at mount).
+              onTerminal: () => onLiveTerminalRef.current?.(),
             })
           : history?.historyReport
           ? createHistoryRuntimePlugin({

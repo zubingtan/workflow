@@ -24,6 +24,7 @@ export const Editor = ({
   historyRunID,
   liveRunID,
   liveWorkflowId,
+  onLiveTerminal,
 }: {
   data: FlowDocumentJSON;
   ctxRef?: { current: any };
@@ -37,6 +38,10 @@ export const Editor = ({
    * editor renders readonly with LiveHistoryRuntimeService subscribed to SSE. */
   liveRunID?: string;
   liveWorkflowId?: string;
+  /** #182: callback invoked when the live SSE stream delivers run_terminal.
+   * The ReadonlyViewer uses this to refetch + remount in static mode without
+   * opening a second SSE connection (HTTP/1.1 connection exhaustion fix). */
+  onLiveTerminal?: () => void;
 }) => {
   const editorProps = useEditorProps(
     data,
@@ -45,7 +50,7 @@ export const Editor = ({
     onDirty,
     workflowId,
     liveRunID
-      ? { liveRunID, liveWorkflowId }
+      ? { liveRunID, liveWorkflowId, onLiveTerminal }
       : historyReport
       ? { historyReport, historyRunID }
       : undefined

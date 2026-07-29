@@ -75,8 +75,17 @@ export function HistoryModal({
   // SSE incremental updates while visible. One EventSource per open Modal —
   // the manager's useActiveRunCounts subscription drops this workflowId while
   // the Modal is open (§5 coordination: only one EventSource per workflow).
+  //
+  // #182: close the SSE while the ReadonlyViewer overlay is open
+  // (selectedRunID !== null). The viewer covers the Modal and doesn't need
+  // row updates; the LiveHistoryRuntimeService inside the viewer opens its
+  // own SSE for the same workflow. Keeping both open would exceed Chrome's
+  // HTTP/1.1 6-connection-per-origin limit (5 useActiveRunCounts + 1 Modal
+  // + 1 viewer = 7 > 6) and cause getRun fetches to hang. When the viewer
+  // closes, this effect re-runs (selectedRunID dep) and reopens the SSE;
+  // the init frame reconciles any state missed while closed.
   useEffect(() => {
-    if (!visible || !workflowId) return;
+    if (!visible || !workflowId || selectedRunID) return;
     const url = `${api.SERVER_URL}/api/workflows/${workflowId}/runs/events`;
     const es = new EventSource(url);
 
@@ -126,7 +135,7 @@ export function HistoryModal({
     return () => {
       es.close();
     };
-  }, [visible, workflowId]);
+  }, [visible, workflowId, selectedRunID]);
 
   const onCancelRun = async (runID: string) => {
     try {
