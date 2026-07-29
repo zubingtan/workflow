@@ -88,18 +88,22 @@ export const DemoTools = () => {
         <DownloadTool />
         <Divider layout="vertical" style={{ height: '16px' }} margin={3} />
         <AddNode disabled={playground.config.readonly} />
+        <Divider layout="vertical" style={{ height: '16px' }} margin={3} />
         {/* Phase 7 (#159): History entry — to the RIGHT of Add Node per spec.
             Phase 8 (#160): hidden in history view (the viewer is already the
             history detail; reopening the Modal from inside it is a no-op footgun). */}
         {!isHistoryView && (
           <Button
             icon={<IconHistory />}
-            theme="borderless"
-            size="small"
+            color="highlight"
+            style={{
+              backgroundColor: 'var(--app-color-primary-light-default)',
+              borderRadius: 'var(--app-radius-md)',
+            }}
             disabled={!workflowId}
             onClick={() => setHistoryVisible(true)}
           >
-            历史
+            History
           </Button>
         )}
         <Divider layout="vertical" style={{ height: '16px' }} margin={3} />
