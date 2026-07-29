@@ -38,41 +38,31 @@ const REPORT_POLL_INTERVAL_MS = 500;
  * Map a FlowGram TaskReport's workflowStatus to the queue's terminal result
  * shape ({status, reason?}). The queue passes this to onTerminal.
  *
- * FlowGram StatusData (runtime-interface/dist/index.d.ts):
+ * StatusData (runtime-interface/dist/index.d.ts:300-306):
  *   { status: "pending"|"processing"|"succeeded"|"failed"|"canceled",
  *     terminated: boolean, startTime, endTime?, timeCost }
+ *
  * The queue's terminal statuses are the #141 merged set:
  * succeeded | failed | terminated (canceled → terminated).
  */
 function classifyTerminal(report) {
   const s = report?.workflowStatus ?? {};
-  // StatusData.status is the string enum; StatusData.terminated is the boolean
-  // "workflow is done" flag. We prefer the string for classification, but fall
-  // back to terminated=true + messages for defensive handling.
   if (s.status === "succeeded") return { status: "succeeded" };
-  if (s.status === "canceled") return { status: "terminated", reason: "cancelled" };
+  if (s.status === "canceled") {
+    return { status: "terminated", reason: "cancelled" };
+  }
   if (s.status === "failed") {
     const reason = report?.messages?.error?.[0]?.message ?? "failed";
     return { status: "failed", reason };
   }
-  // Defensive: if workflowStatus.terminated is true but status isn't one of the
-  // known terminal values, treat as failed (shouldn't happen — poll loop only
-  // resolves when terminated=true).
-  if (s.terminated) return { status: "failed", reason: "unknown_terminal" };
+  // Defensive: if workflowStatus is not terminal but TaskReportAPI returned,
+  // treat as failed (shouldn't happen — poll loop only resolves on terminal).
   return { status: "failed", reason: "unknown_terminal" };
 }
 
 /**
  * Poll TaskReportAPI until the run reaches a terminal state, then resolve
- * with the classified terminal result AND the full TaskReport. Rejects if
- * TaskReportAPI errors.
- *
- * The full report is included so `onTerminal` can write it to the DB without
- * re-fetching — the runtime may GC the in-memory task between poll and
- * onTerminal (observed in E2E: `app.report(taskID)` returns undefined after
- * the task finishes, even though the task is still in the tasks Map). By
- * carrying the report forward from the poll that detected termination, we
- * avoid the second fetch entirely.
+ * with the classified terminal result. Rejects if TaskReportAPI errors.
  *
  * This mirrors the browser's syncTaskReport loop (runtime-service/index.ts)
  * but server-side — the browser polls to update the Test Run panel; the
@@ -88,15 +78,13 @@ function pollUntilTerminal(taskID) {
           reject(new Error("TaskReportAPI returned null"));
           return;
         }
-        // StatusData.terminated is true once the workflow reaches a terminal
-        // state (succeeded/failed/canceled). Polling until terminated=true
-        // mirrors the browser's syncTaskReport (runtime-service/index.ts:270).
+        // Terminal when StatusData.terminated is true OR status is one of the
+        // terminal enum values. Both checks: `terminated` is authoritative,
+        // but `status` covers any implementation that sets it earlier.
         const s = report.workflowStatus ?? {};
-        if (s.terminated) {
+        if (s.terminated || s.status === "succeeded" || s.status === "failed" || s.status === "canceled") {
           clearInterval(interval);
-          // Carry the full report so onTerminal doesn't need to re-fetch
-          // (the runtime may have GC'd it by the time onTerminal runs).
-          resolve({ ...classifyTerminal(report), _report: report });
+          resolve(classifyTerminal(report));
         }
       } catch (err) {
         clearInterval(interval);
@@ -149,36 +137,31 @@ export function createCapturingOnTerminal(db, fetchTaskReport = TaskReportAPI, e
     try {
       const status = result.status; // succeeded | failed | terminated
 
-      // --- Obtain the terminal TaskReport ---
-      // Phase 10 (#162): prefer the report carried forward from
-      // pollUntilTerminal (result._report) — the runtime may return undefined
-      // from a second fetch (observed in E2E: app.report(taskID) returns
-      // undefined after the task finishes, even though the task object is
-      // still in the tasks Map). Fall back to fetchTaskReport only if the
-      // carried report is absent (e.g. wall-clock zombie path where
-      // pollUntilTerminal didn't resolve).
+      // --- Fetch the terminal TaskReport (if taskID available) ---
       let reportJson = null;
-      let report = result._report ?? null;
-      if (!report && result.taskID) {
+      if (result.taskID) {
         try {
-          report = await fetchTaskReport(result.taskID);
+          const report = await fetchTaskReport(result.taskID);
+          if (report) {
+            // Merge the queue's classification reason into the report JSON
+            // (e.g. wall_clock_zombie, run_error, cancelled) so the history
+            // viewer can show why the run ended up in this state.
+            const merged = { ...report };
+            if (result.reason) merged.reason = result.reason;
+            reportJson = JSON.stringify(merged);
+          } else if (result.reason) {
+            // No TaskReport but we have a reason — write a minimal report.
+            reportJson = JSON.stringify({ reason: result.reason });
+          }
         } catch {
           // TaskReport fetch failed — write a minimal report with the reason.
           if (result.reason) {
             reportJson = JSON.stringify({ reason: result.reason });
           }
-          report = null;
         }
-      }
-      if (report) {
-        // Merge the queue's classification reason into the report JSON
-        // (e.g. wall_clock_zombie, run_error, cancelled) so the history
-        // viewer can show why the run ended up in this state.
-        const merged = { ...report };
-        if (result.reason) merged.reason = result.reason;
-        reportJson = JSON.stringify(merged);
       } else if (result.reason) {
-        // No TaskReport but we have a reason — write a minimal report.
+        // No taskID (e.g. run_start_error before taskID was assigned) —
+        // write a minimal report with just the reason.
         reportJson = JSON.stringify({ reason: result.reason });
       }
 
@@ -280,7 +263,16 @@ export function createQueueAdapter(db, eventBus) {
      * Phase 4: capture the full terminal snapshot into workflow_runs.
      * Phase 5: broadcast run_terminal to SSE subscribers (if eventBus provided).
      * Delegates to `createCapturingOnTerminal` (shared with tests).
+     *
+     * The shared capture callback calls `fetchTaskReport(taskID)` with a bare
+     * string (tests inject a fake matching that shape). FlowGram's
+     * `TaskReportAPI` expects `{taskID}` — wrap it here so the shared logic
+     * stays test-friendly.
      */
-    onTerminal: createCapturingOnTerminal(db, TaskReportAPI, eventBus),
+    onTerminal: createCapturingOnTerminal(
+      db,
+      (taskID) => TaskReportAPI({ taskID }),
+      eventBus
+    ),
   };
 }
