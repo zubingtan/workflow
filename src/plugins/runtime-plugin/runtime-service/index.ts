@@ -20,10 +20,10 @@ import {
   Emitter,
 } from '@flowgram.ai/free-layout-editor';
 
-import { WorkflowRuntimeClient } from '../client';
+import { WorkflowRuntimeClient, WorkflowRuntimeServerClient } from '../client';
 import { GetGlobalVariableSchema } from '../../variable-panel-plugin';
 import { WorkflowNodeType } from '../../../nodes';
-import { cancelRun, getRunStatus } from '../../../api';
+import { cancelRun, getRunStatus, SERVER_URL } from '../../../api';
 
 const SYNC_TASK_REPORT_INTERVAL = 500;
 const SYNC_RUN_STATUS_INTERVAL = 500;
@@ -66,6 +66,13 @@ export class WorkflowRuntimeService {
   private syncTaskReportIntervalID?: ReturnType<typeof setInterval>;
 
   private syncRunStatusIntervalID?: ReturnType<typeof setInterval>;
+
+  // #180: SSE subscription for saved-workflow runs. Replaces the
+  // syncRunStatus + syncTaskReport polling loops. Undefined for draft runs
+  // (which keep the polling path as tech-debt per #179).
+  // Protected so LiveHistoryRuntimeService (#181) can reuse the same field
+  // instead of redeclaring it (avoids TS2415 "separate declarations" error).
+  protected eventSource?: EventSource;
 
   private reportEmitter = new Emitter<NodeReport>();
 
@@ -158,9 +165,19 @@ export class WorkflowRuntimeService {
     // {taskID, runID: taskID, status:'running'}.
     if (status === 'queued' && runID) {
       this.runID = runID;
-      this.syncRunStatusIntervalID = setInterval(() => {
-        this.syncRunStatus();
-      }, SYNC_RUN_STATUS_INTERVAL);
+      // #180: subscribe to SSE for saved-workflow runs. The SSE stream
+      // delivers run_status (queued→running), run_progress (per-node), and
+      // run_terminal (terminal) events, replacing the 500ms polling loops.
+      // Draft runs (no workflowId) fall through to the taskID polling path.
+      const workflowId = this.getWorkflowId();
+      if (workflowId) {
+        this.subscribeToRunEvents(runID, workflowId);
+      } else {
+        // Tech-debt: draft runs can't use SSE (no workflow to subscribe to).
+        this.syncRunStatusIntervalID = setInterval(() => {
+          this.syncRunStatus();
+        }, SYNC_RUN_STATUS_INTERVAL);
+      }
       return runID;
     }
     if (!taskID) {
@@ -190,6 +207,156 @@ export class WorkflowRuntimeService {
     });
   }
 
+  /**
+   * #180: read the saved workflow's id from the server client. Returns
+   * undefined for draft runs (no workflow to subscribe to) — those keep the
+   * polling path as tech-debt per #179.
+   */
+  private getWorkflowId(): string | undefined {
+    const client = this.runtimeClient as unknown as WorkflowRuntimeServerClient;
+    if (typeof client.getWorkflowId === 'function') {
+      return client.getWorkflowId();
+    }
+    return undefined;
+  }
+
+  /**
+   * #180: subscribe to the per-workflow SSE event stream for a saved-workflow
+   * run. Replaces the syncRunStatus (queued→running) + syncTaskReport
+   * (running→terminal) polling loops. Events (from server/runs-events.mjs):
+   *   - init {type:'init', activeRuns:[{runID, status, report}]}
+   *       Late-subscriber catch-up — apply the cached intermediate report.
+   *   - run_status {type:'run_status', runID, status, queued_at?|started_at?}
+   *       'running' = dequeued (no action — SSE delivers progress automatically).
+   *       'terminated' = cancelQueued (no TaskReport) — fire resultEmitter.
+   *   - run_progress {type:'run_progress', runID, report: IReport}
+   *       Per-node diff — call updateReport (handles runningNodes/isFlowingLine
+   *       bookkeeping + reportEmitter firing).
+   *   - run_terminal {type:'run_terminal', runID, status, report, ...}
+   *       Terminal — fire resultEmitter with result/errors, close EventSource.
+   *
+   * Decision (EventSource coordination, #180 §1): the Test Run panel opens
+   * its OWN independent EventSource here — it does NOT reuse the
+   * useActiveRunCounts / History Modal EventSource. Rationale: the editor
+   * view (where Test Run lives) and the manager view (where History Modal
+   * lives) are never mounted simultaneously (different SPA routes in
+   * app.tsx). So the two EventSources can never coexist, and the §5
+   * coordination (one EventSource per workflow) is preserved de facto.
+   * Draft runs (no workflowId) keep the polling path as tech-debt (#179).
+   */
+  private subscribeToRunEvents(runID: string, workflowId: string): void {
+    const url = `${SERVER_URL}/api/workflows/${workflowId}/runs/events`;
+    const es = new EventSource(url);
+    this.eventSource = es;
+
+    es.onmessage = (ev) => {
+      let payload: any;
+      try {
+        payload = JSON.parse(ev.data);
+      } catch {
+        return;
+      }
+      if (!payload || typeof payload !== 'object') return;
+      const { type, runID: evRunID, report, status: evStatus } = payload;
+      // Only process events for the run we started (a workflow may have
+      // multiple concurrent viewers each subscribed to the same stream).
+      if (evRunID && evRunID !== runID) return;
+
+      if (type === 'init' && Array.isArray(payload.activeRuns)) {
+        // Late-subscriber catch-up: apply our run's cached intermediate report
+        // (if any) so node status bars render immediately.
+        for (const ar of payload.activeRuns) {
+          if (ar?.runID === runID && ar.report) {
+            this.updateReport(ar.report);
+          }
+        }
+        return;
+      }
+
+      if (type === 'run_progress' && report) {
+        this.updateReport(report);
+        return;
+      }
+
+      if (type === 'run_status' && evStatus === 'terminated') {
+        // cancelQueued: the run was cancelled while queued — no TaskReport.
+        // Mirror syncRunStatus's terminated path. Clear runID so a subsequent
+        // taskRun doesn't try to cancel an already-terminal run (the backend
+        // would return 409 already_terminal).
+        this.resultEmitter.fire({ errors: ['Run cancelled'] });
+        es.close();
+        this.eventSource = undefined;
+        this.runID = undefined;
+        return;
+      }
+
+      if (type === 'run_terminal') {
+        // Terminal — fire resultEmitter with result or errors, mirroring
+        // syncTaskReport's terminal classification. Clear runID/taskID so a
+        // subsequent taskRun doesn't cancel an already-terminal run.
+        const terminalReport = report;
+        if (terminalReport) {
+          const { outputs, inputs, messages } = terminalReport;
+          if (outputs && Object.keys(outputs).length > 0) {
+            this.resultEmitter.fire({ result: { inputs, outputs } });
+          } else {
+            this.resultEmitter.fire({
+              errors: messages?.error?.map((message: any) =>
+                message.nodeID ? `${message.nodeID}: ${message.message}` : message.message
+              ),
+            });
+          }
+        } else {
+          this.resultEmitter.fire({ errors: ['Run ended with no report'] });
+        }
+        es.close();
+        this.eventSource = undefined;
+        this.runID = undefined;
+        this.taskID = undefined;
+      }
+    };
+
+    es.onerror = () => {
+      // EventSource auto-reconnects on transient errors — leave it alone so
+      // late events (e.g. run_terminal) still arrive after a blip.
+      //
+      // BUT: if the connection drops AFTER the run went terminal, the server
+      // won't rebroadcast run_terminal to a reconnecting client (the init
+      // frame only lists non-terminal active runs). The Test Run panel's own
+      // queuePosition poll only updates queuePosition — it does NOT fire
+      // onResultChanged. So a permanent drop after terminal would leave the
+      // panel stuck on "Running...".
+      //
+      // Mitigation: on each error, poll GET /api/runs/:runID once. If it
+      // shows terminal, fire resultEmitter + close the EventSource (mirrors
+      // the run_terminal path). This is best-effort — if the network is fully
+      // down the poll also fails, but EventSource keeps retrying and the next
+      // successful reconnect's init frame will trigger a fresh status check.
+      if (!runID) return;
+      getRunStatus(runID)
+        .then((res) => {
+          if (
+            res.status === 'succeeded' ||
+            res.status === 'failed' ||
+            res.status === 'terminated'
+          ) {
+            this.resultEmitter.fire(
+              res.status === 'succeeded'
+                ? { result: { inputs: {}, outputs: {} } }
+                : { errors: [res.status === 'terminated' ? 'Run cancelled' : 'Run failed'] }
+            );
+            es.close();
+            this.eventSource = undefined;
+            this.runID = undefined;
+            this.taskID = undefined;
+          }
+        })
+        .catch(() => {
+          // Network still down — EventSource will retry. Leave as-is.
+        });
+    };
+  }
+
   private async validateForm(): Promise<boolean> {
     const allForms = this.document.getAllNodes().map((node) => node.form);
     const formValidations = await Promise.all(allForms.map(async (form) => form?.validate()));
@@ -208,6 +375,11 @@ export class WorkflowRuntimeService {
     }
     if (this.syncRunStatusIntervalID) {
       clearInterval(this.syncRunStatusIntervalID);
+    }
+    // #180: close the SSE subscription if active.
+    if (this.eventSource) {
+      this.eventSource.close();
+      this.eventSource = undefined;
     }
     this.resetEmitter.fire({});
   }

@@ -24,8 +24,6 @@ export { applyRunProgress };
 export class LiveHistoryRuntimeService extends WorkflowRuntimeService {
   private liveRunID?: string;
 
-  private eventSource?: EventSource;
-
   private prevNodeStatus: Map<
     string,
     { nodeID: string; status: string; nodeResultLength: number }

@@ -73,8 +73,8 @@ test.describe('History + serial queue', () => {
     // --- Verify via the editor toolbar entry too ---
     await page.keyboard.press('Escape');
     await wfRow.getByRole('button', { name: 'Open' }).click();
-    await expect(page.getByRole('button', { name: '历史' })).toBeVisible({ timeout: 10_000 });
-    await page.getByRole('button', { name: '历史' }).click();
+    await expect(page.getByRole('button', { name: 'History' })).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: 'History' }).click();
     await expect(page.getByText('运行历史').first()).toBeVisible({ timeout: 5_000 });
   });
 
@@ -87,8 +87,8 @@ test.describe('History + serial queue', () => {
     await page.getByText('Workflows', { exact: true }).first().click();
     const firstRow = page.locator('tbody tr').first();
     await firstRow.getByRole('button', { name: 'Open' }).click();
-    await expect(page.getByRole('button', { name: '历史' })).toBeVisible({ timeout: 10_000 });
-    await page.getByRole('button', { name: '历史' }).click();
+    await expect(page.getByRole('button', { name: 'History' })).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: 'History' }).click();
     await expect(page.getByText('运行历史').first()).toBeVisible({ timeout: 5_000 });
     await page.keyboard.press('Escape');
   });
