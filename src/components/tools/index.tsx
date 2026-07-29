@@ -12,12 +12,15 @@ import { IconUndo, IconRedo, IconHistory } from '@douyinfe/semi-icons';
 
 import { TestRunButton } from '../testrun/testrun-button';
 import { AddNode } from '../add-node';
+import { IsHistoryViewContext } from '../../context';
+import { LayoutDirection } from '../../assets/icon-layout-direction';
 import { ZoomSelect } from './zoom-select';
 import { SwitchLine } from './switch-line';
 import { ToolContainer, ToolSection } from './styles';
 import { Readonly } from './readonly';
 import { MinimapSwitch } from './minimap-switch';
 import { Minimap } from './minimap';
+import { LayoutDirectionSwitch } from './layout-direction';
 import { Interactive } from './interactive';
 import { FitView } from './fit-view';
 import { Comment } from './comment';
@@ -26,7 +29,6 @@ import { ProblemButton } from '../problem-panel';
 import { DownloadTool } from './download';
 import { useWorkflowId } from '../workflow-context';
 import { HistoryModal } from '../history-modal';
-import { IsHistoryViewContext } from '../../context';
 
 export const DemoTools = () => {
   const { history, playground } = useClientContext();
@@ -34,6 +36,10 @@ export const DemoTools = () => {
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [minimapVisible, setMinimapVisible] = useState(true);
+  // #190: Layout direction for the toolbar Auto Layout button. 'LR' is the
+  // default to preserve existing behavior; the toggle flips between 'LR'
+  // (horizontal) and 'TB' (vertical). Per-session only — no persistence.
+  const [layoutDirection, setLayoutDirection] = useState<LayoutDirection>('LR');
   // Phase 7 (#159): History Modal entry from the editor toolbar.
   const workflowId = useWorkflowId();
   const [historyVisible, setHistoryVisible] = useState(false);
@@ -55,7 +61,8 @@ export const DemoTools = () => {
     <ToolContainer className="workflow-tools">
       <ToolSection>
         <Interactive />
-        <AutoLayout />
+        <AutoLayout direction={layoutDirection} />
+        <LayoutDirectionSwitch direction={layoutDirection} setDirection={setLayoutDirection} />
         <SwitchLine />
         <ZoomSelect />
         <FitView />
