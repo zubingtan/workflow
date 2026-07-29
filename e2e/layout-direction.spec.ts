@@ -5,17 +5,22 @@ import { buildWorkflowSchema, createAgent, createWorkflow } from './helpers';
 /**
  * #190 E2E: editor canvas layout direction switch.
  *
- * Acceptance: clicking the Layout Direction toggle flips the axis the
- * next Auto Layout reflow uses. The test asserts the axis-of-spread
- * (range of x vs range of y across the three nodes) flips from
- * horizontal-dominant (initial seed) to vertical-dominant after
- * toggle + reflow.
+ * Acceptance:
+ *  - Test 1: clicking the Layout Direction toggle rotates all port anchors
+ *    AND reflows the canvas in one atomic action. After toggle: nodes are
+ *    stacked vertically (y-spread > x-spread), and connection lines still
+ *    exist (proving the port rotation did not break connectivity).
+ *  - Test 2: after switching to vertical, a newly-added node's connection
+ *    line starts from the node's bottom edge (vertical line) rather than
+ *    its right edge — proving the new node's output port is on the bottom
+ *    (the ADD_NODE listener in useEditorProps rotated it to match TB).
  *
  * FlowGram's free-layout-editor positions each node by setting inline
  * `style.left` / `style.top` (in canvas-space px) on the
- * `.gedit-flow-activity-node[data-node-id="..."]` element. These values
- * are independent of the parent render layer's zoom transform, so they
- * are the correct source of truth for canvas-space coordinates.
+ * `.gedit-flow-activity-node[data-node-id="..."]` element. Connection lines
+ * render as `<g class="gedit-flow-activity-edge">` wrappers whose inline
+ * style carries `left`/`top`/`width`/`height` of the line bounding box; a
+ * vertical line has height > width.
  */
 const NODE_IDS = ['start_0', 'llm_main', 'end_0'] as const;
 
@@ -65,9 +70,7 @@ function axisSpread(positions: Record<string, XY>): { xRange: number; yRange: nu
 }
 
 test.describe('Layout direction switch (#190)', () => {
-  test('toggling direction then Auto Layout flips the reflow axis from horizontal to vertical', async ({
-    page,
-  }) => {
+  test('toggle rotates ports + reflows canvas + keeps lines connected', async ({ page }) => {
     const agentId = await createAgent();
     const schema = buildWorkflowSchema(agentId, 'Layout direction E2E');
     const wfName = `E2E Layout Direction ${Date.now()}`;
@@ -93,23 +96,96 @@ test.describe('Layout direction switch (#190)', () => {
     expect(beforeSpread.xRange).toBeGreaterThan(beforeSpread.yRange);
 
     // --- Click the Layout Direction toggle (LR → TB) ---
+    // This performs the full atomic action: rotateAllPorts + autoLayout(TB)
+    // + fireRender + context update. No separate Auto Layout click needed.
     await page.getByRole('button', { name: /Layout Direction: Horizontal/ }).click();
-
-    // --- Click Auto Layout to trigger a reflow with the new direction ---
-    await page.getByRole('button', { name: 'Auto Layout' }).click();
 
     // Wait for the 1s reflow animation to settle (plus margin).
     await page.waitForTimeout(1800);
 
-    // --- Read post-reflow positions ---
+    // --- Read post-toggle positions ---
     const after = await readNodePositions(page);
     expect(Object.keys(after).length).toBe(3);
     const afterSpread = axisSpread(after);
 
-    // The reflow must have materially flipped the dominant axis: the y-range
-    // now exceeds the x-range (vertical layout), and the y-range grew
-    // relative to before (dagre spreads nodes along the new rank direction).
+    // The reflow must have flipped the dominant axis: y-range now exceeds
+    // x-range (vertical layout), and the y-range grew relative to before.
     expect(afterSpread.yRange).toBeGreaterThan(afterSpread.xRange);
     expect(afterSpread.yRange).toBeGreaterThan(beforeSpread.yRange);
+
+    // --- Connection lines must still exist after the port rotation ---
+    // (proves rotateAllPorts did not break connectivity; fireRender redrew
+    // the lines against the new bottom/top anchors).
+    const lineCount = await page.locator('.gedit-flow-activity-edge').count();
+    expect(lineCount).toBeGreaterThan(0);
+  });
+
+  test('newly-added node follows current direction (output port on bottom)', async ({ page }) => {
+    // Build a single start-node workflow (no edges yet). The toggle will
+    // switch to TB and rotate the start node's output port to the bottom;
+    // the ADD_NODE listener will then rotate the new node's input port to
+    // the top so the connection line is vertical.
+    const startOnlySchema = {
+      nodes: [
+        {
+          id: 'start_0',
+          type: 'start',
+          meta: { position: { x: 200, y: 200 } },
+          data: {
+            title: 'Start',
+            outputs: {
+              type: 'object',
+              properties: { query: { type: 'string', default: 'Hello' } },
+            },
+          },
+        },
+      ],
+      edges: [],
+    };
+    const wfName = `E2E New Node Direction ${Date.now()}`;
+    const workflowId = await createWorkflow(wfName, startOnlySchema);
+
+    await page.goto('/');
+    await page.getByText('Workflows', { exact: true }).first().click();
+    const wfRow = page.locator('tr', { hasText: wfName }).first();
+    await wfRow.getByRole('button', { name: 'Open' }).click();
+
+    await expect(page.locator('[data-node-id="start_0"]')).toBeVisible({ timeout: 10_000 });
+
+    // --- Switch to vertical (TB). This rotates the start node's output
+    // port to the bottom AND sets the context so new nodes inherit TB. ---
+    await page.getByRole('button', { name: /Layout Direction: Horizontal/ }).click();
+    await page.waitForTimeout(1800);
+
+    // --- Click the start node's output port to open the node panel ---
+    // Ports render with data-testid="sdk.workflow.canvas.node.port" and
+    // data-port-entity-type="output". The start node has one output port.
+    const startOutputPort = page
+      .locator('[data-testid="sdk.workflow.canvas.node.port"][data-port-entity-type="output"]')
+      .first();
+    await expect(startOutputPort).toBeVisible({ timeout: 5_000 });
+    await startOutputPort.click();
+
+    // --- Select "llm" from the node panel ---
+    const llmItem = page.locator('[data-testid="demo-free-node-list-llm"]');
+    await expect(llmItem).toBeVisible({ timeout: 5_000 });
+    await llmItem.click();
+
+    // Wait for the new node + its connection line to render.
+    await page.waitForTimeout(800);
+
+    // --- Assert the new connection line is vertical (height > width) ---
+    // The line renders as a `.gedit-flow-activity-edge` div wrapping an
+    // `<svg>` whose `width`/`height` attributes are the line bounding box
+    // (plus PADDING). A vertical line (bottom port → top port) has
+    // height > width; a horizontal line (right port → left port) has
+    // width > height.
+    const lineSvg = page.locator('.gedit-flow-activity-edge svg').first();
+    await expect(lineSvg).toBeVisible({ timeout: 5_000 });
+    const lineDims = await lineSvg.evaluate((el) => {
+      const svg = el as SVGSVGElement;
+      return { width: svg.width.baseVal.value, height: svg.height.baseVal.value };
+    });
+    expect(lineDims.height).toBeGreaterThan(lineDims.width);
   });
 });

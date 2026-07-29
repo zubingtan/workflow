@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-import { useMemo, useRef } from 'react';
+import { useMemo, useRef, type RefObject } from 'react';
 
 import { debounce } from 'lodash-es';
 import { IReport } from '@flowgram.ai/runtime-interface';
@@ -16,12 +16,15 @@ import {
   FlowNodeBaseType,
   FreeLayoutPluginContext,
   FreeLayoutProps,
+  WorkflowContentChangeType,
+  WorkflowDocument,
   WorkflowNodeEntity,
 } from '@flowgram.ai/free-layout-editor';
 import { createFreeGroupPlugin } from '@flowgram.ai/free-group-plugin';
 import { createContainerNodePlugin } from '@flowgram.ai/free-container-plugin';
 import { createDownloadPlugin } from '@flowgram.ai/export-plugin';
 
+import { rotateAllPorts, rotateNodePorts, type LayoutDirection } from '../utils/rotate-ports';
 import { canContainNode, onDragLineEnd } from '../utils';
 import { FlowNodeRegistry, FlowDocumentJSON } from '../typings';
 import { shortcuts } from '../shortcuts';
@@ -65,7 +68,14 @@ export function useEditorProps(
   ctxRef?: { current: FreeLayoutPluginContext | null },
   onDirty?: () => void,
   workflowId?: string,
-  history?: UseEditorPropsOptions
+  history?: UseEditorPropsOptions,
+  /**
+   * #190: stable ref to the current LayoutDirection (kept in sync by
+   * LayoutDirectionProvider). Read by the ADD_NODE listener registered in
+   * onInit so newly-added nodes inherit the current direction's port
+   * anchors. Optional — absent in history/live view (no port rotation).
+   */
+  directionRef?: RefObject<LayoutDirection>
 ): FreeLayoutProps {
   // #182: keep the latest onLiveTerminal in a ref so the empty-deps useMemo
   // (which captures the plugin config at mount time) always invokes the
@@ -276,6 +286,36 @@ export function useEditorProps(
       onInit(ctx) {
         if (ctxRef) {
           ctxRef.current = ctx;
+        }
+        // #190: Register a single ADD_NODE listener that rotates newly-added
+        // nodes' port anchors to match the current layout direction. This
+        // covers all 6 node-creation paths (add-node button, port-click,
+        // line-add-button, drag-line-end, context-menu, comment button) from
+        // one injection point. `directionRef` is a stable ref mirror of the
+        // LayoutDirectionContext value, so this closure (captured once at
+        // init) always reads the latest direction without re-registering.
+        // Skipped in history/live view (no directionRef passed → readonly,
+        // no port rotation needed on a frozen snapshot).
+        if (directionRef) {
+          const doc = ctx.document as WorkflowDocument;
+          doc.onContentChange((event) => {
+            if (event.type !== WorkflowContentChangeType.ADD_NODE) return;
+            const direction = directionRef.current;
+            if (!direction || direction === 'LR') return; // default, no rotation
+            const node = event.entity as WorkflowNodeEntity;
+            rotateNodePorts(node, direction);
+          });
+          // #190: fromJSON sets `changeEntityLocked = true` which suppresses
+          // fireContentChange, so the ADD_NODE listener above does NOT fire
+          // during load. `onLoaded` fires after fromJSON completes — rotate
+          // all ports once here if the persisted direction is TB.
+          doc.onLoaded(() => {
+            const direction = directionRef.current;
+            if (direction === 'TB') {
+              rotateAllPorts(doc, 'TB');
+              doc.fireRender();
+            }
+          });
         }
         console.log('--- Playground init ---');
       },

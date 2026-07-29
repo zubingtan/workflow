@@ -3,7 +3,9 @@
  * SPDX-License-Identifier: MIT
  */
 
-export type LayoutDirection = 'LR' | 'TB';
+import { LayoutDirection } from '../utils/rotate-ports';
+
+export type { LayoutDirection };
 
 /**
  * Layout direction indicator icon. Renders a different arrangement of
@@ -12,6 +14,8 @@ export type LayoutDirection = 'LR' | 'TB';
  *
  * - 'LR' (horizontal): three small boxes arranged left-to-right
  * - 'TB' (vertical): three small boxes arranged top-to-bottom
+ *
+ * Uses `currentColor` (ADR-0002) — no hard-coded colors.
  */
 export const IconLayoutDirection = ({ direction }: { direction: LayoutDirection }) => {
   if (direction === 'TB') {

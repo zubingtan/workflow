@@ -8,12 +8,19 @@ import { useCallback } from 'react';
 import { usePlayground, usePlaygroundTools } from '@flowgram.ai/free-layout-editor';
 import { IconButton, Tooltip } from '@douyinfe/semi-ui';
 
-import { LayoutDirection } from '../../assets/icon-layout-direction';
+import { useLayoutDirection } from '../../hooks/use-layout-direction';
 import { IconAutoLayout } from '../../assets/icon-auto-layout';
 
-export const AutoLayout = ({ direction }: { direction: LayoutDirection }) => {
+/**
+ * #190: Auto Layout reflows the canvas using the current layout direction
+ * (read from `LayoutDirectionContext`). It does NOT rotate port anchors —
+ * that is the Layout Direction toggle's job. This lets users re-tidy the
+ * layout without flipping anchors (User Story #10).
+ */
+export const AutoLayout = () => {
   const tools = usePlaygroundTools();
   const playground = usePlayground();
+  const { direction } = useLayoutDirection();
   const autoLayout = useCallback(async () => {
     if (playground.config.readonly) {
       console.warn('Auto layout is disabled in readonly mode');
@@ -29,7 +36,7 @@ export const AutoLayout = ({ direction }: { direction: LayoutDirection }) => {
         ranksep: 100,
       },
     });
-  }, [tools, direction]);
+  }, [tools, playground, direction]);
 
   return (
     <Tooltip content={'Auto Layout'}>

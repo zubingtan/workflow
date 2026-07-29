@@ -21,6 +21,7 @@ import './theme/theme-dark.css';
 import './theme/flowgram-bridge.css';
 import './styles/index.css';
 
+import { LayoutDirection } from './utils/rotate-ports';
 import { FlowDocumentJSON } from './typings';
 import { useTheme } from './theme';
 import { GetGlobalVariableSchema } from './plugins/variable-panel-plugin';
@@ -69,6 +70,11 @@ function App() {
     action: (() => void) | null;
   }>({ visible: false, action: null });
   const ctxRef = useRef<any>(null);
+  // #190: mirrors the current canvas layout direction so `saveWorkflow` can
+  // persist it into the workflow JSON. Seeded 'LR' (default); the Editor's
+  // LayoutDirectionProvider syncs it to the loaded workflow's direction on
+  // mount and updates it on every toggle.
+  const directionRef = useRef<LayoutDirection>('LR');
   const { resolvedTheme, toggleTheme } = useTheme();
 
   // Seed a default workflow on first launch + restore hash-based route
@@ -136,6 +142,9 @@ function App() {
     try {
       const data = {
         ...ctx.document.toJSON(),
+        // #190: persist the current layout direction so reopening a vertical
+        // workflow keeps both node positions and port anchors vertical.
+        direction: directionRef.current,
         globalVariable: ctx.get(GetGlobalVariableSchema)(),
       };
       await api.updateWorkflow(currentWorkflowId, { data });
@@ -391,6 +400,7 @@ function App() {
                   ctxRef={ctxRef}
                   onDirty={() => setDirty(true)}
                   workflowId={currentWorkflowId ?? undefined}
+                  directionRef={directionRef}
                 />
               ) : (
                 <div style={{ padding: 24 }}>Failed to load workflow.</div>
