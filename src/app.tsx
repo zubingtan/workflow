@@ -303,20 +303,20 @@ function App() {
                   style={{ width: 220 }}
                 />
               ) : (
-                <Typography.Text
-                  strong
+                <span
                   onClick={startRename}
+                  title="Click to rename"
                   style={{
                     cursor: 'pointer',
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: 4,
+                    lineHeight: 'inherit',
                   }}
-                  title="Click to rename"
                 >
-                  {workflowName}
-                  <IconEdit size="small" style={{ opacity: 0.5 }} />
-                </Typography.Text>
+                  <Typography.Text strong>{workflowName}</Typography.Text>
+                  <IconEdit size="small" style={{ opacity: 0.5, flexShrink: 0 }} />
+                </span>
               )}
               <div style={{ marginLeft: 'auto' }}>
                 <Button
@@ -327,7 +327,7 @@ function App() {
                   disabled={!dirty}
                   onClick={saveWorkflow}
                 >
-                  Save Workflow
+                  Save
                 </Button>
               </div>
             </div>
