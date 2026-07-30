@@ -7,6 +7,7 @@ import {
   FlowNodeBaseType,
   WorkflowDocument,
   WorkflowNodeEntity,
+  WorkflowPortEntity,
 } from '@flowgram.ai/free-layout-editor';
 
 /**
@@ -28,6 +29,16 @@ export function rotatePortLocation(
     return portType === 'output' ? 'bottom' : 'top';
   }
   return portType === 'output' ? 'right' : 'left';
+}
+
+/**
+ * Type guard: whether a port is DOM-driven (has a `targetElement` set by
+ * `updateDynamicPorts()`). Such ports are skipped by `rotateAllPorts` /
+ * `rotateNodePorts` because their position is controlled by CSS +
+ * `data-port-location` in the renderer, not by `port.update()`.
+ */
+export function hasTargetElement(port: WorkflowPortEntity): boolean {
+  return !!port.targetElement;
 }
 
 /**
@@ -65,7 +76,7 @@ export function rotateAllPorts(document: WorkflowDocument, direction: LayoutDire
       // Skip dynamic ports (DOM-driven). Their `targetElement` is set by
       // `updateDynamicPorts()` from `[data-port-id]` DOM elements; calling
       // `port.update()` on them gets overwritten on the next size change.
-      if ((port as any).targetElement) continue;
+      if (hasTargetElement(port)) continue;
       const newLocation = rotatePortLocation(port.portType, direction);
       if (port.location !== newLocation) {
         port.update({ location: newLocation } as any);
@@ -83,7 +94,7 @@ export function rotateAllPorts(document: WorkflowDocument, direction: LayoutDire
 export function rotateNodePorts(node: WorkflowNodeEntity, direction: LayoutDirection): void {
   if (isSubCanvasNode(node)) return;
   for (const port of node.ports.allPorts) {
-    if ((port as any).targetElement) continue;
+    if (hasTargetElement(port)) continue;
     const newLocation = rotatePortLocation(port.portType, direction);
     if (port.location !== newLocation) {
       port.update({ location: newLocation } as any);

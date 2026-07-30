@@ -11,10 +11,14 @@ import { ConditionRow, ConditionRowValueType } from '@flowgram.ai/form-materials
 import { Button, Select, Space } from '@douyinfe/semi-ui';
 import { IconCrossCircleStroked, IconDelete, IconPlus } from '@douyinfe/semi-icons';
 
-import { useLayoutDirection } from '../../../hooks/use-layout-direction';
+import { useConditionPortLocation } from '../../condition/condition-inputs/use-condition-port-location';
 import { useNodeRenderContext, useIsSidebar } from '../../../hooks';
 import { Feedback, FormItem } from '../../../form-components';
-import { ConditionBranch, ConditionBranchLogic, ConditionPort } from './styles';
+import {
+  ConditionBranch,
+  ConditionBranchLogic,
+  ConditionPortWithPosition as ConditionPort,
+} from './styles';
 
 interface ConditionValue {
   key: string;
@@ -31,9 +35,7 @@ export function ConditionInputs() {
   const isSidebar = useIsSidebar();
   // #190: dynamic output ports are DOM-driven; rotate by switching CSS edge
   // + `data-port-location` attribute, NOT by `port.update()`.
-  const { direction } = useLayoutDirection();
-  const vertical = direction === 'TB';
-  const portLocation = vertical ? 'bottom' : 'right';
+  const { vertical, portLocation } = useConditionPortLocation();
 
   useLayoutEffect(() => {
     window.requestAnimationFrame(() => {

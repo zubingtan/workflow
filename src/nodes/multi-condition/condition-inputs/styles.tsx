@@ -20,6 +20,9 @@ export const ConditionPort = styled.div<{ $vertical?: boolean }>`
   ${({ $vertical }) => ($vertical ? 'bottom: -12px; left: 50%;' : 'right: -12px; top: 50%;')}
 `;
 
+// Re-export the JS-positioned wrapper from the condition node's styles.
+export { ConditionPortWithPosition } from '../../condition/condition-inputs/styles';
+
 export const ConditionBranch = styled.div`
   display: flex;
   width: 100%;

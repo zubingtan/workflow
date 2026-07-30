@@ -25,10 +25,11 @@ import { IconLayoutDirection } from '../../assets/icon-layout-direction';
  *  1. `rotateAllPorts` — rotate every main-canvas node's port anchors
  *     (output→bottom/input→top for TB, output→right/input→left for LR).
  *  2. `tools.autoLayout` — reflow node positions with the new `rankdir`.
- *  3. `document.fireRender()` — force connection lines to re-render against
+ *  3. `setDirection` — update `LayoutDirectionContext` (and its ref mirror)
+ *     so the condition renderer sees the new direction.
+ *  4. `document.fireRender()` — force connection lines to re-render against
  *     the new anchor positions (the `@observeEntities(WorkflowPortEntity)`
  *     → line update chain is unproven, so we trigger manually).
- *  4. `setDirection` — update `LayoutDirectionContext` (and its ref mirror).
  *  5. Persistence — the autoLayout move fires `MOVE_NODE` → `onContentChange`
  *     → `onDirty`, which surfaces the Save button; `saveWorkflow` in app.tsx
  *     reads `directionRef` and writes the `direction` field to the workflow
@@ -61,11 +62,14 @@ export const LayoutDirectionSwitch = () => {
         ranksep: 100,
       },
     });
-    // 3. Force line re-render so connections pick up the new anchors.
-    ctx.document.fireRender();
-    // 4. Update context state + ref mirror (ref is read by the ADD_NODE
-    //    listener in useEditorProps to rotate newly-added nodes' ports).
+    // 3. Update context state + ref mirror BEFORE fireRender so the
+    //    condition renderer (which reads `direction` from context) sees the
+    //    new direction when the render pass redraws connection lines.
+    //    (ref is read by the ADD_NODE listener in useEditorProps to rotate
+    //    newly-added nodes' ports.)
     setDirection(next);
+    // 4. Force line re-render so connections pick up the new anchors.
+    ctx.document.fireRender();
   }, [playground, tools, ctx, direction, setDirection]);
 
   const tooltipContent = direction === 'LR' ? 'Layout: Horizontal' : 'Layout: Vertical';
