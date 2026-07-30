@@ -13,13 +13,14 @@ dist/
 
 # Local research notes (not part of the repo)
 research/
+.research/
+.scratch/
 
 # Tool caches
 .eslintcache
 
 # IDE local data (Trae specs, agent skills)
 .trae/
-.agents/skills/playwright-cli/
 
 # Playwright E2E artifacts
 /playwright-report/
@@ -27,5 +28,4 @@ research/
 /blob-report/
 /playwright/.cache/
 /e2e/.logs/
-# playwright-cli runtime snapshots/logs (NOT the .playwright/cli.config.json config)
 /.playwright-cli/
