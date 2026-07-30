@@ -269,12 +269,266 @@ test.describe('Layout direction switch (#190)', () => {
       expect(p.location).toBe('bottom');
     }
 
+    // --- Verify the port DOM elements are actually at the node's bottom edge ---
+    // (not just the `data-port-location` attribute, but the real `getBoundingClientRect`
+    // position). This catches CSS positioning bugs where `bottom: -12px` resolves
+    // against the wrong ancestor (FormItem instead of node).
+    const portPositions = await page.evaluate(() => {
+      const node = document.querySelector('[data-node-id="condition_0"]') as HTMLElement;
+      if (!node) return null;
+      const nodeRect = node.getBoundingClientRect();
+      const ports = Array.from(node.querySelectorAll('[data-port-id]'));
+      return ports
+        .map((el) => {
+          const r = el.getBoundingClientRect();
+          return {
+            id: el.getAttribute('data-port-id'),
+            cx: Math.round(r.x + r.width / 2),
+            cy: Math.round(r.y + r.height / 2),
+          };
+        })
+        .map((p) => ({
+          ...p,
+          // Port center Y should be at or below the node's bottom edge (482+12=494).
+          // If it's inside the node (cy < nodeBottom), the CSS positioning is wrong.
+          nodeBottom: Math.round(nodeRect.bottom),
+          isAtBottomEdge: p.cy >= Math.round(nodeRect.bottom) - 5,
+        }));
+    });
+    expect(portPositions).not.toBeNull();
+    expect(portPositions!.length).toBeGreaterThan(0);
+    for (const p of portPositions!) {
+      // Port must be at or below the node's bottom edge (not inside the node).
+      expect(p.isAtBottomEdge).toBe(true);
+    }
+
     // --- The connection lines from the condition branches must still exist ---
     // (proves the DOM-driven port rotation didn't break connectivity).
-    // The `data-port-location="bottom"` assertion above is the primary proof
-    // that the port anchor moved; we don't assert line orientation because
-    // dagre's TB layout may place branch targets side-by-side, producing
-    // non-vertical bounding boxes.
+    const edgeCount = await page.locator('.gedit-flow-activity-edge').count();
+    expect(edgeCount).toBeGreaterThan(0);
+  });
+
+  test('condition node ports round-trip TB → LR restores right-edge placement', async ({
+    page,
+  }) => {
+    // Reuse the same condition workflow shape as Test 3. Toggle LR→TB→LR
+    // and assert the ports return to `data-port-location="right"` with DOM
+    // positions at the node's right edge.
+    const conditionSchema = {
+      nodes: [
+        {
+          id: 'start_0',
+          type: 'start',
+          meta: { position: { x: 100, y: 300 } },
+          data: {
+            title: 'Start',
+            outputs: {
+              type: 'object',
+              properties: { query: { type: 'string', default: 'Hello' } },
+            },
+          },
+        },
+        {
+          id: 'condition_0',
+          type: 'condition',
+          meta: { position: { x: 500, y: 300 } },
+          data: {
+            title: 'Condition',
+            conditions: [{ key: 'if_0', value: { type: 'expression', content: 'true' } }],
+          },
+        },
+        {
+          id: 'end_0',
+          type: 'end',
+          meta: { position: { x: 900, y: 200 } },
+          data: { title: 'End (if branch)' },
+        },
+        {
+          id: 'end_1',
+          type: 'end',
+          meta: { position: { x: 900, y: 400 } },
+          data: { title: 'End (else branch)' },
+        },
+      ],
+      edges: [
+        { sourceNodeID: 'start_0', targetNodeID: 'condition_0' },
+        { sourceNodeID: 'condition_0', sourcePortID: 'if_0', targetNodeID: 'end_0' },
+        { sourceNodeID: 'condition_0', sourcePortID: 'else', targetNodeID: 'end_1' },
+      ],
+    };
+    const wfName = `E2E Condition RoundTrip ${Date.now()}`;
+    await createWorkflow(wfName, conditionSchema);
+
+    await page.goto('/');
+    await page.getByText('Workflows', { exact: true }).first().click();
+    const wfRow = page.locator('tr', { hasText: wfName }).first();
+    await wfRow.getByRole('button', { name: 'Open' }).click();
+
+    await expect(page.locator('[data-node-id="condition_0"]')).toBeVisible({ timeout: 10_000 });
+
+    // --- Toggle LR → TB ---
+    await page.getByRole('button', { name: /Layout Direction: Horizontal/ }).click();
+    await page.waitForTimeout(1800);
+
+    // Verify TB state (ports at bottom).
+    const tbLocations = await page
+      .locator('[data-node-id="condition_0"] [data-port-id][data-port-location]')
+      .evaluateAll((els) => els.map((el) => el.getAttribute('data-port-location')));
+    for (const loc of tbLocations) {
+      expect(loc).toBe('bottom');
+    }
+
+    // --- Toggle TB → LR (round-trip) ---
+    await page.getByRole('button', { name: /Layout Direction: Vertical/ }).click();
+    await page.waitForTimeout(1800);
+
+    // Verify LR state: data-port-location="right".
+    const lrLocations = await page
+      .locator('[data-node-id="condition_0"] [data-port-id][data-port-location]')
+      .evaluateAll((els) =>
+        els.map((el) => ({
+          id: el.getAttribute('data-port-id'),
+          location: el.getAttribute('data-port-location'),
+        }))
+      );
+    expect(lrLocations.length).toBeGreaterThan(0);
+    for (const p of lrLocations) {
+      expect(p.location).toBe('right');
+    }
+
+    // --- Verify port DOM is at the node's right edge ---
+    const portPositions = await page.evaluate(() => {
+      const node = document.querySelector('[data-node-id="condition_0"]') as HTMLElement;
+      if (!node) return null;
+      const nodeRect = node.getBoundingClientRect();
+      const ports = Array.from(node.querySelectorAll('[data-port-id]'));
+      return ports.map((el) => {
+        const r = el.getBoundingClientRect();
+        return {
+          id: el.getAttribute('data-port-id'),
+          cx: Math.round(r.x + r.width / 2),
+          nodeRight: Math.round(nodeRect.right),
+          isAtRightEdge: Math.round(r.x + r.width / 2) >= Math.round(nodeRect.right) - 5,
+        };
+      });
+    });
+    expect(portPositions).not.toBeNull();
+    expect(portPositions!.length).toBeGreaterThan(0);
+    for (const p of portPositions!) {
+      expect(p.isAtRightEdge).toBe(true);
+    }
+
+    // Connection lines must still exist after the round-trip.
+    const edgeCount = await page.locator('.gedit-flow-activity-edge').count();
+    expect(edgeCount).toBeGreaterThan(0);
+  });
+
+  test('multi-condition node dynamic output ports rotate to bottom in TB mode', async ({
+    page,
+  }) => {
+    // Same pattern as the condition test but with a multi-condition node.
+    const multiConditionSchema = {
+      nodes: [
+        {
+          id: 'start_0',
+          type: 'start',
+          meta: { position: { x: 100, y: 300 } },
+          data: {
+            title: 'Start',
+            outputs: {
+              type: 'object',
+              properties: { query: { type: 'string', default: 'Hello' } },
+            },
+          },
+        },
+        {
+          id: 'multi_condition_0',
+          type: 'multi-condition',
+          meta: { position: { x: 500, y: 300 } },
+          data: {
+            title: 'Multi Condition',
+            branch: [
+              {
+                logic: 'and',
+                conditions: [
+                  { key: 'condition_0', value: { type: 'expression', content: 'true' } },
+                ],
+              },
+            ],
+          },
+        },
+        {
+          id: 'end_0',
+          type: 'end',
+          meta: { position: { x: 900, y: 200 } },
+          data: { title: 'End (branch)' },
+        },
+        {
+          id: 'end_1',
+          type: 'end',
+          meta: { position: { x: 900, y: 400 } },
+          data: { title: 'End (else)' },
+        },
+      ],
+      edges: [
+        { sourceNodeID: 'start_0', targetNodeID: 'multi_condition_0' },
+        { sourceNodeID: 'multi_condition_0', sourcePortID: 'branch.0', targetNodeID: 'end_0' },
+        { sourceNodeID: 'multi_condition_0', sourcePortID: 'else', targetNodeID: 'end_1' },
+      ],
+    };
+    const wfName = `E2E MultiCondition Direction ${Date.now()}`;
+    await createWorkflow(wfName, multiConditionSchema);
+
+    await page.goto('/');
+    await page.getByText('Workflows', { exact: true }).first().click();
+    const wfRow = page.locator('tr', { hasText: wfName }).first();
+    await wfRow.getByRole('button', { name: 'Open' }).click();
+
+    await expect(page.locator('[data-node-id="multi_condition_0"]')).toBeVisible({
+      timeout: 10_000,
+    });
+
+    // --- Toggle to vertical (TB) ---
+    await page.getByRole('button', { name: /Layout Direction: Horizontal/ }).click();
+    await page.waitForTimeout(1800);
+
+    // --- Multi-condition branch output ports must have data-port-location="bottom" ---
+    const portLocations = await page
+      .locator('[data-node-id="multi_condition_0"] [data-port-id][data-port-location]')
+      .evaluateAll((els) =>
+        els.map((el) => ({
+          id: el.getAttribute('data-port-id'),
+          location: el.getAttribute('data-port-location'),
+        }))
+      );
+    expect(portLocations.length).toBeGreaterThan(0);
+    for (const p of portLocations) {
+      expect(p.location).toBe('bottom');
+    }
+
+    // --- Verify port DOM elements are at the node's bottom edge ---
+    const portPositions = await page.evaluate(() => {
+      const node = document.querySelector('[data-node-id="multi_condition_0"]') as HTMLElement;
+      if (!node) return null;
+      const nodeRect = node.getBoundingClientRect();
+      const ports = Array.from(node.querySelectorAll('[data-port-id]'));
+      return ports.map((el) => {
+        const r = el.getBoundingClientRect();
+        return {
+          id: el.getAttribute('data-port-id'),
+          cy: Math.round(r.y + r.height / 2),
+          nodeBottom: Math.round(nodeRect.bottom),
+          isAtBottomEdge: Math.round(r.y + r.height / 2) >= Math.round(nodeRect.bottom) - 5,
+        };
+      });
+    });
+    expect(portPositions).not.toBeNull();
+    expect(portPositions!.length).toBeGreaterThan(0);
+    for (const p of portPositions!) {
+      expect(p.isAtBottomEdge).toBe(true);
+    }
+
+    // Connection lines must still exist.
     const edgeCount = await page.locator('.gedit-flow-activity-edge').count();
     expect(edgeCount).toBeGreaterThan(0);
   });
