@@ -188,4 +188,94 @@ test.describe('Layout direction switch (#190)', () => {
     });
     expect(lineDims.height).toBeGreaterThan(lineDims.width);
   });
+
+  test('condition node dynamic output ports rotate to bottom in TB mode', async ({ page }) => {
+    // Build a workflow with a condition node whose branches connect to end
+    // nodes. In horizontal mode the condition output ports are on the right
+    // (CSS `right: -12px; top: 50%`); after toggling to TB the ConditionPort
+    // CSS switches to `bottom: -12px; left: 50%` and `data-port-location`
+    // becomes `bottom`, so the connection lines from the condition branches
+    // become vertical (height > width).
+    const conditionSchema = {
+      nodes: [
+        {
+          id: 'start_0',
+          type: 'start',
+          meta: { position: { x: 100, y: 300 } },
+          data: {
+            title: 'Start',
+            outputs: {
+              type: 'object',
+              properties: { query: { type: 'string', default: 'Hello' } },
+            },
+          },
+        },
+        {
+          id: 'condition_0',
+          type: 'condition',
+          meta: { position: { x: 500, y: 300 } },
+          data: {
+            title: 'Condition',
+            conditions: [{ key: 'if_0', value: { type: 'expression', content: 'true' } }],
+          },
+        },
+        {
+          id: 'end_0',
+          type: 'end',
+          meta: { position: { x: 900, y: 200 } },
+          data: { title: 'End (if branch)' },
+        },
+        {
+          id: 'end_1',
+          type: 'end',
+          meta: { position: { x: 900, y: 400 } },
+          data: { title: 'End (else branch)' },
+        },
+      ],
+      edges: [
+        { sourceNodeID: 'start_0', targetNodeID: 'condition_0' },
+        { sourceNodeID: 'condition_0', sourcePortID: 'if_0', targetNodeID: 'end_0' },
+        { sourceNodeID: 'condition_0', sourcePortID: 'else', targetNodeID: 'end_1' },
+      ],
+    };
+    const wfName = `E2E Condition Direction ${Date.now()}`;
+    const workflowId = await createWorkflow(wfName, conditionSchema);
+
+    await page.goto('/');
+    await page.getByText('Workflows', { exact: true }).first().click();
+    const wfRow = page.locator('tr', { hasText: wfName }).first();
+    await wfRow.getByRole('button', { name: 'Open' }).click();
+
+    await expect(page.locator('[data-node-id="condition_0"]')).toBeVisible({ timeout: 10_000 });
+
+    // --- Toggle to vertical (TB) ---
+    await page.getByRole('button', { name: /Layout Direction: Horizontal/ }).click();
+    await page.waitForTimeout(1800);
+
+    // --- Condition branch output ports must have data-port-location="bottom" ---
+    // The ConditionPort DOM elements carry the `data-port-location` attribute
+    // set by the renderer based on LayoutDirectionContext. In TB mode it
+    // must be "bottom" (rotated from the default "right").
+    const portLocations = await page
+      .locator('[data-node-id="condition_0"] [data-port-id][data-port-location]')
+      .evaluateAll((els) =>
+        els.map((el) => ({
+          id: el.getAttribute('data-port-id'),
+          location: el.getAttribute('data-port-location'),
+        }))
+      );
+    expect(portLocations.length).toBeGreaterThan(0);
+    for (const p of portLocations) {
+      expect(p.location).toBe('bottom');
+    }
+
+    // --- The connection lines from the condition branches must still exist ---
+    // (proves the DOM-driven port rotation didn't break connectivity).
+    // The `data-port-location="bottom"` assertion above is the primary proof
+    // that the port anchor moved; we don't assert line orientation because
+    // dagre's TB layout may place branch targets side-by-side, producing
+    // non-vertical bounding boxes.
+    const edgeCount = await page.locator('.gedit-flow-activity-edge').count();
+    expect(edgeCount).toBeGreaterThan(0);
+  });
 });

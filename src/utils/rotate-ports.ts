@@ -7,7 +7,6 @@ import {
   FlowNodeBaseType,
   WorkflowDocument,
   WorkflowNodeEntity,
-  WorkflowNodeMeta,
 } from '@flowgram.ai/free-layout-editor';
 
 /**
@@ -45,20 +44,28 @@ export function isSubCanvasNode(node: WorkflowNodeEntity): boolean {
  * Rotate every main-canvas node's static ports to match `direction`.
  * Skips:
  *  - sub-canvas interior nodes (`isSubCanvasNode`)
- *  - dynamic-port nodes (condition / multi-condition) whose ports are
- *    DOM-driven and would be overwritten by `updateDynamicPorts()`.
+ *  - dynamic ports (those with a `targetElement` - i.e. condition /
+ *    multi-condition output ports that are DOM-driven and would be
+ *    overwritten by `updateDynamicPorts()`). Their rotation is handled
+ *    in the renderer via CSS + `data-port-location` (see spec #190
+ *    "Module: condition node renderer direction-awareness").
+ *
+ * Note: condition nodes' static INPUT port has no `targetElement` and IS
+ * rotated here (it falls back to the `switch(location)` anchor path).
  *
  * `port.update({ location })` is the public FlowGram API
- * (free-layout-core/dist/index.js — `WorkflowPortEntity.update`); it writes
+ * (free-layout-core/dist/index.js - `WorkflowPortEntity.update`); it writes
  * `_location` and fires `fireChange()`, and `relativePosition` / `point`
  * recompute automatically.
  */
 export function rotateAllPorts(document: WorkflowDocument, direction: LayoutDirection): void {
   for (const node of document.getAllNodes()) {
     if (isSubCanvasNode(node)) continue;
-    const meta = node.getNodeMeta<WorkflowNodeMeta>();
-    if (meta.useDynamicPort) continue;
     for (const port of node.ports.allPorts) {
+      // Skip dynamic ports (DOM-driven). Their `targetElement` is set by
+      // `updateDynamicPorts()` from `[data-port-id]` DOM elements; calling
+      // `port.update()` on them gets overwritten on the next size change.
+      if ((port as any).targetElement) continue;
       const newLocation = rotatePortLocation(port.portType, direction);
       if (port.location !== newLocation) {
         port.update({ location: newLocation } as any);
@@ -70,13 +77,13 @@ export function rotateAllPorts(document: WorkflowDocument, direction: LayoutDire
 /**
  * Rotate a single node's static ports to match `direction` (used by the
  * ADD_NODE listener so newly-added nodes inherit the current direction).
- * Same skip rules as `rotateAllPorts` (sub-canvas + dynamic ports).
+ * Same skip rules as `rotateAllPorts` (sub-canvas + dynamic ports with
+ * `targetElement`).
  */
 export function rotateNodePorts(node: WorkflowNodeEntity, direction: LayoutDirection): void {
   if (isSubCanvasNode(node)) return;
-  const meta = node.getNodeMeta<WorkflowNodeMeta>();
-  if (meta.useDynamicPort) return;
   for (const port of node.ports.allPorts) {
+    if ((port as any).targetElement) continue;
     const newLocation = rotatePortLocation(port.portType, direction);
     if (port.location !== newLocation) {
       port.update({ location: newLocation } as any);

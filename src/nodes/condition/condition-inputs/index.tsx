@@ -11,6 +11,7 @@ import { ConditionRow, ConditionRowValueType } from '@flowgram.ai/form-materials
 import { Button } from '@douyinfe/semi-ui';
 import { IconPlus, IconCrossCircleStroked } from '@douyinfe/semi-icons';
 
+import { useLayoutDirection } from '../../../hooks/use-layout-direction';
 import { useNodeRenderContext } from '../../../hooks';
 import { FormItem } from '../../../form-components';
 import { Feedback } from '../../../form-components';
@@ -23,12 +24,17 @@ interface ConditionValue {
 
 export function ConditionInputs() {
   const { node, readonly } = useNodeRenderContext();
+  // #190: dynamic output ports are DOM-driven; rotate by switching CSS edge
+  // + `data-port-location` attribute, NOT by `port.update()`.
+  const { direction } = useLayoutDirection();
+  const vertical = direction === 'TB';
+  const portLocation = vertical ? 'bottom' : 'right';
 
   useLayoutEffect(() => {
     window.requestAnimationFrame(() => {
       node.ports.updateDynamicPorts();
     });
-  }, [node]);
+  }, [node, vertical]);
 
   return (
     <FieldArray name="conditions">
@@ -57,13 +63,23 @@ export function ConditionInputs() {
                   </div>
 
                   <Feedback errors={childState?.errors} invalid={childState?.invalid} />
-                  <ConditionPort data-port-id={childField.value.key} data-port-type="output" />
+                  <ConditionPort
+                    $vertical={vertical}
+                    data-port-id={childField.value.key}
+                    data-port-type="output"
+                    data-port-location={portLocation}
+                  />
                 </FormItem>
               )}
             </Field>
           ))}
           <FormItem name="else" type="boolean" required={true} labelWidth={100}>
-            <ConditionPort data-port-id="else" data-port-type="output" />
+            <ConditionPort
+              $vertical={vertical}
+              data-port-id="else"
+              data-port-type="output"
+              data-port-location={portLocation}
+            />
           </FormItem>
           {!readonly && (
             <div>
