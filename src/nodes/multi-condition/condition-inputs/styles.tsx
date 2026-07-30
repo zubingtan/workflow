@@ -10,10 +10,14 @@
 
 import styled from 'styled-components';
 
-export const ConditionPort = styled.div`
+/**
+ * #190: see `src/nodes/condition/condition-inputs/styles.tsx` for the full
+ * rationale. `$vertical` switches the port between the bottom edge (vertical
+ * mode) and the right edge (horizontal mode).
+ */
+export const ConditionPort = styled.div<{ $vertical?: boolean }>`
   position: absolute;
-  right: -12px;
-  top: 50%;
+  ${({ $vertical }) => ($vertical ? 'bottom: -12px; left: 50%;' : 'right: -12px; top: 50%;')}
 `;
 
 export const ConditionBranch = styled.div`

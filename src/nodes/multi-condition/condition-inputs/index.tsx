@@ -11,6 +11,7 @@ import { ConditionRow, ConditionRowValueType } from '@flowgram.ai/form-materials
 import { Button, Select, Space } from '@douyinfe/semi-ui';
 import { IconCrossCircleStroked, IconDelete, IconPlus } from '@douyinfe/semi-icons';
 
+import { useLayoutDirection } from '../../../hooks/use-layout-direction';
 import { useNodeRenderContext, useIsSidebar } from '../../../hooks';
 import { Feedback, FormItem } from '../../../form-components';
 import { ConditionBranch, ConditionBranchLogic, ConditionPort } from './styles';
@@ -28,12 +29,17 @@ interface BranchItem {
 export function ConditionInputs() {
   const { node, readonly } = useNodeRenderContext();
   const isSidebar = useIsSidebar();
+  // #190: dynamic output ports are DOM-driven; rotate by switching CSS edge
+  // + `data-port-location` attribute, NOT by `port.update()`.
+  const { direction } = useLayoutDirection();
+  const vertical = direction === 'TB';
+  const portLocation = vertical ? 'bottom' : 'right';
 
   useLayoutEffect(() => {
     window.requestAnimationFrame(() => {
       node.getData<WorkflowNodePortsData>(WorkflowNodePortsData).updateDynamicPorts();
     });
-  }, [node]);
+  }, [node, vertical]);
 
   return (
     <FieldArray name="branch">
@@ -110,7 +116,12 @@ export function ConditionInputs() {
                       ))}
                     </div>
 
-                    <ConditionPort data-port-id={`${branch.name}`} data-port-type="output" />
+                    <ConditionPort
+                      $vertical={vertical}
+                      data-port-id={`${branch.name}`}
+                      data-port-type="output"
+                      data-port-location={portLocation}
+                    />
                   </ConditionBranch>
 
                   {/* remove current branch and add new condition*/}
@@ -154,7 +165,12 @@ export function ConditionInputs() {
 
           {/*  else */}
           <FormItem name={I18n.t('ELSE')} type="boolean" required={true} labelWidth={100}>
-            <ConditionPort data-port-id="else" data-port-type="output" />
+            <ConditionPort
+              $vertical={vertical}
+              data-port-id="else"
+              data-port-type="output"
+              data-port-location={portLocation}
+            />
           </FormItem>
 
           {!readonly && (
