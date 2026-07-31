@@ -27,7 +27,6 @@ import {
 import { createRunAgentSse } from "./sse-adapter.mjs";
 import {
   AgentCatalogError,
-  validateTemperature,
   listAgents,
   getAgentById,
   createAgent,
@@ -41,6 +40,13 @@ import {
   setSetting,
   validateSettingsBody,
 } from "./settings.mjs";
+import {
+  persistExecution,
+  listExecutions,
+  getExecutionById,
+  deleteExecution,
+  getAgentStats,
+} from "./execution-store.mjs";
 
 /**
  * Translate a thrown AgentCatalogError into a 400 JSON response. Non-catalog
@@ -50,7 +56,8 @@ import {
  */
 function catalogErrorResponse(err) {
   if (err instanceof AgentCatalogError) {
-    return { body: { error: err.message, code: err.code }, status: 400 };
+    const status = err.code === "workflow_reference" ? 409 : 400;
+    return { body: { error: err.message, code: err.code }, status };
   }
   return null;
 }
@@ -131,6 +138,19 @@ export function createApp({
     createAgentSessionForAgent,
     agentDir,
     ...(streamSSE ? { streamSSE } : {}),
+    onTerminal: ({ terminal, agentConfig, startedAt, endedAt }) => {
+      // Only persist executions for real agents (have id), not /agents/test
+      if (!agentConfig.id) return;
+      const status = terminal.phase === "succeeded" ? "succeeded"
+        : terminal.phase === "cancelled" ? "cancelled" : "failed";
+      persistExecution(db, {
+        agentId: agentConfig.id,
+        status,
+        triggerType: "standalone",
+        startedAt,
+        endedAt,
+      });
+    },
   });
 
   // --- Draft-run lock (minimal, draft-only) ---
@@ -259,12 +279,13 @@ export function createApp({
     let body;
     try { body = await c.req.json(); } catch { return c.json({ error: "invalid JSON" }, 400); }
     if (!body || typeof body !== "object") return c.json({ error: "body must be an object" }, 400);
-    const { name, provider_base_url, provider_api_key, model, system_prompt, temperature } = body;
-    if (!name || !provider_base_url || !provider_api_key || !model) {
-      return c.json({ error: "name, provider_base_url, provider_api_key, model are required" }, 400);
-    }
     try {
-      const agent = createAgent(db, { name, provider_base_url, provider_api_key, model, system_prompt, temperature });
+      const agent = createAgent(db, {
+        name: body.name,
+        runtime: body.runtime,
+        config: body.config,
+        tags: body.tags,
+      });
       return c.json(agent, 201);
     } catch (err) {
       const translated = catalogErrorResponse(err);
@@ -290,9 +311,15 @@ export function createApp({
   });
 
   app.delete("/agents/:id", (c) => {
-    const ok = deleteAgent(db, c.req.param("id"));
-    if (!ok) return c.json({ error: "not found" }, 404);
-    return c.json({ ok: true });
+    try {
+      const ok = deleteAgent(db, c.req.param("id"));
+      if (!ok) return c.json({ error: "not found" }, 404);
+      return c.json({ ok: true });
+    } catch (err) {
+      const translated = catalogErrorResponse(err);
+      if (translated) return c.json(translated.body, translated.status);
+      throw err;
+    }
   });
 
   // --- Agent Run (SSE) ---
@@ -309,18 +336,102 @@ export function createApp({
   app.post("/agents/test", async (c) => {
     let body;
     try { body = await c.req.json(); } catch { return c.json({ error: "invalid JSON" }, 400); }
-    const { name, provider_base_url, provider_api_key, model, system_prompt, temperature, prompt } = body ?? {};
-    if (!provider_base_url || !provider_api_key || !model) {
-      return c.json({ error: "provider_base_url, provider_api_key, model are required" }, 400);
+    const { config, prompt } = body ?? {};
+    if (!config?.provider?.base_url || !config?.provider?.api_key || !config?.provider?.model) {
+      return c.json({ error: "config.provider.base_url, config.provider.api_key, config.provider.model are required" }, 400);
     }
-    try {
-      validateTemperature(temperature);
-    } catch (err) {
-      const translated = catalogErrorResponse(err);
-      if (translated) return c.json(translated.body, translated.status);
-      throw err;
+    const testAgent = { name: "test", config };
+    return runAgentSse(c, testAgent, prompt || "Say hello in one sentence.");
+  });
+
+  // --- Agent Execution History ---
+  app.get("/agents/:id/executions", (c) => {
+    const agentId = c.req.param("id");
+    const agent = getAgentById(db, agentId);
+    if (!agent) return c.json({ error: "agent not found" }, 404);
+    const limit = Number(c.req.query("limit") ?? 50);
+    const offset = Number(c.req.query("offset") ?? 0);
+    const status = c.req.query("status") || null;
+    return c.json(listExecutions(db, agentId, { limit, offset, status }));
+  });
+
+  app.get("/agents/:id/executions/:execId", (c) => {
+    const exec = getExecutionById(db, c.req.param("execId"));
+    if (!exec) return c.json({ error: "not found" }, 404);
+    return c.json(exec);
+  });
+
+  app.delete("/agents/:id/executions/:execId", (c) => {
+    const ok = deleteExecution(db, c.req.param("execId"));
+    if (!ok) return c.json({ error: "not found" }, 404);
+    return c.json({ ok: true });
+  });
+
+  // --- Agent Stats ---
+  app.get("/agents/:id/stats", (c) => {
+    const agentId = c.req.param("id");
+    const agent = getAgentById(db, agentId);
+    if (!agent) return c.json({ error: "agent not found" }, 404);
+    return c.json(getAgentStats(db, agentId));
+  });
+
+  // --- Agent Export ---
+  app.get("/agents/export", (c) => {
+    const includeSecrets = c.req.query("include_secrets") === "true";
+    const agents = listAgents(db);
+    const exported = agents.map((a) => {
+      const config = JSON.parse(a.config);
+      if (!includeSecrets && config.provider) {
+        // Keep $ENV_VAR references, blank out literal keys
+        if (config.provider.api_key && !config.provider.api_key.startsWith("$")) {
+          config.provider.api_key = null;
+        }
+      }
+      return { name: a.name, runtime: a.runtime, tags: JSON.parse(a.tags), config };
+    });
+    c.header("Content-Disposition", "attachment; filename=agents-export.json");
+    return c.json(exported);
+  });
+
+  // --- Agent Import (pre-check) ---
+  app.post("/agents/import", async (c) => {
+    let body;
+    try { body = await c.req.json(); } catch { return c.json({ error: "invalid JSON" }, 400); }
+    if (!Array.isArray(body)) return c.json({ error: "body must be a JSON array" }, 400);
+    const existing = listAgents(db);
+    const existingNames = new Set(existing.map((a) => a.name));
+    const conflicts = body.filter((item) => existingNames.has(item.name));
+    return c.json({ total: body.length, conflicts: conflicts.map((a) => a.name), importable: body.length - conflicts.length });
+  });
+
+  // --- Agent Import (confirm) ---
+  app.post("/agents/import/confirm", async (c) => {
+    let body;
+    try { body = await c.req.json(); } catch { return c.json({ error: "invalid JSON" }, 400); }
+    const { agents: items, on_conflict = "skip" } = body ?? {};
+    if (!Array.isArray(items)) return c.json({ error: "agents must be a JSON array" }, 400);
+    const existing = listAgents(db);
+    const existingByName = new Map(existing.map((a) => [a.name, a]));
+    let created = 0, skipped = 0, overwritten = 0;
+    for (const item of items) {
+      const conflict = existingByName.get(item.name);
+      if (conflict) {
+        if (on_conflict === "skip") { skipped++; continue; }
+        if (on_conflict === "overwrite") {
+          updateAgent(db, conflict.id, { config: item.config, tags: item.tags });
+          overwritten++;
+          continue;
+        }
+        // rename
+        let suffix = 2;
+        while (existingByName.has(`${item.name} ${suffix}`)) suffix++;
+        item.name = `${item.name} ${suffix}`;
+      }
+      createAgent(db, { name: item.name, runtime: item.runtime, config: item.config, tags: item.tags });
+      existingByName.set(item.name, { name: item.name });
+      created++;
     }
-    return runAgentSse(c, { name: name ?? "test", provider_base_url, provider_api_key, model, system_prompt, temperature: temperature ?? 0.7 }, prompt || "Say hello in one sentence.");
+    return c.json({ created, skipped, overwritten });
   });
 
   // --- Phase 9 (#161): global settings (node timeout default, etc.) ---

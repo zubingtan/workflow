@@ -4,7 +4,6 @@ import Database from 'better-sqlite3';
 
 import {
   AgentCatalogError,
-  validateTemperature,
   listAgents,
   getAgentById,
   createAgent,
@@ -13,109 +12,47 @@ import {
   copyAgent,
   seedAgentIfEmpty,
 } from '../server/agent-catalog.mjs';
+import { ensureSchema } from '../server/db-schema.mjs';
 
-/**
- * In-memory SQLite fixture. Mirrors the agents schema from server/index.mjs
- * so the catalog module operates against the real table shape.
- *
- * NOTE: schema uses `provider_api_key` (the key VALUE, stored directly) —
- * #129 dropped the legacy `provider_api_key_env` (env-var name) column.
- */
 function makeDb() {
   const db = new Database(':memory:');
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS agents (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      provider_base_url TEXT NOT NULL,
-      provider_api_key TEXT NOT NULL,
-      model TEXT NOT NULL,
-      system_prompt TEXT DEFAULT '',
-      temperature REAL DEFAULT 0.7,
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now'))
-    )
-  `);
+  ensureSchema(db);
   return db;
 }
 
 const validFields = {
   name: 'Test Agent',
-  provider_base_url: 'http://localhost:4010/v1',
-  provider_api_key: 'fake-key-value',
-  model: 'fake-model',
-  system_prompt: 'You are helpful.',
-  temperature: 0.5,
+  config: {
+    provider: { base_url: 'http://localhost:4010/v1', api_key: 'fake-key', model: 'fake-model' },
+    system_prompt: 'You are helpful.',
+    session_options: {},
+    pi_settings: { defaultProjectTrust: 'always' },
+  },
 };
 
-test('createAgent persists all fields and returns the row with default temperature when omitted', () => {
-  const db = makeDb();
-  const { temperature, ...withoutTemp } = validFields;
-  const agent = createAgent(db, withoutTemp);
-  assert.equal(agent.name, 'Test Agent');
-  assert.equal(agent.temperature, 0.7); // default
-  assert.equal(agent.system_prompt, 'You are helpful.');
-  assert.equal(typeof agent.id, 'string');
-  assert.equal(agent.id.length > 0, true);
-});
-
-test('createAgent validates temperature range', () => {
-  const db = makeDb();
-  for (const bad of [-0.1, 2.1, NaN, 'hot', null]) {
-    assert.throws(
-      () => createAgent(db, { ...validFields, temperature: bad }),
-      (err) => err instanceof AgentCatalogError && err.code === 'invalid_temperature',
-      `expected invalid_temperature for temperature=${String(bad)}`,
-    );
-  }
-});
-
-test('validateTemperature accepts undefined (default applies) and rejects invalid', () => {
-  // undefined → no throw (caller applies default)
-  assert.doesNotThrow(() => validateTemperature(undefined));
-  for (const ok of [0, 0.7, 1.5, 2]) {
-    assert.doesNotThrow(() => validateTemperature(ok), `expected ok for temperature=${ok}`);
-  }
-  for (const bad of [-0.1, 2.1, NaN, 'hot', null, true, false]) {
-    assert.throws(
-      () => validateTemperature(bad),
-      (err) => err instanceof AgentCatalogError && err.code === 'invalid_temperature',
-      `expected invalid_temperature for temperature=${String(bad)}`,
-    );
-  }
-});
-
-test('credential storage: agent rows store the API key value directly in provider_api_key', () => {
-  // #129 decision: the agents table schema has a `provider_api_key` column
-  // (the key VALUE, stored directly) and must NOT have a `provider_api_key_env`
-  // column (the old env-var-name indirection, dropped as too cumbersome across
-  // machines). This test pins the new invariant.
+test('createAgent persists and returns row with config JSON', () => {
   const db = makeDb();
   const agent = createAgent(db, validFields);
-  const columns = Object.keys(agent);
-  assert.equal(columns.includes('provider_api_key'), true);
-  assert.equal(columns.includes('provider_api_key_env'), false,
-    'agents table must not have a provider_api_key_env column — keys are stored directly now');
-  // The stored value is the key itself, not an env-var name.
-  assert.equal(agent.provider_api_key, 'fake-key-value');
+  assert.equal(agent.name, 'Test Agent');
+  assert.equal(agent.runtime, 'pi-coding-agent');
+  assert.equal(typeof agent.id, 'string');
+  const config = JSON.parse(agent.config);
+  assert.equal(config.provider.model, 'fake-model');
+  assert.equal(config.system_prompt, 'You are helpful.');
 });
 
-test('createAgent accepts boundary temperatures 0, 0.7, 2', () => {
+test('createAgent defaults name to Untitled', () => {
   const db = makeDb();
-  for (const ok of [0, 0.7, 2, 1.5]) {
-    const agent = createAgent(db, { ...validFields, name: `T-${ok}`, temperature: ok });
-    assert.equal(agent.temperature, ok);
-  }
+  const agent = createAgent(db, {});
+  assert.equal(agent.name, 'Untitled');
 });
 
 test('listAgents returns rows ordered by created_at DESC', () => {
   const db = makeDb();
-  const a = createAgent(db, { ...validFields, name: 'A' });
-  const b = createAgent(db, { ...validFields, name: 'B' });
+  createAgent(db, { ...validFields, name: 'A' });
+  createAgent(db, { ...validFields, name: 'B' });
   const list = listAgents(db);
   assert.equal(list.length, 2);
-  // both created in the same second by default — order by created_at DESC then
-  // the most recently inserted should be first (rowid tiebreak via SQLite).
   assert.deepEqual(list.map((r) => r.name).sort(), ['A', 'B']);
 });
 
@@ -126,22 +63,28 @@ test('getAgentById returns the row or undefined for missing', () => {
   assert.equal(getAgentById(db, 'nope'), undefined);
 });
 
-test('updateAgent patches provided fields and validates temperature', () => {
+test('updateAgent patches name', () => {
   const db = makeDb();
   const agent = createAgent(db, validFields);
-  const updated = updateAgent(db, agent.id, { name: 'Renamed', temperature: 1.2 });
+  const updated = updateAgent(db, agent.id, { name: 'Renamed' });
   assert.equal(updated.name, 'Renamed');
-  assert.equal(updated.temperature, 1.2);
-  assert.equal(updated.model, validFields.model); // unchanged
+});
 
-  assert.throws(
-    () => updateAgent(db, agent.id, { temperature: 5 }),
-    (err) => err instanceof AgentCatalogError && err.code === 'invalid_temperature',
-  );
+test('updateAgent merges config JSON (shallow per layer)', () => {
+  const db = makeDb();
+  const agent = createAgent(db, validFields);
+  const updated = updateAgent(db, agent.id, { config: { provider: { model: 'new-model' } } });
+  const config = JSON.parse(updated.config);
+  assert.equal(config.provider.model, 'new-model');
+  assert.equal(config.provider.base_url, 'http://localhost:4010/v1'); // preserved
+  assert.equal(config.system_prompt, 'You are helpful.'); // preserved
+});
 
-  // undefined fields are ignored (not treated as null)
-  const untouched = updateAgent(db, agent.id, {});
-  assert.equal(untouched.name, 'Renamed');
+test('updateAgent replaces tags', () => {
+  const db = makeDb();
+  const agent = createAgent(db, { ...validFields, tags: ['a'] });
+  const updated = updateAgent(db, agent.id, { tags: ['b', 'c'] });
+  assert.deepEqual(JSON.parse(updated.tags), ['b', 'c']);
 });
 
 test('updateAgent returns undefined for missing id', () => {
@@ -156,16 +99,26 @@ test('deleteAgent returns true on hit, false on miss', () => {
   assert.equal(deleteAgent(db, agent.id), false);
 });
 
+test('deleteAgent throws workflow_reference when workflow references agent', () => {
+  const db = makeDb();
+  const agent = createAgent(db, validFields);
+  // Create a workflow that references this agent
+  db.prepare("INSERT INTO workflows (id, name, data) VALUES (?, ?, ?)").run(
+    'wf1', 'Test WF', JSON.stringify({ nodes: [{ data: { agentId: agent.id } }] })
+  );
+  assert.throws(
+    () => deleteAgent(db, agent.id),
+    (err) => err instanceof AgentCatalogError && err.code === 'workflow_reference',
+  );
+});
+
 test('copyAgent clones with "(copy)" name suffix and new id', () => {
   const db = makeDb();
   const agent = createAgent(db, validFields);
   const copy = copyAgent(db, agent.id);
   assert.equal(copy.name, 'Test Agent (copy)');
   assert.notEqual(copy.id, agent.id);
-  assert.equal(copy.model, agent.model);
-  assert.equal(copy.temperature, agent.temperature);
-  assert.equal(copy.system_prompt, agent.system_prompt);
-  assert.equal(copy.provider_api_key, agent.provider_api_key);
+  assert.equal(copy.config, agent.config);
 });
 
 test('copyAgent returns undefined for missing source', () => {
@@ -175,20 +128,10 @@ test('copyAgent returns undefined for missing source', () => {
 
 test('seedAgentIfEmpty inserts when table empty, no-op when non-empty', () => {
   const db = makeDb();
-  // empty → seed
-  const seeded = seedAgentIfEmpty(db, {
-    id: 'fake-default',
-    name: 'Fake Provider',
-    provider_base_url: 'http://localhost:4010/v1',
-    provider_api_key: 'fake-provider-local',
-    model: 'fake-model',
-    system_prompt: 'You are a helpful assistant.',
-    temperature: 0.7,
-  });
-  assert.equal(seeded.name, 'Fake Provider');
+  const seeded = seedAgentIfEmpty(db, { id: 'fake-default', ...validFields });
+  assert.equal(seeded.name, 'Test Agent');
   assert.equal(listAgents(db).length, 1);
 
-  // non-empty → no-op, returns undefined
   const result = seedAgentIfEmpty(db, { ...validFields, id: 'should-not-insert' });
   assert.equal(result, undefined);
   assert.equal(listAgents(db).length, 1);

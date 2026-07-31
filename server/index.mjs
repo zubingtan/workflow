@@ -81,11 +81,16 @@ ensureSchema(db);
 const seeded = seedAgentIfEmpty(db, {
   id: "fake-default",
   name: "Fake Provider",
-  provider_base_url: "http://localhost:4010/v1",
-  provider_api_key: "fake-provider-local",
-  model: "fake-model",
-  system_prompt: "You are a helpful assistant.",
-  temperature: 0.7,
+  config: {
+    provider: {
+      base_url: "http://localhost:4010/v1",
+      api_key: "fake-provider-local",
+      model: "fake-model",
+    },
+    system_prompt: "You are a helpful assistant.",
+    session_options: {},
+    pi_settings: { defaultProjectTrust: "always" },
+  },
 });
 if (seeded) console.log("  seeded fake-provider agent");
 

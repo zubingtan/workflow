@@ -24,9 +24,10 @@ import './styles/index.css';
 import { FlowDocumentJSON } from './typings';
 import { useTheme } from './theme';
 import { GetGlobalVariableSchema } from './plugins/variable-panel-plugin';
-import { WorkflowManager, AgentManager } from './manage';
+import { WorkflowManager } from './manage';
 import { initialData } from './initial-data';
 import { Editor } from './editor';
+import { AgentMillerColumns } from './components/agent-miller';
 import { AdminSettings } from './components/admin-settings';
 import * as api from './api';
 
@@ -263,7 +264,7 @@ function App() {
         ) : view === 'workflows' ? (
           <WorkflowManager onOpen={(id) => requestNavigation(() => openWorkflow(id))} />
         ) : view === 'agents' ? (
-          <AgentManager />
+          <AgentMillerColumns />
         ) : view === 'settings' ? (
           <AdminSettings />
         ) : (

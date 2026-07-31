@@ -3,9 +3,8 @@
  * module's event sequence. Owns NO pi session, subscribe handler, or event
  * translation — only SSE framing + terminal projection (#76).
  *
- * Credential boundary: apiKey comes from `agentConfig.provider_api_key`
- * directly — no env resolution. The adapter binds it into a createSession
- * closure before calling the shared module.
+ * Credential resolution is handled inside createAgentSessionForAgent
+ * (config.provider.api_key with $ENV_VAR support).
  */
 import { streamSSE } from "hono/streaming";
 import { projectTerminal } from "./agent-execution.mjs";
@@ -17,33 +16,27 @@ import { projectTerminal } from "./agent-execution.mjs";
  *
  * @param {object} deps
  * @param {(opts: object) => AsyncGenerator} deps.runAgentExecution
- * @param {(agentConfig: object, apiKey: string, agentDir: string) => Promise<object>} deps.createAgentSessionForAgent
+ * @param {(agent: object, agentDir: string) => Promise<object>} deps.createAgentSessionForAgent
  * @param {string} deps.agentDir
  * @param {(c: object, handler: (stream: object) => Promise<void>) => Promise<void>} [deps.streamSSE]
- *   Defaults to hono/streaming's streamSSE. Tests pass a fake that invokes
- *   the handler with a fake stream.
  */
 export function createRunAgentSse({
   runAgentExecution,
   createAgentSessionForAgent,
   agentDir,
   streamSSE: streamer = streamSSE,
+  onTerminal = null,
 }) {
   return async function runAgentSse(c, agentConfig, prompt) {
-    const apiKey = agentConfig.provider_api_key;
-
     c.header("X-Accel-Buffering", "no");
 
-    // Bind apiKey into the createSession closure — shared module never resolves
-    // credentials (#66 rule, aligned with #77 calibration). 2-arg form.
-    const createSessionBound = (cfg, dir) => createAgentSessionForAgent(cfg, apiKey, dir);
+    // New interface: createAgentSessionForAgent(agent, agentDir) resolves credentials internally
+    const createSessionBound = (cfg, dir) => createAgentSessionForAgent(cfg, dir);
 
     const run = async (stream) => {
-      // Bridge Hono's stream.onAbort → an AbortController whose signal feeds the
-      // shared module. Hono's c.req.raw.signal is NOT wired to stream.aborted on
-      // @hono/node-server, so we use stream.onAbort as the cancellation source.
       const ac = new AbortController();
       stream.onAbort(() => ac.abort());
+      const startedAt = new Date().toISOString();
 
       try {
         const events = runAgentExecution({
@@ -59,16 +52,15 @@ export function createRunAgentSse({
             if (!stream.aborted) {
               await stream.writeSSE({ data: JSON.stringify(projectTerminal(ev)) });
             }
+            // Persist execution record
+            if (onTerminal) {
+              onTerminal({ terminal: ev, agentConfig, startedAt, endedAt: new Date().toISOString() });
+            }
             break;
           }
-          // Non-terminal events (content_delta / tool_start / tool_end) pass
-          // through to the browser as-is.
           await stream.writeSSE({ data: JSON.stringify(ev) });
         }
       } catch (err) {
-        // Defensive: the shared module classifies all errors into a terminal,
-        // so this catch should not fire. If it does, surface a generic error
-        // event rather than crashing the stream.
         if (!stream.aborted) {
           await stream.writeSSE({
             data: JSON.stringify({ type: "error", message: err?.message ?? "internal error", kind: "internal_error" }),

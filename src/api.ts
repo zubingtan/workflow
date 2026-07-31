@@ -8,16 +8,51 @@
 // defined" in the browser because rsbuild's prod build doesn't polyfill it.)
 export const SERVER_URL = '';
 
+export interface AgentConfig {
+  provider: {
+    base_url: string;
+    api_key: string;
+    model: string;
+    pricing?: { input: number; output: number; cacheRead?: number; cacheWrite?: number };
+  };
+  system_prompt: string;
+  session_options: {
+    thinkingLevel?: string;
+    tools?: string[];
+    excludeTools?: string[];
+    noTools?: string | null;
+  };
+  pi_settings: Record<string, any>;
+}
+
 export interface AgentDef {
   id: string;
   name: string;
-  provider_base_url: string;
-  provider_api_key: string;
-  model: string;
-  system_prompt: string;
-  temperature: number;
+  runtime: string;
+  config: string; // JSON string of AgentConfig
+  tags: string; // JSON string of string[]
   created_at: string;
   updated_at: string;
+}
+
+export interface AgentExecution {
+  id: string;
+  agent_id: string;
+  status: 'succeeded' | 'failed' | 'cancelled';
+  trigger_type: 'standalone' | 'workflow_node';
+  workflow_run_id: string | null;
+  session_file: string | null;
+  started_at: string;
+  ended_at: string | null;
+}
+
+export interface AgentStats {
+  overview: {
+    totalExecutions: number;
+    successRate: number;
+    avgDurationMs: number;
+  };
+  daily: Array<{ date: string; count: number; succeeded: number; failed: number }>;
 }
 
 export interface WorkflowMeta {
@@ -103,14 +138,19 @@ export const copyWorkflow = (id: string) =>
 // --- Agents ---
 export const listAgents = () => fetch(`${SERVER_URL}/agents`).then((r) => json<AgentDef[]>(r));
 
-export const createAgent = (body: Partial<AgentDef>) =>
+export const createAgent = (body: {
+  name?: string;
+  runtime?: string;
+  config?: any;
+  tags?: string[];
+}) =>
   fetch(`${SERVER_URL}/agents`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   }).then((r) => json<AgentDef>(r));
 
-export const updateAgent = (id: string, patch: Partial<AgentDef>) =>
+export const updateAgent = (id: string, patch: { name?: string; config?: any; tags?: string[] }) =>
   fetch(`${SERVER_URL}/agents/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
@@ -123,12 +163,56 @@ export const deleteAgent = (id: string) =>
 export const copyAgent = (id: string) =>
   fetch(`${SERVER_URL}/agents/${id}/copy`, { method: 'POST' }).then((r) => json<AgentDef>(r));
 
+// --- Agent executions ---
+export const listExecutions = (
+  agentId: string,
+  params?: { limit?: number; offset?: number; status?: string }
+) => {
+  const qs = new URLSearchParams();
+  if (params?.limit) qs.set('limit', String(params.limit));
+  if (params?.offset) qs.set('offset', String(params.offset));
+  if (params?.status) qs.set('status', params.status);
+  const q = qs.toString();
+  return fetch(`${SERVER_URL}/agents/${agentId}/executions${q ? `?${q}` : ''}`).then((r) =>
+    json<AgentExecution[]>(r)
+  );
+};
+
+export const deleteExecution = (agentId: string, execId: string) =>
+  fetch(`${SERVER_URL}/agents/${agentId}/executions/${execId}`, { method: 'DELETE' }).then((r) =>
+    json(r)
+  );
+
+// --- Agent stats ---
+export const getAgentStats = (agentId: string) =>
+  fetch(`${SERVER_URL}/agents/${agentId}/stats`).then((r) => json<AgentStats>(r));
+
+// --- Agent export/import ---
+export const exportAgents = (includeSecrets = false) =>
+  fetch(`${SERVER_URL}/agents/export${includeSecrets ? '?include_secrets=true' : ''}`).then((r) =>
+    json<any[]>(r)
+  );
+
+export const importAgentsPrecheck = (agents: any[]) =>
+  fetch(`${SERVER_URL}/agents/import`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(agents),
+  }).then((r) => json<{ total: number; conflicts: string[]; importable: number }>(r));
+
+export const importAgentsConfirm = (agents: any[], onConflict: 'skip' | 'overwrite' | 'rename') =>
+  fetch(`${SERVER_URL}/agents/import/confirm`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ agents, on_conflict: onConflict }),
+  }).then((r) => json<{ created: number; skipped: number; overwritten: number }>(r));
+
 // --- Agent test (config without saving) ---
-export const testAgent = (config: Partial<AgentDef> & { prompt?: string }, signal?: AbortSignal) =>
+export const testAgent = (config: any, signal?: AbortSignal) =>
   fetch(`${SERVER_URL}/agents/test`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(config),
+    body: JSON.stringify({ config }),
     signal,
   });
 

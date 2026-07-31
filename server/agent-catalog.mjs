@@ -1,15 +1,15 @@
 /**
  * Agent Catalog — the single owner of Agent SQL, validation, copy, and by-id
- * lookup (#55 decision).
+ * lookup.
  *
- * Replaces the 13+ scattered `db.prepare(...)` calls that were inline in
- * server/index.mjs route handlers. Every agents-table read/write goes through
- * this module. Routes keep only HTTP framing (parse body → call catalog →
- * shape response).
+ * Schema (post-refactor #213):
+ *   agents(id, name, runtime, config JSON, tags JSON, created_at, updated_at)
  *
- * Validation owned here (invariants the DB schema can't express):
- *   - temperature: finite number in [0, 2]; default 0.7 when undefined.
- * Both throw AgentCatalogError with a machine-readable `code`.
+ * Config JSON has three layers:
+ *   - provider: {base_url, api_key, model, pricing?}
+ *   - system_prompt: string
+ *   - session_options: {thinkingLevel?, tools?, excludeTools?, noTools?}
+ *   - pi_settings: {defaultProjectTrust, retry?, compaction?, skills?, ...}
  */
 
 import { nanoid } from "nanoid";
@@ -22,71 +22,22 @@ export class AgentCatalogError extends Error {
   }
 }
 
-const AGENT_FIELDS = [
-  "name",
-  "provider_base_url",
-  "provider_api_key",
-  "model",
-  "system_prompt",
-  "temperature",
-];
-
-/**
- * Validate temperature. `undefined` is allowed (caller applies default).
- * Rejects non-numbers, NaN, and out-of-range values. Exported so routes
- * that don't write to the DB (e.g. /agents/test) can still enforce the
- * same invariant without duplicating the rule.
- */
-export function validateTemperature(t) {
-  if (t === undefined) return;
-  if (typeof t !== "number" || Number.isNaN(t) || t < 0 || t > 2) {
-    throw new AgentCatalogError({
-      code: "invalid_temperature",
-      message: `temperature must be a number in [0, 2], got ${String(t)}`,
-    });
-  }
-}
-
-/** Apply default temperature when undefined. Caller must have validated first. */
-function normalizeTemperature(t) {
-  return t ?? 0.7;
-}
-
-/** Validate and normalize a fields object for INSERT. */
-function normalizeCreateFields(fields) {
-  validateTemperature(fields.temperature);
-  return {
-    name: fields.name,
-    provider_base_url: fields.provider_base_url,
-    provider_api_key: fields.provider_api_key,
-    model: fields.model,
-    system_prompt: fields.system_prompt ?? "",
-    temperature: normalizeTemperature(fields.temperature),
-  };
-}
-
-const INSERT_SQL = `
-  INSERT INTO agents (id, name, provider_base_url, provider_api_key, model, system_prompt, temperature)
-  VALUES (?, ?, ?, ?, ?, ?, ?)
-`;
-
-/** Insert a fully-formed row (7 columns in table order). */
-function insertRow(db, row) {
-  db.prepare(INSERT_SQL).run(
-    row.id,
-    row.name,
-    row.provider_base_url,
-    row.provider_api_key,
-    row.model,
-    row.system_prompt,
-    row.temperature,
-  );
-}
+const DEFAULT_CONFIG = {
+  provider: { base_url: "", api_key: "", model: "" },
+  system_prompt: "",
+  session_options: {},
+  pi_settings: { defaultProjectTrust: "always" },
+};
 
 export function createAgent(db, fields) {
-  const norm = normalizeCreateFields(fields);
   const id = fields.id ?? nanoid(10);
-  insertRow(db, { id, ...norm });
+  const name = fields.name || "Untitled";
+  const runtime = fields.runtime || "pi-coding-agent";
+  const config = JSON.stringify(fields.config ?? DEFAULT_CONFIG);
+  const tags = JSON.stringify(fields.tags ?? []);
+  db.prepare(
+    "INSERT INTO agents (id, name, runtime, config, tags) VALUES (?, ?, ?, ?, ?)"
+  ).run(id, name, runtime, config, tags);
   return getAgentById(db, id);
 }
 
@@ -98,21 +49,33 @@ export function getAgentById(db, id) {
   return db.prepare("SELECT * FROM agents WHERE id = ?").get(id);
 }
 
+/**
+ * Partial update. Supports:
+ * - name: string
+ * - config: object (shallow-merged with existing config)
+ * - tags: array (replaced)
+ */
 export function updateAgent(db, id, fields) {
   const existing = getAgentById(db, id);
   if (!existing) return undefined;
 
-  // Validate invariants for any field that's present.
-  if (fields.temperature !== undefined) validateTemperature(fields.temperature);
-
   const updates = [];
   const values = [];
-  for (const f of AGENT_FIELDS) {
-    if (fields[f] !== undefined && fields[f] !== null) {
-      updates.push(`${f} = ?`);
-      values.push(fields[f]);
-    }
+
+  if (fields.name !== undefined) {
+    updates.push("name = ?");
+    values.push(fields.name);
   }
+  if (fields.config !== undefined) {
+    const merged = deepMergeConfig(JSON.parse(existing.config), fields.config);
+    updates.push("config = ?");
+    values.push(JSON.stringify(merged));
+  }
+  if (fields.tags !== undefined) {
+    updates.push("tags = ?");
+    values.push(JSON.stringify(fields.tags));
+  }
+
   if (updates.length === 0) return existing;
   updates.push("updated_at = datetime('now')");
   values.push(id);
@@ -120,7 +83,30 @@ export function updateAgent(db, id, fields) {
   return getAgentById(db, id);
 }
 
+/**
+ * Delete agent. Returns {deleted: true} or throws AgentCatalogError with
+ * code 'workflow_reference' if workflows reference this agent.
+ */
 export function deleteAgent(db, id) {
+  // Check workflow references
+  const workflows = db.prepare("SELECT id, name, data FROM workflows").all();
+  const referencing = workflows.filter((w) => {
+    try {
+      const data = JSON.parse(w.data);
+      const nodes = data.nodes || [];
+      return nodes.some(
+        (n) => n?.data?.agentId === id || n?.data?.agent_id === id
+      );
+    } catch {
+      return false;
+    }
+  });
+  if (referencing.length > 0) {
+    throw new AgentCatalogError({
+      code: "workflow_reference",
+      message: `Agent is referenced by ${referencing.length} workflow(s): ${referencing.map((w) => w.name).join(", ")}`,
+    });
+  }
   const result = db.prepare("DELETE FROM agents WHERE id = ?").run(id);
   return result.changes > 0;
 }
@@ -129,25 +115,41 @@ export function copyAgent(db, id) {
   const src = getAgentById(db, id);
   if (!src) return undefined;
   const newId = nanoid(10);
-  insertRow(db, {
-    id: newId,
-    name: `${src.name} (copy)`,
-    provider_base_url: src.provider_base_url,
-    provider_api_key: src.provider_api_key,
-    model: src.model,
-    system_prompt: src.system_prompt,
-    temperature: src.temperature,
-  });
+  db.prepare(
+    "INSERT INTO agents (id, name, runtime, config, tags) VALUES (?, ?, ?, ?, ?)"
+  ).run(newId, `${src.name} (copy)`, src.runtime, src.config, src.tags);
   return getAgentById(db, newId);
 }
 
 /**
  * Seed an agent only if the table is empty. Returns the inserted row, or
- * undefined if the table was already non-empty (no-op). Used at server boot
- * to guarantee a fake-provider agent exists for first-run dev.
+ * undefined if the table was already non-empty (no-op).
  */
 export function seedAgentIfEmpty(db, fields) {
   const count = db.prepare("SELECT COUNT(*) as c FROM agents").get().c;
   if (count > 0) return undefined;
   return createAgent(db, fields);
+}
+
+/**
+ * Shallow-merge config: top-level keys from patch override base;
+ * nested objects (provider, session_options, pi_settings) are shallow-merged.
+ */
+function deepMergeConfig(base, patch) {
+  const result = { ...base };
+  for (const [key, value] of Object.entries(patch)) {
+    if (
+      value &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      result[key] &&
+      typeof result[key] === "object" &&
+      !Array.isArray(result[key])
+    ) {
+      result[key] = { ...result[key], ...value };
+    } else {
+      result[key] = value;
+    }
+  }
+  return result;
 }
