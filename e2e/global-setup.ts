@@ -20,6 +20,7 @@
  * `globalThis` so global-teardown can kill them.
  */
 import { spawn, type ChildProcess } from 'node:child_process';
+import { execSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, openSync, writeSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -119,6 +120,23 @@ function assertDistExists() {
   }
 }
 
+/**
+ * Ensure the mem0 extension dist exists before the server starts (spec #212
+ * D15). The server symlinks {agentDir}/extensions/pi-extension-mem0/ from
+ * packages/pi-extension-mem0/dist; without it the extension never loads and
+ * the mem0 E2E suite fails at auto-capture. CI runs `pnpm build` (frontend
+ * only), so we build the extension on demand — fast, idempotent, and keeps
+ * the E2E command single-step in every environment.
+ */
+function ensureMem0ExtensionDist() {
+  const distEntry = join(ROOT, 'packages', 'pi-extension-mem0', 'dist', 'index.js');
+  if (existsSync(distEntry)) return;
+  execSync('pnpm --filter @flowgram.ai/pi-extension-mem0 build', {
+    cwd: ROOT,
+    stdio: 'inherit',
+  });
+}
+
 export default async function globalSetup() {
   // Build a clean env for the children. We load .env ourselves (rather than
   // relying on `node --env-file=.env`) so we control precedence — the E2E
@@ -164,6 +182,7 @@ export default async function globalSetup() {
   // fake-provider uses it to validate Authorization headers on requests from
   // the server.
   assertDistExists();
+  ensureMem0ExtensionDist();
   processes.server = spawnLogged('server', 'node', ['server/index.mjs'], {
     ...baseEnv,
     FAKE_PROVIDER_API_KEY: fakeApiKey,
