@@ -10,7 +10,7 @@
  * "not set" (fall back to the next precedence level, e.g. env var or default).
  */
 
-const KNOWN_KEYS = ["node_timeout_default_ms", "mem0_host", "mem0_api_key"];
+const KNOWN_KEYS = ["node_timeout_default_ms"];
 
 /**
  * Read a single setting value (raw TEXT). Returns null if the row is absent.
@@ -47,83 +47,45 @@ export function getNodeTimeoutDefaultMs(db) {
 export function getKnownSettings(db) {
   return {
     node_timeout_default_ms: getNodeTimeoutDefaultMs(db),
-    mem0_host: getSetting(db, "mem0_host"),
-    mem0_api_key: getSetting(db, "mem0_api_key"),
   };
 }
 
 /**
  * Validate a settings PUT body. Returns {ok:true, value} on success or
- * {ok:false, error} on failure.
+ * {ok:false, error} on failure. Only `node_timeout_default_ms` is accepted
+ * for now; unknown keys are rejected (fail-loud so future additions are
+ * intentional, not accidental writes).
  *
- * Accepted keys (#212 D12):
- *   - node_timeout_default_ms: integer > 0, <= 24h (existing rule)
- *   - mem0_host: string, empty or an http(s) URL (self-hosted mem0 server)
- *   - mem0_api_key: string (may be empty to clear)
- *
- * At least one known key is required; unknown keys are rejected (fail-loud
- * so future additions are intentional, not accidental writes). Partial
- * updates are allowed — any subset of known keys may be sent.
+ * Validation rules for node_timeout_default_ms:
+ *   - Number.isInteger
+ *   - > 0
+ *   - <= 24 * 60 * 60 * 1000 (24h cap)
  */
 export function validateSettingsBody(body) {
   if (!body || typeof body !== "object") {
     return { ok: false, error: "body must be an object" };
   }
   const keys = Object.keys(body);
-  if (keys.length === 0) {
-    return { ok: false, error: "body must contain at least one setting" };
-  }
   for (const k of keys) {
     if (!KNOWN_KEYS.includes(k)) {
       return { ok: false, error: `unknown setting key: ${k}` };
     }
   }
-
-  const value = {};
-
-  if ("node_timeout_default_ms" in body) {
-    const v = body.node_timeout_default_ms;
-    if (!Number.isInteger(v)) {
-      return { ok: false, error: "node_timeout_default_ms must be an integer" };
-    }
-    if (v <= 0) {
-      return { ok: false, error: "node_timeout_default_ms must be > 0" };
-    }
-    const MAX = 24 * 60 * 60 * 1000;
-    if (v > MAX) {
-      return { ok: false, error: `node_timeout_default_ms must be <= ${MAX} (24h)` };
-    }
-    value.node_timeout_default_ms = v;
+  if (!("node_timeout_default_ms" in body)) {
+    return { ok: false, error: "node_timeout_default_ms is required" };
   }
-
-  if ("mem0_host" in body) {
-    const v = body.mem0_host;
-    if (typeof v !== "string") {
-      return { ok: false, error: "mem0_host must be a string" };
-    }
-    if (v !== "") {
-      let url;
-      try {
-        url = new URL(v);
-      } catch {
-        return { ok: false, error: "mem0_host must be a valid URL" };
-      }
-      if (url.protocol !== "http:" && url.protocol !== "https:") {
-        return { ok: false, error: "mem0_host must be an http(s) URL" };
-      }
-    }
-    value.mem0_host = v;
+  const v = body.node_timeout_default_ms;
+  if (!Number.isInteger(v)) {
+    return { ok: false, error: "node_timeout_default_ms must be an integer" };
   }
-
-  if ("mem0_api_key" in body) {
-    const v = body.mem0_api_key;
-    if (typeof v !== "string") {
-      return { ok: false, error: "mem0_api_key must be a string" };
-    }
-    value.mem0_api_key = v;
+  if (v <= 0) {
+    return { ok: false, error: "node_timeout_default_ms must be > 0" };
   }
-
-  return { ok: true, value };
+  const MAX = 24 * 60 * 60 * 1000;
+  if (v > MAX) {
+    return { ok: false, error: `node_timeout_default_ms must be <= ${MAX} (24h)` };
+  }
+  return { ok: true, value: { node_timeout_default_ms: v } };
 }
 
 export { KNOWN_KEYS };

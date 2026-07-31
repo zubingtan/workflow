@@ -230,23 +230,3 @@ test(".dockerignore does NOT exclude paths needed for build", () => {
     );
   }
 });
-
-// --- mem0 extension packaging (#212 D15) ---
-
-test("build stage builds the pi-extension-mem0 workspace package", () => {
-  const content = readDockerfile();
-  assert.match(
-    content,
-    /pnpm --filter @flowgram\.ai\/pi-extension-mem0 build/,
-    "build stage must build the extension (tsup → packages/pi-extension-mem0/dist)"
-  );
-});
-
-test("runner stage copies the extension dist to /opt/pi-extension-mem0", () => {
-  const content = readDockerfile();
-  assert.match(
-    content,
-    /COPY --from=build \/app\/packages\/pi-extension-mem0\/dist \/opt\/pi-extension-mem0/,
-    "runner must install the extension at /opt/pi-extension-mem0 (D15)"
-  );
-});

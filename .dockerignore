@@ -47,8 +47,6 @@ Dockerfile
 .dockerignore
 docker-compose.yml
 docker-compose.*.yml
-# ...but the mem0 sub-image's Dockerfile IS its build context (#212 D8).
-!docker/mem0/Dockerfile
 
 # Docs (not needed at runtime)
 *.md

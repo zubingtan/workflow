@@ -17,9 +17,8 @@ import { projectTerminal } from "./agent-execution.mjs";
  *
  * @param {object} deps
  * @param {(opts: object) => AsyncGenerator} deps.runAgentExecution
- * @param {(agentConfig: object, apiKey: string, agentDir: string, runID?: string) => Promise<object>} deps.createAgentSessionForAgent
+ * @param {(agentConfig: object, apiKey: string, agentDir: string) => Promise<object>} deps.createAgentSessionForAgent
  * @param {string} deps.agentDir
- * @param {(key: string) => string|null} [deps.getSetting] - settings lookup for mem0_host/mem0_api_key (D12).
  * @param {(c: object, handler: (stream: object) => Promise<void>) => Promise<void>} [deps.streamSSE]
  *   Defaults to hono/streaming's streamSSE. Tests pass a fake that invokes
  *   the handler with a fake stream.
@@ -28,7 +27,6 @@ export function createRunAgentSse({
   runAgentExecution,
   createAgentSessionForAgent,
   agentDir,
-  getSetting = null,
   streamSSE: streamer = streamSSE,
 }) {
   return async function runAgentSse(c, agentConfig, prompt) {
@@ -37,11 +35,8 @@ export function createRunAgentSse({
     c.header("X-Accel-Buffering", "no");
 
     // Bind apiKey into the createSession closure — shared module never resolves
-    // credentials (#66 rule, aligned with #77 calibration). 4-arg form.
-    // Draft/test runs have no workflow runID — runID stays "" (mem0 degrades
-    // gracefully; agent_id still scopes memory, D3).
-    const createSessionBound = (cfg, dir, runID) =>
-      createAgentSessionForAgent(cfg, apiKey, dir, runID, { getSetting });
+    // credentials (#66 rule, aligned with #77 calibration). 2-arg form.
+    const createSessionBound = (cfg, dir) => createAgentSessionForAgent(cfg, apiKey, dir);
 
     const run = async (stream) => {
       // Bridge Hono's stream.onAbort → an AbortController whose signal feeds the
