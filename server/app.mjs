@@ -154,11 +154,19 @@ export function createApp({
     }
   }
 
-  // --- CORS (dev origin; harmless in prod where same-origin) ---
+  // --- CORS (local origins only — security review #212) ---
+  // The app is a local single-user tool (dev :4001, prod :4000, E2E :4099,
+  // all same-origin SPA+API). A blanket `*` would let any malicious webpage
+  // PUT /api/settings (e.g. repoint mem0_host at an attacker server). Only
+  // loopback origins get CORS headers; same-origin requests need none.
+  const LOCAL_ORIGIN_PATTERN = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
   app.use("*", async (c, next) => {
-    c.header("Access-Control-Allow-Origin", "*");
-    c.header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
-    c.header("Access-Control-Allow-Headers", "Content-Type,Authorization");
+    const origin = c.req.header("origin");
+    if (origin && LOCAL_ORIGIN_PATTERN.test(origin)) {
+      c.header("Access-Control-Allow-Origin", origin);
+      c.header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
+      c.header("Access-Control-Allow-Headers", "Content-Type,Authorization");
+    }
     if (c.req.method === "OPTIONS") return c.text("", 204);
     await next();
   });
