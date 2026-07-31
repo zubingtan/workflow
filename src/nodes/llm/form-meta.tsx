@@ -65,7 +65,15 @@ function AgentSelect({
       disabled={readonly}
       loading={loading}
       placeholder="Select an agent"
-      optionList={agents.map((a) => ({ label: `${a.name} (${a.model})`, value: a.id }))}
+      optionList={agents.map((a) => {
+        let m = '';
+        try {
+          m = JSON.parse(a.config)?.provider?.model || '';
+        } catch {
+          /* */
+        }
+        return { label: `${a.name}${m ? ` (${m})` : ''}`, value: a.id };
+      })}
       style={{ width: '100%' }}
       size="small"
     />

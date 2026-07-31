@@ -14,40 +14,91 @@ import { runAgentExecution as defaultRunAgentExecution } from "./agent-execution
 import { getAgentById } from "./agent-catalog.mjs";
 
 // --- Shared agent session creation (reused by SSE adapter and injected into runAgentExecution) ---
-export async function createAgentSessionForAgent(agentConfig, apiKey, agentDir) {
-  const { createAgentSession, ModelRuntime, SessionManager, SettingsManager } =
+
+/**
+ * Resolve api_key: "$ENV_VAR" → process.env lookup; otherwise literal value.
+ */
+export function resolveApiKey(rawValue) {
+  if (!rawValue) return "";
+  if (rawValue.startsWith("$")) {
+    return process.env[rawValue.slice(1)] ?? "";
+  }
+  return rawValue;
+}
+
+/**
+ * Create a pi-coding-agent session from an agent record.
+ * @param {object} agent - DB row or constructed object with { name, config (string|object) }
+ * @param {string} agentDir - working directory for the agent
+ */
+export async function createAgentSessionForAgent(agent, agentDir) {
+  const { createAgentSession, ModelRuntime, SessionManager, SettingsManager, DefaultResourceLoader } =
     await import("@earendil-works/pi-coding-agent");
 
+  const config = typeof agent.config === "string" ? JSON.parse(agent.config) : (agent.config ?? {});
+  const provider = config.provider ?? {};
+  const sessionOptions = config.session_options ?? {};
+  const piSettings = config.pi_settings ?? {};
+
+  const apiKey = resolveApiKey(provider.api_key);
+  const model = provider.model || "gpt-4o";
+  const pricing = provider.pricing ?? { input: 0, output: 0 };
+
+  // 1. ModelRuntime — register custom provider
   const modelRuntime = await ModelRuntime.create({ modelsPath: null });
   modelRuntime.registerProvider("custom", {
-    name: agentConfig.name,
-    baseUrl: agentConfig.provider_base_url,
+    name: agent.name || "custom",
+    baseUrl: provider.base_url,
     apiKey,
     api: "openai-completions",
     models: [{
-      id: agentConfig.model,
-      name: agentConfig.model,
+      id: model,
+      name: model,
       api: "openai-completions",
       reasoning: false,
       input: ["text"],
-      cost: { input: 0, output: 0 },
+      cost: { input: pricing.input ?? 0, output: pricing.output ?? 0, cacheRead: pricing.cacheRead ?? 0, cacheWrite: pricing.cacheWrite ?? 0 },
       contextWindow: 128000,
       maxTokens: 8192,
     }],
   });
 
-  const result = await createAgentSession({
+  // 2. SettingsManager — inject pi_settings (transparent passthrough)
+  const settingsManager = SettingsManager.inMemory({
+    ...piSettings,
+    defaultProjectTrust: "always", // forced for headless
+  });
+
+  // 3. SessionManager — persist sessions per-agent
+  const sessionDir = `${agentDir}/sessions`;
+  const { mkdirSync } = await import("node:fs");
+  mkdirSync(sessionDir, { recursive: true });
+  const sessionManager = SessionManager.create(agentDir, sessionDir);
+
+  // 4. createAgentSession — full options
+  const sessionOpts = {
     cwd: agentDir,
     agentDir,
     modelRuntime,
-    model: modelRuntime.getModel("custom", agentConfig.model),
-    sessionManager: SessionManager.inMemory(agentDir),
-    settingsManager: SettingsManager.inMemory(),
-  });
+    model: modelRuntime.getModel("custom", model),
+    sessionManager,
+    settingsManager,
+  };
 
-  // Apply system prompt after session creation (createAgentSession ignores systemPrompt option)
-  if (agentConfig.system_prompt && result.session.agent?.state) {
-    result.session.agent.state.systemPrompt = agentConfig.system_prompt;
+  // thinkingLevel
+  if (sessionOptions.thinkingLevel) {
+    sessionOpts.thinkingLevel = sessionOptions.thinkingLevel;
+  }
+  // Tool control
+  if (sessionOptions.tools?.length) sessionOpts.tools = sessionOptions.tools;
+  if (sessionOptions.excludeTools?.length) sessionOpts.excludeTools = sessionOptions.excludeTools;
+  if (sessionOptions.noTools) sessionOpts.noTools = sessionOptions.noTools;
+
+  const result = await createAgentSession(sessionOpts);
+
+  // 5. System prompt via agent state (DefaultResourceLoader injection)
+  if (config.system_prompt && result.session.agent?.state) {
+    result.session.agent.state.systemPrompt = config.system_prompt;
   }
 
   return result.session;
@@ -126,12 +177,9 @@ class AgentExecutor {
       throw new AgentExecutionError({ kind: "agent_not_found", message: `agent not found: ${agentId}` });
     }
 
-    const apiKey = agent.provider_api_key;
-
-    // Bind apiKey into the createSession closure — the shared module never
-    // resolves credentials (#66 rule). 2-arg form: (agentConfig, agentDir).
-    const createSessionBound = (agentConfig, agentDir) =>
-      this.createSession(agentConfig, apiKey, agentDir);
+    // New interface: createSession(agent, agentDir) — apiKey resolved internally
+    const createSessionBound = (agentCfg, dir) =>
+      this.createSession(agentCfg, dir);
 
     // Phase 9 (#161): per-node timeout via a per-node AbortController.
     // AbortSignal.any combines the workflow signal (user cancel) with the

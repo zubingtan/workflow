@@ -23,14 +23,29 @@ const SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS agents (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    provider_base_url TEXT NOT NULL,
-    provider_api_key TEXT NOT NULL,
-    model TEXT NOT NULL,
-    system_prompt TEXT DEFAULT '',
-    temperature REAL DEFAULT 0.7,
+    runtime TEXT NOT NULL DEFAULT 'pi-coding-agent',
+    config TEXT NOT NULL DEFAULT '{}',
+    tags TEXT NOT NULL DEFAULT '[]',
     created_at TEXT DEFAULT (datetime('now')),
     updated_at TEXT DEFAULT (datetime('now'))
   );
+
+  CREATE TABLE IF NOT EXISTS agent_executions (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL REFERENCES agents(id),
+    status TEXT NOT NULL,
+    trigger_type TEXT NOT NULL,
+    workflow_run_id TEXT,
+    session_file TEXT,
+    started_at TEXT NOT NULL,
+    ended_at TEXT
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_agent_executions_agent
+    ON agent_executions(agent_id, started_at DESC);
+
+  CREATE INDEX IF NOT EXISTS idx_agent_executions_run
+    ON agent_executions(workflow_run_id);
 
   CREATE TABLE IF NOT EXISTS workflows (
     id TEXT PRIMARY KEY,
@@ -68,7 +83,53 @@ const SCHEMA_SQL = `
  */
 export function ensureSchema(db) {
   db.pragma("foreign_keys = ON");
+  migrateAgentsTableIfNeeded(db);
   db.exec(SCHEMA_SQL);
+}
+
+/**
+ * Destructive one-time migration: old flat-column agents table → new config
+ * JSON schema. Detects the old structure by checking for `provider_base_url`
+ * column. Irreversible.
+ */
+function migrateAgentsTableIfNeeded(db) {
+  const cols = db.prepare("PRAGMA table_info(agents)").all();
+  if (!cols.length) return; // table doesn't exist yet — schema SQL will create it
+  const hasOldCol = cols.some((c) => c.name === "provider_base_url");
+  if (!hasOldCol) return; // already migrated
+
+  const rows = db.prepare("SELECT * FROM agents").all();
+  db.exec(`
+    CREATE TABLE agents_new (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      runtime TEXT NOT NULL DEFAULT 'pi-coding-agent',
+      config TEXT NOT NULL DEFAULT '{}',
+      tags TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+  const insert = db.prepare(
+    "INSERT INTO agents_new (id, name, config, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
+  );
+  for (const row of rows) {
+    const config = JSON.stringify({
+      provider: {
+        base_url: row.provider_base_url,
+        api_key: row.provider_api_key,
+        model: row.model,
+      },
+      system_prompt: row.system_prompt || "",
+      session_options: {},
+      pi_settings: { defaultProjectTrust: "always" },
+    });
+    insert.run(row.id, row.name, config, row.created_at, row.updated_at);
+  }
+  db.exec(`
+    DROP TABLE agents;
+    ALTER TABLE agents_new RENAME TO agents;
+  `);
 }
 
 /**
