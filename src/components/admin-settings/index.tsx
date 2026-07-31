@@ -23,10 +23,6 @@ export function AdminSettings() {
   const [value, setValue] = useState<number | null>(null);
   const [mem0Host, setMem0Host] = useState<string>('');
   const [mem0ApiKey, setMem0ApiKey] = useState<string>('');
-  // Security (#212 review): the stored API key is NEVER echoed back into the
-  // input — we only track whether one exists (to render the right placeholder
-  // and preserve it on save when left untouched).
-  const [hasStoredKey, setHasStoredKey] = useState(false);
 
   const reload = useCallback(() => {
     setLoading(true);
@@ -35,8 +31,7 @@ export function AdminSettings() {
       .then((s) => {
         setValue(s.node_timeout_default_ms);
         setMem0Host(s.mem0_host ?? '');
-        setHasStoredKey(Boolean(s.mem0_api_key));
-        setMem0ApiKey('');
+        setMem0ApiKey(s.mem0_api_key ?? '');
       })
       .finally(() => setLoading(false));
   }, []);
@@ -72,15 +67,11 @@ export function AdminSettings() {
     }
     setSaving(true);
     try {
-      const patch: Partial<api.AppSettings> = {
+      await api.updateSettings({
         node_timeout_default_ms: value,
         mem0_host: mem0Host,
-        // Leave the key untouched when the input is empty AND a key is already
-        // stored (never round-trip the stored value through the UI). Empty
-        // input with no stored key clears it.
-        ...(mem0ApiKey !== '' || !hasStoredKey ? { mem0_api_key: mem0ApiKey } : {}),
-      };
-      await api.updateSettings(patch);
+        mem0_api_key: mem0ApiKey,
+      });
       Toast.success('Saved');
       reload();
     } catch (err: any) {
@@ -153,9 +144,7 @@ export function AdminSettings() {
           <Input
             mode="password"
             value={mem0ApiKey}
-            placeholder={
-              hasStoredKey ? 'Stored (leave empty to keep)' : 'ADMIN_API_KEY or a user API key'
-            }
+            placeholder="ADMIN_API_KEY or a user API key"
             onChange={(v) => setMem0ApiKey(v)}
             style={{ width: '100%', marginTop: 4 }}
           />

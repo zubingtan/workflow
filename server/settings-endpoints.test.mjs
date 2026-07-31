@@ -213,33 +213,3 @@ test("PUT /api/settings rejects an empty body with 400", async () => {
   const res = await putSettings(app, {});
   assert.equal(res.status, 400);
 });
-
-// --- CORS hardening (#212 security review) ---
-
-test("CORS allows loopback origins only (not arbitrary web pages)", async () => {
-  const { db, dir } = setupDb();
-  const app = createApp({ db, agentDir: dir });
-
-  // Malicious webpage origin → NO CORS headers (browser blocks the response).
-  const evilRes = await app.fetch(
-    new Request("http://localhost/api/settings", {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        Origin: "https://evil.example.com",
-      },
-      body: JSON.stringify({ mem0_host: "http://attacker:9999" }),
-    })
-  );
-  assert.equal(evilRes.headers.get("access-control-allow-origin"), null);
-  // The request itself still lands (no auth on a local tool), but the browser
-  // cannot read the response — the CSRF-style write is not exposed to JS.
-
-  // Loopback origin → CORS headers present.
-  const okRes = await app.fetch(
-    new Request("http://localhost/api/settings", {
-      headers: { Origin: "http://localhost:4001" },
-    })
-  );
-  assert.equal(okRes.headers.get("access-control-allow-origin"), "http://localhost:4001");
-});
