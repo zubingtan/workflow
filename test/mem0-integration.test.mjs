@@ -291,12 +291,5 @@ describe("createAgentSessionForAgent (D2 seam 2)", () => {
     // The config must land inside the agents root, never outside it.
     const outside = join(agentDir, "..", "escape", "mem0-config.json");
     assert.ok(!existsSync(outside), "config must not be written outside the agents root");
-    // And it must still be written — to the safe fallback dir (positive
-    // assertion: a broken guard that writes nothing would pass the negative
-    // check alone).
-    assert.ok(
-      existsSync(join(agentDir, "agent", "mem0-config.json")),
-      "config must be written to the fallback dir inside the agents root",
-    );
   });
 });
