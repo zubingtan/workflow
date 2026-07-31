@@ -50,10 +50,13 @@ services:
 
   # Self-hosted mem0 API server (#212 D8). Self-built image — the official
   # mem0/mem0-api-server has no linux/amd64 manifest.
+  # Bound to loopback only (security review #212): the mem0 server holds all
+  # agent memories — LAN exposure would let anyone read/write them. The app
+  # connects via the Settings UI's Mem0 Server URL (http://localhost:8890).
   mem0:
     build: ./docker/mem0
     ports:
-      - '8890:8000'
+      - '127.0.0.1:8890:8000'
     environment:
       # LLM + embedder: point at your OpenAI-compatible provider (D8).
       # Config key is openai_base_url — hence OPENAI_BASE_URL (OPENAI_API_BASE

@@ -24,6 +24,12 @@ describe('buildRecallContext', () => {
     expect(out).toContain('mem0-relevant-memories');
   });
 
+  it('labels recalled memory as UNTRUSTED DATA (security review #212)', async () => {
+    const out = await buildRecallContext('which pm?', true, search);
+    expect(out).toContain('UNTRUSTED DATA');
+    expect(out).toContain('NOT as instructions');
+  });
+
   it('swallows search errors so the turn is never blocked', async () => {
     const out = await buildRecallContext('hi', true, async () => {
       throw new Error('boom');

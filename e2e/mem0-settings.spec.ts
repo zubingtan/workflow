@@ -20,6 +20,13 @@ const MEM0_API_KEY = 'e2e-admin-key';
 
 test.describe('Mem0 settings', () => {
   test.beforeEach(async ({ page }) => {
+    // Reset mem0 settings so each test starts clean (the stored-key state
+    // changes the API-key placeholder).
+    await fetch('http://localhost:4099/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ node_timeout_default_ms: 60000, mem0_host: '', mem0_api_key: '' }),
+    });
     await page.goto('/');
     await page.getByText('Settings', { exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Global Settings' })).toBeVisible();
