@@ -115,7 +115,6 @@ export function createApp({
   staticDir,
   runAgentExecution,
   createAgentSessionForAgent,
-  getSetting,
   streamSSE,
   enqueueRun,
   cancelQueuedRun,
@@ -131,7 +130,6 @@ export function createApp({
     runAgentExecution,
     createAgentSessionForAgent,
     agentDir,
-    ...(getSetting ? { getSetting } : {}),
     ...(streamSSE ? { streamSSE } : {}),
   });
 

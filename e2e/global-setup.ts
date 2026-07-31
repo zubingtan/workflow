@@ -32,7 +32,7 @@ const DATA_DIR = mkdtempSync(join(tmpdir(), 'workflow-e2e-'));
 const READY_TIMEOUT = 60_000;
 const POLL_INTERVAL = 250;
 
-const processes: { fake?: ChildProcess; server?: ChildProcess; mem0?: ChildProcess } = {};
+const processes: { fake?: ChildProcess; server?: ChildProcess } = {};
 (globalThis as any).__E2E_PROCESSES__ = processes;
 (globalThis as any).__E2E_DATA_DIR__ = DATA_DIR;
 
@@ -140,16 +140,6 @@ export default async function globalSetup() {
     FAKE_PROVIDER_PORT: '4011',
   });
   await waitForUrl('http://localhost:4011/health/live', 'fake-provider', 'fake-provider');
-
-  // --- fake mem0 server (E2E port 8890, per spec #212 user story 11) ---
-  // Isolated from any locally running mem0 instance. The server process will
-  // be pointed at it via the mem0_host setting configured in E2E specs.
-  processes.mem0 = spawnLogged('fake-mem0', 'node', ['scripts/fake-mem0-server.mjs'], {
-    ...baseEnv,
-    FAKE_MEM0_PORT: '8890',
-    MEM0_API_KEY: 'e2e-mem0-key',
-  });
-  await waitForUrl('http://localhost:8890/health/live', 'fake-mem0', 'fake-mem0');
 
   // --- Hono server (E2E port 4099, per map #133 D3) in PROD mode with isolated SQLite ---
   // Prod mode (NODE_ENV=production) enables serveStatic + SPA fallback,

@@ -15,7 +15,7 @@ import { ensureSchema, markInflightRunsInterrupted } from "./db-schema.mjs";
 import { createRunQueue } from "./queue.mjs";
 import { createQueueAdapter } from "./queue-adapter.mjs";
 import { createRunsEventBus } from "./runs-events.mjs";
-import { getNodeTimeoutDefaultMs, getSetting } from "./settings.mjs";
+import { getNodeTimeoutDefaultMs } from "./settings.mjs";
 
 // --- Config ---
 // PORT (cloud-native standard) replaces SERVER_PORT. The legacy name is
@@ -92,12 +92,7 @@ if (seeded) console.log("  seeded fake-provider agent");
 // --- Init runtime (register AgentExecutor to replace built-in LLMExecutor) ---
 // Phase 9 (#161): pass a settingsProvider so AgentExecutor.resolveTimeoutMs
 // can read the global node_timeout_default_ms from the settings table.
-// mem0 (#212 D12): getSetting exposes mem0_host/mem0_api_key to
-// buildMem0Config for the per-run extension config.
-const settingsProvider = {
-  getNodeTimeoutDefaultMs: () => getNodeTimeoutDefaultMs(db),
-  getSetting: (key) => getSetting(db, key),
-};
+const settingsProvider = { getNodeTimeoutDefaultMs: () => getNodeTimeoutDefaultMs(db) };
 initRuntime(db, AGENT_DIR, settingsProvider);
 
 // --- Restart-interrupt sweep (#145) ---
@@ -137,7 +132,6 @@ const app = createApp({
   staticDir: STATIC_DIR,
   runAgentExecution,
   createAgentSessionForAgent,
-  getSetting: (key) => getSetting(db, key),
   enqueueRun: (workflowId, runID, payload) => runQueue.enqueue(workflowId, runID, payload),
   cancelQueuedRun: (runID) => runQueue.cancelQueued(runID),
   cancelRunningRun: async (runID) => {
