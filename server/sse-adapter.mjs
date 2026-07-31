@@ -52,9 +52,9 @@ export function createRunAgentSse({
             if (!stream.aborted) {
               await stream.writeSSE({ data: JSON.stringify(projectTerminal(ev)) });
             }
-            // Persist execution record
+            // Persist execution record (include sessionFile from terminal)
             if (onTerminal) {
-              onTerminal({ terminal: ev, agentConfig, startedAt, endedAt: new Date().toISOString() });
+              onTerminal({ terminal: ev, agentConfig, startedAt, endedAt: new Date().toISOString(), sessionFile: ev.sessionFile ?? null });
             }
             break;
           }

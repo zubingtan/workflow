@@ -6,6 +6,7 @@
  */
 
 import { nanoid } from "nanoid";
+import { readFileSync, existsSync } from "node:fs";
 
 /**
  * Write an execution record to SQLite.
@@ -55,6 +56,44 @@ export function getExecutionById(db, id) {
 export function deleteExecution(db, id) {
   const result = db.prepare("DELETE FROM agent_executions WHERE id = ?").run(id);
   return result.changes > 0;
+}
+
+/**
+ * Parse a pi session JSONL file to extract conversation detail.
+ * Returns { messages, toolEvents, prompt } or null if unreadable.
+ *
+ * Session file format: one JSON object per line. Entry types:
+ *   "session" — header (first line)
+ *   "message" — user/assistant message ({ message: { role, content } })
+ *   "thinking_level_change" / "model_change" / "compaction" — metadata
+ */
+export function parseSessionFile(filePath) {
+  if (!filePath || !existsSync(filePath)) return null;
+  try {
+    const raw = readFileSync(filePath, "utf-8");
+    const lines = raw.split("\n").filter((l) => l.trim());
+    const messages = [];
+    let prompt = null;
+    for (const line of lines) {
+      try {
+        const entry = JSON.parse(line);
+        if (entry.type === "message" && entry.message) {
+          const msg = entry.message;
+          messages.push({
+            role: msg.role,
+            content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content),
+            timestamp: entry.timestamp,
+          });
+          if (!prompt && msg.role === "user") {
+            prompt = typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content);
+          }
+        }
+      } catch { /* skip malformed lines */ }
+    }
+    return { messages, prompt };
+  } catch {
+    return null;
+  }
 }
 
 /**

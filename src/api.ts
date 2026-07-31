@@ -46,6 +46,21 @@ export interface AgentExecution {
   ended_at: string | null;
 }
 
+export interface SessionMessage {
+  role: string;
+  content: string;
+  timestamp?: string;
+}
+
+export interface SessionDetail {
+  messages: SessionMessage[];
+  prompt: string | null;
+}
+
+export interface AgentExecutionDetail extends AgentExecution {
+  sessionDetail: SessionDetail | null;
+}
+
 export interface AgentStats {
   overview: {
     totalExecutions: number;
@@ -183,11 +198,21 @@ export const deleteExecution = (agentId: string, execId: string) =>
     json(r)
   );
 
+export const getExecutionDetail = (agentId: string, execId: string) =>
+  fetch(`${SERVER_URL}/agents/${agentId}/executions/${execId}`).then((r) =>
+    json<AgentExecutionDetail>(r)
+  );
+
 // --- Agent stats ---
 export const getAgentStats = (agentId: string) =>
   fetch(`${SERVER_URL}/agents/${agentId}/stats`).then((r) => json<AgentStats>(r));
 
 // --- Agent export/import ---
+export const exportAgent = (agentId: string, includeSecrets = false) =>
+  fetch(
+    `${SERVER_URL}/agents/${agentId}/export${includeSecrets ? '?include_secrets=true' : ''}`
+  ).then((r) => json<any>(r));
+
 export const exportAgents = (includeSecrets = false) =>
   fetch(`${SERVER_URL}/agents/export${includeSecrets ? '?include_secrets=true' : ''}`).then((r) =>
     json<any[]>(r)

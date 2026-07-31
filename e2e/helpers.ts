@@ -17,11 +17,14 @@ export async function createAgent(nameSuffix = Date.now()): Promise<string> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       name: `E2E Agent ${nameSuffix}`,
-      provider_base_url: FAKE_PROVIDER_BASE,
-      provider_api_key: FAKE_API_KEY,
-      model: 'fake-m0',
-      system_prompt: 'You are an E2E test agent.',
-      temperature: 0.7,
+      config: {
+        provider: {
+          base_url: FAKE_PROVIDER_BASE,
+          api_key: FAKE_API_KEY,
+          model: 'fake-m0',
+        },
+        system_prompt: 'You are an E2E test agent.',
+      },
     }),
   });
   const agent = await res.json();

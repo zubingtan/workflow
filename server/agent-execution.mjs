@@ -43,7 +43,7 @@ export async function* runAgentExecution({
 }) {
   // Pre-aborted short-circuit: don't waste a session creation on a cancelled run.
   if (signal?.aborted) {
-    yield { type: "terminal", phase: "cancelled", partialText: "", toolEvents: [] };
+    yield { type: "terminal", phase: "cancelled", partialText: "", toolEvents: [], stats: null, sessionFile: null };
     return;
   }
 
@@ -137,8 +137,11 @@ export async function* runAgentExecution({
     // If the user cancelled, the terminal is "cancelled" even if the provider
     // also rejected prompt() in response to the abort (#66 rule: classification
     // MUST use signal.aborted, not event inspection).
+    const stats = session.getSessionStats?.() ?? null;
+    const sessionFile = session.sessionFile ?? null;
+
     if (signal?.aborted) {
-      yield { type: "terminal", phase: "cancelled", partialText, toolEvents };
+      yield { type: "terminal", phase: "cancelled", partialText, toolEvents, stats, sessionFile };
       return;
     }
 
@@ -148,18 +151,22 @@ export async function* runAgentExecution({
         phase: "failed",
         partialText,
         toolEvents,
+        stats,
+        sessionFile,
         error: toErrorKind(promptError),
       };
       return;
     }
 
-    yield { type: "terminal", phase: "succeeded", partialText, toolEvents };
+    yield { type: "terminal", phase: "succeeded", partialText, toolEvents, stats, sessionFile };
   } catch (err) {
     yield {
       type: "terminal",
       phase: "failed",
       partialText,
       toolEvents,
+      stats: null,
+      sessionFile: null,
       error: toErrorKind(err),
     };
   } finally {

@@ -7,6 +7,7 @@ import type { AgentDef, AgentExecution } from '../../../api';
 
 interface Props {
   agent: AgentDef;
+  onSelectExecution?: (execId: string | null) => void;
 }
 
 const STATUS_COLOR: Record<string, 'green' | 'red' | 'grey'> = {
@@ -15,15 +16,21 @@ const STATUS_COLOR: Record<string, 'green' | 'red' | 'grey'> = {
   cancelled: 'grey',
 };
 
-export function SessionsSection({ agent }: Props) {
+export function SessionsSection({ agent, onSelectExecution }: Props) {
   const [executions, setExecutions] = useState<AgentExecution[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
 
   const load = () => {
     setLoading(true);
     api
-      .listExecutions(agent.id, { status: statusFilter || undefined, limit: 100 })
+      .listExecutions(agent.id, {
+        status: statusFilter || undefined,
+        limit: pageSize,
+        offset: (page - 1) * pageSize,
+      })
       .then(setExecutions)
       .catch(() => Toast.error('Failed to load executions'))
       .finally(() => setLoading(false));
@@ -31,7 +38,7 @@ export function SessionsSection({ agent }: Props) {
 
   useEffect(() => {
     load();
-  }, [agent.id, statusFilter]);
+  }, [agent.id, statusFilter, page, pageSize]);
 
   const handleDelete = async (execId: string) => {
     try {
@@ -121,8 +128,20 @@ export function SessionsSection({ agent }: Props) {
           dataSource={executions}
           loading={loading}
           rowKey="id"
-          pagination={false}
+          pagination={{
+            currentPage: page,
+            pageSize,
+            total: -1,
+            onPageChange: setPage,
+            onPageSizeChange: setPageSize,
+            showSizeChanger: true,
+            pageSizeOpts: [10, 20, 50],
+          }}
           size="small"
+          onRow={(row) => ({
+            onClick: () => row && onSelectExecution?.(row.id),
+            style: { cursor: 'pointer' },
+          })}
         />
       )}
     </div>

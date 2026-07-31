@@ -30,7 +30,7 @@
  *   - #66/#78: signal.aborted precedence — already resolved in
  *     classifyTerminal (cancelled/interrupted → terminated).
  */
-import { TaskRunAPI, TaskReportAPI, TaskCancelAPI } from "./runtime-adapter.mjs";
+import { TaskRunAPI, TaskReportAPI, TaskCancelAPI, workflowRunContext } from "./runtime-adapter.mjs";
 
 const REPORT_POLL_INTERVAL_MS = 500;
 
@@ -285,7 +285,10 @@ export function createQueueAdapter(db, eventBus) {
      */
     async runTask(workflowId, runID, payload, onProgress) {
       const { schema, inputs } = payload;
-      const result = await TaskRunAPI({ schema, inputs });
+      // Wrap TaskRunAPI in AsyncLocalStorage so the AgentExecutor can read
+      // the workflow_run_id for persistExecution without modifying FlowGram's
+      // ExecutionContext interface.
+      const result = await workflowRunContext.run({ runId: runID }, () => TaskRunAPI({ schema, inputs }));
       const taskID = result?.taskID;
       if (!taskID) {
         throw new Error("TaskRunAPI returned no taskID");
