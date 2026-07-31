@@ -271,6 +271,28 @@ export function createApp({
   // --- Agent CRUD ---
   app.get("/agents", (c) => c.json(listAgents(db)));
 
+  // Static-named /agents/* routes MUST precede /agents/:id — Hono matches
+  // in registration order, so /agents/export would otherwise be captured
+  // by the :id parameter (id="export") and return 404.
+
+  // --- Agent Export (bulk) ---
+  app.get("/agents/export", (c) => {
+    const includeSecrets = c.req.query("include_secrets") === "true";
+    const agents = listAgents(db);
+    const exported = agents.map((a) => {
+      const config = JSON.parse(a.config);
+      if (!includeSecrets && config.provider) {
+        // Keep $ENV_VAR references, blank out literal keys
+        if (config.provider.api_key && !config.provider.api_key.startsWith("$")) {
+          config.provider.api_key = null;
+        }
+      }
+      return { name: a.name, runtime: a.runtime, tags: JSON.parse(a.tags), config };
+    });
+    c.header("Content-Disposition", "attachment; filename=agents-export.json");
+    return c.json(exported);
+  });
+
   app.get("/agents/:id", (c) => {
     const agent = getAgentById(db, c.req.param("id"));
     if (!agent) return c.json({ error: "not found" }, 404);
@@ -379,24 +401,6 @@ export function createApp({
     return c.json(getAgentStats(db, agentId));
   });
 
-  // --- Agent Export (bulk) — must precede /agents/:id/export to avoid "export" matching :id ---
-  app.get("/agents/export", (c) => {
-    const includeSecrets = c.req.query("include_secrets") === "true";
-    const agents = listAgents(db);
-    const exported = agents.map((a) => {
-      const config = JSON.parse(a.config);
-      if (!includeSecrets && config.provider) {
-        // Keep $ENV_VAR references, blank out literal keys
-        if (config.provider.api_key && !config.provider.api_key.startsWith("$")) {
-          config.provider.api_key = null;
-        }
-      }
-      return { name: a.name, runtime: a.runtime, tags: JSON.parse(a.tags), config };
-    });
-    c.header("Content-Disposition", "attachment; filename=agents-export.json");
-    return c.json(exported);
-  });
-
   // --- Agent Export (single) ---
   app.get("/agents/:id/export", (c) => {
     const agent = getAgentById(db, c.req.param("id"));
@@ -438,7 +442,14 @@ export function createApp({
       if (conflict) {
         if (on_conflict === "skip") { skipped++; continue; }
         if (on_conflict === "overwrite") {
-          updateAgent(db, conflict.id, { config: item.config, tags: item.tags });
+          // Strip null api_key from imported config — a null means "not provided"
+          // (sanitized export), not "clear the key". Preserves existing credentials.
+          const importConfig = typeof item.config === "string" ? JSON.parse(item.config) : { ...item.config };
+          if (importConfig.provider?.api_key === null) {
+            const existingConfig = typeof conflict.config === "string" ? JSON.parse(conflict.config) : conflict.config;
+            importConfig.provider = { ...importConfig.provider, api_key: existingConfig?.provider?.api_key ?? "" };
+          }
+          updateAgent(db, conflict.id, { config: importConfig, tags: item.tags });
           overwritten++;
           continue;
         }
