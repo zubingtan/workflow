@@ -10,13 +10,48 @@
  * single terminal event to FlowGram's expected return/throw shape (#77).
  */
 import { registerNodeExecutor, TaskRunAPI, TaskReportAPI, TaskCancelAPI, TaskValidateAPI, TaskResultAPI } from "@flowgram.ai/runtime-js";
+import { join } from "node:path";
 import { runAgentExecution as defaultRunAgentExecution } from "./agent-execution.mjs";
 import { getAgentById } from "./agent-catalog.mjs";
+import { buildMem0Config, writeMem0Config, ensureMem0Extension } from "./mem0-integration.mjs";
 
 // --- Shared agent session creation (reused by SSE adapter and injected into runAgentExecution) ---
-export async function createAgentSessionForAgent(agentConfig, apiKey, agentDir) {
+//
+// Mem0 wiring (#212 D2/D4/D15): before creating the session we write the
+// per-run config ({agentDir}/mem0-config.json) and ensure the extension is
+// discoverable at {agentDir}/extensions/pi-extension-mem0/ (pi's
+// DefaultResourceLoader scans that dir). After session creation we activate
+// the extension lifecycle with bindExtensions({ mode: "print" }). All of it
+// is best-effort: any failure degrades memory to off without blocking the
+// run (D10).
+//
+// Per-agent session dir: the passed `agentDir` is the shared agents root
+// ({DATA_DIR}/agents). Each agent's session runs in its own
+// {agentDir}/{agentId}/ subdirectory so mem0-config.json and
+// extensions/ are per-agent — concurrent runs of different agents can
+// never clobber each other's config (review finding; also user story 3:
+// every agent has an isolated memory space).
+export async function createAgentSessionForAgent(agentConfig, apiKey, agentDir, runId = "", settingsProvider = null) {
   const { createAgentSession, ModelRuntime, SessionManager, SettingsManager } =
     await import("@earendil-works/pi-coding-agent");
+
+  // Per-agent session dir (review fix): isolates mem0 config + extensions.
+  const sessionDir = join(agentDir, agentConfig.id ?? "agent");
+
+  // D4: write per-run mem0 config (host/apiKey from the settings table).
+  try {
+    const mem0Config = buildMem0Config({
+      agentId: agentConfig.id,
+      runId,
+      settingsProvider,
+    });
+    writeMem0Config(sessionDir, mem0Config);
+    // D2/D15: make the extension discoverable via file discovery.
+    ensureMem0Extension(sessionDir);
+  } catch (err) {
+    // Memory is an enhancement, never a dependency (D10).
+    console.warn("[mem0] integration setup failed; run continues without memory:", err?.message ?? err);
+  }
 
   const modelRuntime = await ModelRuntime.create({ modelsPath: null });
   modelRuntime.registerProvider("custom", {
@@ -37,13 +72,23 @@ export async function createAgentSessionForAgent(agentConfig, apiKey, agentDir) 
   });
 
   const result = await createAgentSession({
-    cwd: agentDir,
-    agentDir,
+    cwd: sessionDir,
+    agentDir: sessionDir,
     modelRuntime,
     model: modelRuntime.getModel("custom", agentConfig.model),
-    sessionManager: SessionManager.inMemory(agentDir),
+    sessionManager: SessionManager.inMemory(sessionDir),
     settingsManager: SettingsManager.inMemory(),
   });
+
+  // D2: activate the extension lifecycle. bindExtensions() also triggers
+  // extendResourcesFromExtensions() — skills the extension registers join the
+  // system prompt (expected behavior, per #203).
+  try {
+    await result.session.bindExtensions({ mode: "print" });
+  } catch (err) {
+    // A failing extension must not block the run (D10).
+    console.warn("[mem0] bindExtensions failed; memory disabled for this run:", err?.message ?? err);
+  }
 
   // Apply system prompt after session creation (createAgentSession ignores systemPrompt option)
   if (agentConfig.system_prompt && result.session.agent?.state) {
@@ -114,6 +159,13 @@ class AgentExecutor {
 
   async execute(context) {
     const { agentId, prompt } = context.inputs;
+    // D3: the workflow runID travels via the top-level workflow inputs
+    // (queue-adapter injects __run_id) — node inputs only carry the node's
+    // own schema fields, so fall back to the runtime's ioCenter inputs.
+    const runID =
+      context.inputs?.__run_id ??
+      context.runtime?.ioCenter?.inputs?.__run_id ??
+      "";
     if (!agentId) {
       throw new AgentExecutionError({ kind: "agent_not_found", message: "agentId is required" });
     }
@@ -129,9 +181,11 @@ class AgentExecutor {
     const apiKey = agent.provider_api_key;
 
     // Bind apiKey into the createSession closure — the shared module never
-    // resolves credentials (#66 rule). 2-arg form: (agentConfig, agentDir).
-    const createSessionBound = (agentConfig, agentDir) =>
-      this.createSession(agentConfig, apiKey, agentDir);
+    // resolves credentials (#66 rule). 4-arg form: (agentConfig, agentDir,
+    // runID, settingsProvider). runID feeds mem0 provenance (D3);
+    // settingsProvider feeds mem0_host/mem0_api_key (D12).
+    const createSessionBound = (agentConfig, agentDir, runID) =>
+      this.createSession(agentConfig, apiKey, agentDir, runID, this.settingsProvider);
 
     // Phase 9 (#161): per-node timeout via a per-node AbortController.
     // AbortSignal.any combines the workflow signal (user cancel) with the
@@ -173,6 +227,8 @@ class AgentExecutor {
         signal: combinedSignal,
         createSession: createSessionBound,
         agentDir: this.agentDir,
+        // D3: workflow runID (nanoid(12), queue-assigned) — mem0 provenance.
+        runID,
       });
       // Single consumer. The timer's ac.abort() triggers the shared module's
       // signal.aborted path, which yields a `cancelled` terminal — the loop

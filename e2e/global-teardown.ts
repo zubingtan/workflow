@@ -37,9 +37,10 @@ function killGroup(child: ChildProcess | undefined, label: string) {
 
 export default async function globalTeardown() {
   // Reverse order: server first (so no new requests hit fake-provider), then
-  // fake-provider.
+  // fake-provider, then fake-mem0.
   killGroup(processes.server, 'server');
   killGroup(processes.fake, 'fake-provider');
+  killGroup(processes.mem0, 'fake-mem0');
 
   // Give the OS a moment to release the ports.
   await new Promise((r) => setTimeout(r, 500));

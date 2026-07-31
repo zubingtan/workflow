@@ -285,7 +285,11 @@ export function createQueueAdapter(db, eventBus) {
      */
     async runTask(workflowId, runID, payload, onProgress) {
       const { schema, inputs } = payload;
-      const result = await TaskRunAPI({ schema, inputs });
+      // D3: thread the workflow runID into the runtime inputs so the
+      // AgentExecutor can pass it down to createAgentSessionForAgent as mem0
+      // provenance. The runtime never persists inputs, so __run_id stays an
+      // internal transport detail.
+      const result = await TaskRunAPI({ schema, inputs: { ...inputs, __run_id: runID } });
       const taskID = result?.taskID;
       if (!taskID) {
         throw new Error("TaskRunAPI returned no taskID");

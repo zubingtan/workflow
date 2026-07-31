@@ -87,7 +87,7 @@
     "lint:style": "stylelint \"src/**/*.less\" \"src/**/*.module.less\" \"src/**/styles.tsx\"",
     "ts-check": "tsc --noEmit",
     "start": "cross-env NODE_ENV=production node --env-file-if-exists=.env server/index.mjs",
-    "test": "node --test",
+    "test": "node --test --experimental-test-module-mocks \"server/**/*.test.mjs\" \"test/**/*.test.mjs\"",
     "test:cov": "exit",
     "test:e2e": "playwright test",
     "watch": "exit 0",
