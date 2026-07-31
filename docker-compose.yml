@@ -52,7 +52,9 @@ services:
   # mem0/mem0-api-server has no linux/amd64 manifest.
   # Bound to loopback only (security review #212): the mem0 server holds all
   # agent memories — LAN exposure would let anyone read/write them. The app
-  # connects via the Settings UI's Mem0 Server URL (http://localhost:8890).
+  # connects via the Settings UI's Mem0 Server URL. Note: inside the Docker
+  # network the app reaches mem0 at http://mem0:8000 (service name), while
+  # host-side tools use http://localhost:8890.
   mem0:
     build: ./docker/mem0
     ports:
