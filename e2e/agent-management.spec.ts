@@ -35,9 +35,10 @@ test.describe('Agent management', () => {
     // The new agent should appear in the list as "Untitled"
     await expect(page.getByText('Untitled', { exact: true })).toBeVisible({ timeout: 5_000 });
 
-    // --- Edit name: find the name input in the General section ---
-    // The General section should be visible after auto-selection
-    const nameInput = page.locator('input').first();
+    // --- Edit name: find the name input in the General section (Col 4) ---
+    // The General section should be visible after auto-selection.
+    // Use label-based locator to avoid matching the Col 2 search input.
+    const nameInput = page.getByLabel('Name');
     await expect(nameInput).toBeVisible();
     await nameInput.clear();
     await nameInput.fill(AGENT_NAME);

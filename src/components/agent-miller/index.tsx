@@ -54,7 +54,7 @@ export function AgentMillerColumns() {
     total: number;
   }>({ visible: false, conflicts: [], agents: [], total: 0 });
   const { route, navigate } = useHashRoute();
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   const reload = useCallback(() => {
     api
@@ -201,18 +201,23 @@ export function AgentMillerColumns() {
   );
   void handleDelete; // used in future context menu
 
-  /** Debounced save for inline editing */
+  /** Debounced save for inline editing — per-agent timers prevent cross-agent clobbering */
   const debouncedSave = useCallback(
     (id: string, patch: { name?: string; config?: any; tags?: string[] }) => {
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = setTimeout(async () => {
-        try {
-          await api.updateAgent(id, patch);
-          reload();
-        } catch {
-          Toast.error('Save failed');
-        }
-      }, 600);
+      const existing = saveTimersRef.current.get(id);
+      if (existing) clearTimeout(existing);
+      saveTimersRef.current.set(
+        id,
+        setTimeout(async () => {
+          saveTimersRef.current.delete(id);
+          try {
+            await api.updateAgent(id, patch);
+            reload();
+          } catch {
+            Toast.error('Save failed');
+          }
+        }, 600)
+      );
     },
     [reload]
   );

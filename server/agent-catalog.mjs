@@ -106,7 +106,10 @@ export function deleteAgent(db, id) {
       const data = JSON.parse(w.data);
       const nodes = data.nodes || [];
       return nodes.some(
-        (n) => n?.data?.agentId === id || n?.data?.agent_id === id
+        (n) =>
+          n?.data?.inputsValues?.agentId?.content === id ||
+          n?.data?.agentId === id ||
+          n?.data?.agent_id === id
       );
     } catch {
       return false;
@@ -118,6 +121,9 @@ export function deleteAgent(db, id) {
       message: `Agent is referenced by ${referencing.length} workflow(s): ${referencing.map((w) => w.name).join(", ")}`,
     });
   }
+  // Delete execution history first (FK constraint: agent_executions.agent_id
+  // REFERENCES agents(id) without ON DELETE CASCADE).
+  db.prepare("DELETE FROM agent_executions WHERE agent_id = ?").run(id);
   const result = db.prepare("DELETE FROM agents WHERE id = ?").run(id);
   return result.changes > 0;
 }

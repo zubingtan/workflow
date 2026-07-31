@@ -224,6 +224,22 @@ function App() {
     return () => window.removeEventListener('beforeunload', handler);
   }, [dirty]);
 
+  // Listen for browser back/forward (hashchange) to sync top-level view.
+  // AgentMillerColumns has its own useHashRoute for agent sub-routes;
+  // this handles the top-level switch between workflows/agents/settings/editor.
+  useEffect(() => {
+    const handler = () => {
+      const { view: hashView, workflowId } = parseTopHash();
+      if (hashView === 'editor' && workflowId) {
+        if (workflowId !== currentWorkflowId) openWorkflow(workflowId);
+      } else if (hashView !== view) {
+        setView(hashView);
+      }
+    };
+    window.addEventListener('hashchange', handler);
+    return () => window.removeEventListener('hashchange', handler);
+  }, [view, currentWorkflowId, openWorkflow]);
+
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
       {/* Left sidebar */}
