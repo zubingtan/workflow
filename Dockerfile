@@ -47,6 +47,9 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     pnpm install --frozen-lockfile --ignore-scripts
 COPY . .
 RUN pnpm build
+# Build the mem0 extension (tsup → packages/pi-extension-mem0/dist) so the
+# runner stage can ship it for pi's file discovery (#212 D15).
+RUN pnpm --filter @flowgram.ai/pi-extension-mem0 build
 
 # ─── runner (production image) ───────────────────────────────────────────────
 FROM base AS runner
@@ -59,6 +62,9 @@ ENV WORKFLOW_DATA_DIR=/app/data
 COPY --from=prod-deps /app/node_modules ./node_modules
 # dist/ from build (rsbuild static output, served by @hono/node-server/serve-static).
 COPY --from=build /app/dist ./dist
+# mem0 pi extension (#212 D15): installed at the fixed /opt/pi-extension-mem0
+# path; the server symlinks it into each agent dir's extensions/ at run time.
+COPY --from=build /app/packages/pi-extension-mem0/dist /opt/pi-extension-mem0
 # Server code + package.json (for pnpm to resolve the node_modules layout).
 COPY server/ ./server/
 COPY package.json ./

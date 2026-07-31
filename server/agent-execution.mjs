@@ -28,10 +28,11 @@
  * @param {AbortSignal} [opts.signal] - cancellation signal; when aborted the
  *   terminal phase becomes "cancelled". Pre-aborted signals short-circuit
  *   WITHOUT creating a session.
- * @param {(agentConfig: object, agentDir: string) => Promise<object>} opts.createSession
+ * @param {(agentConfig: object, agentDir: string, runID?: string) => Promise<object>} opts.createSession
  *   Closure with apiKey already bound by the caller. Shared module never
  *   resolves credentials.
  * @param {string} opts.agentDir
+ * @param {string} [opts.runID] - workflow runID for mem0 provenance (D3).
  * @returns {AsyncGenerator<AgentExecutionEvent>}
  */
 export async function* runAgentExecution({
@@ -40,6 +41,7 @@ export async function* runAgentExecution({
   signal,
   createSession,
   agentDir,
+  runID = "",
 }) {
   // Pre-aborted short-circuit: don't waste a session creation on a cancelled run.
   if (signal?.aborted) {
@@ -83,7 +85,7 @@ export async function* runAgentExecution({
   const toolEvents = [];
 
   try {
-    session = await createSession(agentConfig, agentDir);
+    session = await createSession(agentConfig, agentDir, runID);
 
     let promptError;
 
