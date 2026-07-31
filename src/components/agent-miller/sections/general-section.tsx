@@ -32,6 +32,12 @@ export function GeneralSection({ agent, debouncedSave, reload }: Props) {
   const [apiKey, setApiKey] = useState(config.provider?.api_key || '');
   const [model, setModel] = useState(config.provider?.model || '');
   const [tagInput, setTagInput] = useState('');
+  const [pricing, setPricing] = useState({
+    input: config.provider?.pricing?.input ?? 0,
+    output: config.provider?.pricing?.output ?? 0,
+    cacheRead: config.provider?.pricing?.cacheRead ?? 0,
+    cacheWrite: config.provider?.pricing?.cacheWrite ?? 0,
+  });
 
   useEffect(() => {
     setName(agent.name);
@@ -45,10 +51,22 @@ export function GeneralSection({ agent, debouncedSave, reload }: Props) {
     setBaseUrl(cfg.provider?.base_url || '');
     setApiKey(cfg.provider?.api_key || '');
     setModel(cfg.provider?.model || '');
+    setPricing({
+      input: cfg.provider?.pricing?.input ?? 0,
+      output: cfg.provider?.pricing?.output ?? 0,
+      cacheRead: cfg.provider?.pricing?.cacheRead ?? 0,
+      cacheWrite: cfg.provider?.pricing?.cacheWrite ?? 0,
+    });
   }, [agent.id, agent.config, agent.name]);
 
-  const saveProvider = (patch: Record<string, string>) => {
+  const saveProvider = (patch: Record<string, any>) => {
     debouncedSave(agent.id, { config: { provider: { ...config.provider, ...patch } } });
+  };
+
+  const savePricing = (key: string, value: number) => {
+    const newPricing = { ...pricing, [key]: value };
+    setPricing(newPricing);
+    saveProvider({ pricing: newPricing });
   };
 
   const addTag = () => {
@@ -115,6 +133,21 @@ export function GeneralSection({ agent, debouncedSave, reload }: Props) {
           onBlur={() => saveProvider({ model })}
           placeholder="gpt-4o"
         />
+      </div>
+
+      <h4 style={{ marginTop: 24, marginBottom: 8 }}>Pricing ($/M tokens)</h4>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+        {(['input', 'output', 'cacheRead', 'cacheWrite'] as const).map((key) => (
+          <div key={key}>
+            <label style={{ ...labelStyle, textTransform: 'capitalize' }}>{key}</label>
+            <Input
+              type="number"
+              size="small"
+              value={String(pricing[key])}
+              onChange={(v) => savePricing(key, Number(v) || 0)}
+            />
+          </div>
+        ))}
       </div>
 
       <h4 style={{ marginTop: 24, marginBottom: 8 }}>Tags</h4>

@@ -31,7 +31,18 @@ const DEFAULT_CONFIG = {
 
 export function createAgent(db, fields) {
   const id = fields.id ?? nanoid(10);
-  const name = fields.name || "Untitled";
+  let name = fields.name || "Untitled";
+  // Auto-increment "Untitled" → "Untitled 2" → "Untitled 3" etc. when the
+  // base name already exists (matches macOS Finder duplicate naming).
+  if (!fields.name) {
+    const existing = db.prepare("SELECT name FROM agents WHERE name = ? OR name LIKE ?").all(name, `${name} %`);
+    if (existing.length > 0) {
+      let suffix = 2;
+      const nameSet = new Set(existing.map((r) => r.name));
+      while (nameSet.has(`${name} ${suffix}`)) suffix++;
+      name = `${name} ${suffix}`;
+    }
+  }
   const runtime = fields.runtime || "pi-coding-agent";
   const config = JSON.stringify(fields.config ?? DEFAULT_CONFIG);
   const tags = JSON.stringify(fields.tags ?? []);

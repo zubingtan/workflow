@@ -46,6 +46,7 @@ import {
   getExecutionById,
   deleteExecution,
   getAgentStats,
+  parseSessionFile,
 } from "./execution-store.mjs";
 
 /**
@@ -138,7 +139,7 @@ export function createApp({
     createAgentSessionForAgent,
     agentDir,
     ...(streamSSE ? { streamSSE } : {}),
-    onTerminal: ({ terminal, agentConfig, startedAt, endedAt }) => {
+    onTerminal: ({ terminal, agentConfig, startedAt, endedAt, sessionFile }) => {
       // Only persist executions for real agents (have id), not /agents/test
       if (!agentConfig.id) return;
       const status = terminal.phase === "succeeded" ? "succeeded"
@@ -147,6 +148,7 @@ export function createApp({
         agentId: agentConfig.id,
         status,
         triggerType: "standalone",
+        sessionFile: sessionFile ?? null,
         startedAt,
         endedAt,
       });
@@ -358,7 +360,9 @@ export function createApp({
   app.get("/agents/:id/executions/:execId", (c) => {
     const exec = getExecutionById(db, c.req.param("execId"));
     if (!exec) return c.json({ error: "not found" }, 404);
-    return c.json(exec);
+    // Enrich with pi session file detail if available
+    const sessionDetail = parseSessionFile(exec.session_file);
+    return c.json({ ...exec, sessionDetail });
   });
 
   app.delete("/agents/:id/executions/:execId", (c) => {
@@ -375,7 +379,7 @@ export function createApp({
     return c.json(getAgentStats(db, agentId));
   });
 
-  // --- Agent Export ---
+  // --- Agent Export (bulk) — must precede /agents/:id/export to avoid "export" matching :id ---
   app.get("/agents/export", (c) => {
     const includeSecrets = c.req.query("include_secrets") === "true";
     const agents = listAgents(db);
@@ -390,6 +394,22 @@ export function createApp({
       return { name: a.name, runtime: a.runtime, tags: JSON.parse(a.tags), config };
     });
     c.header("Content-Disposition", "attachment; filename=agents-export.json");
+    return c.json(exported);
+  });
+
+  // --- Agent Export (single) ---
+  app.get("/agents/:id/export", (c) => {
+    const agent = getAgentById(db, c.req.param("id"));
+    if (!agent) return c.json({ error: "not found" }, 404);
+    const includeSecrets = c.req.query("include_secrets") === "true";
+    const config = JSON.parse(agent.config);
+    if (!includeSecrets && config.provider) {
+      if (config.provider.api_key && !config.provider.api_key.startsWith("$")) {
+        config.provider.api_key = null;
+      }
+    }
+    const exported = { name: agent.name, runtime: agent.runtime, tags: JSON.parse(agent.tags), config };
+    c.header("Content-Disposition", `attachment; filename=agent-${agent.name.replace(/[^a-zA-Z0-9_-]/g, "_")}.json`);
     return c.json(exported);
   });
 

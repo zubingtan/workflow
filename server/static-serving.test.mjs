@@ -40,9 +40,9 @@ function setupDb() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS agents (
       id TEXT PRIMARY KEY, name TEXT NOT NULL,
-      provider_base_url TEXT NOT NULL, provider_api_key TEXT NOT NULL,
-      model TEXT NOT NULL, system_prompt TEXT DEFAULT '',
-      temperature REAL DEFAULT 0.7,
+      runtime TEXT NOT NULL DEFAULT 'pi-coding-agent',
+      config TEXT NOT NULL DEFAULT '{}',
+      tags TEXT NOT NULL DEFAULT '[]',
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     );

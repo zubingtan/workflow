@@ -41,8 +41,18 @@ const NAV_ITEMS: { key: View; label: string }[] = [
   { key: 'settings', label: 'Settings' },
 ];
 
+/** Parse top-level hash route → view + optional workflowId */
+function parseTopHash(): { view: View; workflowId: string | null } {
+  const hash = window.location.hash;
+  if (hash.startsWith('#/agents')) return { view: 'agents', workflowId: null };
+  if (hash.startsWith('#/settings')) return { view: 'settings', workflowId: null };
+  const wfMatch = hash.match(/^#\/workflows\/(.+)$/);
+  if (wfMatch) return { view: 'editor', workflowId: wfMatch[1] };
+  return { view: 'workflows', workflowId: null };
+}
+
 function App() {
-  const [view, setView] = useState<View>('workflows');
+  const [view, setView] = useState<View>(() => parseTopHash().view);
   const [workflowName, setWorkflowName] = useState('');
   const [workflowData, setWorkflowData] = useState<FlowDocumentJSON | null>(null);
   const [editorLoading, setEditorLoading] = useState(false);
@@ -61,7 +71,7 @@ function App() {
   const ctxRef = useRef<any>(null);
   const { resolvedTheme, toggleTheme } = useTheme();
 
-  // Seed a default workflow on first launch
+  // Seed a default workflow on first launch + restore hash-based route
   useEffect(() => {
     (async () => {
       try {
@@ -73,6 +83,11 @@ function App() {
         // server may be down; continue anyway
       } finally {
         setBooted(true);
+        // Restore hash-based route on initial load (e.g. #/workflows/:id)
+        const { view: initialView, workflowId } = parseTopHash();
+        if (initialView === 'editor' && workflowId) {
+          openWorkflow(workflowId);
+        }
       }
     })();
   }, []);
@@ -84,6 +99,7 @@ function App() {
     setDirty(false);
     setRenaming(false);
     ctxRef.current = null;
+    window.location.hash = `#/workflows/${id}`;
     try {
       const wf = await api.getWorkflow(id);
       setWorkflowName(wf.name);
@@ -99,6 +115,15 @@ function App() {
     setView('workflows');
     setWorkflowData(null);
     setCurrentWorkflowId(null);
+    window.location.hash = '#/workflows';
+  }, []);
+
+  /** Navigate to a top-level view, updating both state and hash. */
+  const navigateTo = useCallback((v: View) => {
+    setView(v);
+    if (v === 'workflows') window.location.hash = '#/workflows';
+    else if (v === 'agents') window.location.hash = '#/agents';
+    else if (v === 'settings') window.location.hash = '#/settings';
   }, []);
 
   const saveWorkflow = useCallback(async () => {
@@ -216,7 +241,7 @@ function App() {
         {NAV_ITEMS.map((item) => (
           <div
             key={item.key}
-            onClick={() => requestNavigation(() => setView(item.key))}
+            onClick={() => requestNavigation(() => navigateTo(item.key))}
             style={{
               padding: 'var(--app-space-2) var(--app-space-4)',
               cursor: 'pointer',

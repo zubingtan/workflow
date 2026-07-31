@@ -9,9 +9,16 @@
  * createSession closure, iterates runAgentExecution's events, and projects the
  * single terminal event to FlowGram's expected return/throw shape (#77).
  */
+import { AsyncLocalStorage } from "node:async_hooks";
 import { registerNodeExecutor, TaskRunAPI, TaskReportAPI, TaskCancelAPI, TaskValidateAPI, TaskResultAPI } from "@flowgram.ai/runtime-js";
 import { runAgentExecution as defaultRunAgentExecution } from "./agent-execution.mjs";
 import { getAgentById } from "./agent-catalog.mjs";
+import { persistExecution } from "./execution-store.mjs";
+
+// AsyncLocalStorage carries the workflow_run_id from the queue-adapter
+// through the FlowGram TaskRunAPI call chain into the AgentExecutor,
+// without modifying FlowGram's ExecutionContext interface.
+export const workflowRunContext = new AsyncLocalStorage();
 
 // --- Shared agent session creation (reused by SSE adapter and injected into runAgentExecution) ---
 
@@ -70,19 +77,31 @@ export async function createAgentSessionForAgent(agent, agentDir) {
   });
 
   // 3. SessionManager — persist sessions per-agent
-  const sessionDir = `${agentDir}/sessions`;
+  const agentSessionDir = agent.id ? `${agentDir}/${agent.id}` : agentDir;
+  const sessionDir = `${agentSessionDir}/sessions`;
   const { mkdirSync } = await import("node:fs");
   mkdirSync(sessionDir, { recursive: true });
-  const sessionManager = SessionManager.create(agentDir, sessionDir);
+  const sessionManager = SessionManager.create(agentSessionDir, sessionDir);
 
-  // 4. createAgentSession — full options
+  // 4. ResourceLoader — inject systemPrompt + pick up skills/extensions from settings
+  const resourceLoader = new DefaultResourceLoader({
+    cwd: agentSessionDir,
+    agentDir: agentSessionDir,
+    settingsManager,
+    systemPrompt: config.system_prompt || undefined,
+    noThemes: true,
+  });
+  await resourceLoader.reload();
+
+  // 5. createAgentSession — full options
   const sessionOpts = {
-    cwd: agentDir,
-    agentDir,
+    cwd: agentSessionDir,
+    agentDir: agentSessionDir,
     modelRuntime,
     model: modelRuntime.getModel("custom", model),
     sessionManager,
     settingsManager,
+    resourceLoader,
   };
 
   // thinkingLevel
@@ -95,11 +114,6 @@ export async function createAgentSessionForAgent(agent, agentDir) {
   if (sessionOptions.noTools) sessionOpts.noTools = sessionOptions.noTools;
 
   const result = await createAgentSession(sessionOpts);
-
-  // 5. System prompt via agent state (DefaultResourceLoader injection)
-  if (config.system_prompt && result.session.agent?.state) {
-    result.session.agent.state.systemPrompt = config.system_prompt;
-  }
 
   return result.session;
 }
@@ -164,6 +178,7 @@ class AgentExecutor {
   }
 
   async execute(context) {
+    const startedAt = new Date().toISOString();
     const { agentId, prompt } = context.inputs;
     if (!agentId) {
       throw new AgentExecutionError({ kind: "agent_not_found", message: "agentId is required" });
@@ -255,6 +270,24 @@ class AgentExecutor {
         kind: "internal_error",
         message: "Agent Execution ended without a terminal event",
       });
+    }
+
+    // Persist execution record (workflow_node trigger).
+    try {
+      const workflowRunId = workflowRunContext.getStore()?.runId ?? null;
+      persistExecution(this.db, {
+        agentId,
+        status: timedOut && !workflowSignal?.aborted ? "failed"
+          : terminal.phase === "succeeded" ? "succeeded"
+          : terminal.phase === "cancelled" ? "cancelled" : "failed",
+        triggerType: "workflow_node",
+        workflowRunId,
+        sessionFile: terminal.sessionFile ?? null,
+        startedAt,
+        endedAt: new Date().toISOString(),
+      });
+    } catch (persistErr) {
+      console.error("[runtime-adapter] persistExecution failed", persistErr);
     }
 
     // Phase 9 (#161/#66): timeout classification. If the per-node AbortController

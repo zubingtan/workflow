@@ -1,6 +1,6 @@
 import { useMemo, useEffect, useState } from 'react';
 
-import { Checkbox, CheckboxGroup, Typography, Select } from '@douyinfe/semi-ui';
+import { Checkbox, CheckboxGroup, Typography, Select, Radio, RadioGroup } from '@douyinfe/semi-ui';
 
 import type { AgentDef } from '../../../api';
 
@@ -21,7 +21,13 @@ export function ToolsSection({ agent, debouncedSave }: Props) {
     }
   }, [agent.config]);
   const sessionOpts = config.session_options || {};
+  const hasBlacklist =
+    Array.isArray(sessionOpts.excludeTools) && sessionOpts.excludeTools.length > 0;
+  const [mode, setMode] = useState<'whitelist' | 'blacklist'>(
+    hasBlacklist ? 'blacklist' : 'whitelist'
+  );
   const [tools, setTools] = useState<string[]>(sessionOpts.tools || BUILTIN_TOOLS.slice(0, 4));
+  const [excludeTools, setExcludeTools] = useState<string[]>(sessionOpts.excludeTools || []);
   const [noTools, setNoTools] = useState<string>(sessionOpts.noTools || '');
 
   useEffect(() => {
@@ -34,7 +40,11 @@ export function ToolsSection({ agent, debouncedSave }: Props) {
     })();
     const opts = cfg.session_options || {};
     setTools(opts.tools || BUILTIN_TOOLS.slice(0, 4));
+    setExcludeTools(opts.excludeTools || []);
     setNoTools(opts.noTools || '');
+    setMode(
+      Array.isArray(opts.excludeTools) && opts.excludeTools.length > 0 ? 'blacklist' : 'whitelist'
+    );
   }, [agent.id, agent.config]);
 
   const save = (patch: any) => {
@@ -62,20 +72,65 @@ export function ToolsSection({ agent, debouncedSave }: Props) {
         <Select.Option value="builtin">Disable builtin only</Select.Option>
       </Select>
 
-      <CheckboxGroup
-        value={tools}
-        onChange={(v) => {
-          setTools(v as string[]);
-          save({ tools: v });
+      <RadioGroup
+        type="button"
+        value={mode}
+        onChange={(e) => {
+          const m = e.target.value as 'whitelist' | 'blacklist';
+          setMode(m);
+          if (m === 'whitelist') {
+            save({ tools, excludeTools: [] });
+          } else {
+            save({ tools: [], excludeTools });
+          }
         }}
-        direction="vertical"
+        style={{ marginBottom: 16 }}
       >
-        {BUILTIN_TOOLS.map((t) => (
-          <Checkbox key={t} value={t}>
-            {t}
-          </Checkbox>
-        ))}
-      </CheckboxGroup>
+        <Radio value="whitelist">Whitelist (allow only)</Radio>
+        <Radio value="blacklist">Blacklist (deny only)</Radio>
+      </RadioGroup>
+
+      {mode === 'whitelist' ? (
+        <>
+          <Typography.Text type="tertiary" style={{ display: 'block', marginBottom: 8 }}>
+            Enabled tools (whitelist):
+          </Typography.Text>
+          <CheckboxGroup
+            value={tools}
+            onChange={(v) => {
+              setTools(v as string[]);
+              save({ tools: v, excludeTools: [] });
+            }}
+            direction="vertical"
+          >
+            {BUILTIN_TOOLS.map((t) => (
+              <Checkbox key={t} value={t}>
+                {t}
+              </Checkbox>
+            ))}
+          </CheckboxGroup>
+        </>
+      ) : (
+        <>
+          <Typography.Text type="tertiary" style={{ display: 'block', marginBottom: 8 }}>
+            Disabled tools (blacklist):
+          </Typography.Text>
+          <CheckboxGroup
+            value={excludeTools}
+            onChange={(v) => {
+              setExcludeTools(v as string[]);
+              save({ tools: [], excludeTools: v });
+            }}
+            direction="vertical"
+          >
+            {BUILTIN_TOOLS.map((t) => (
+              <Checkbox key={t} value={t}>
+                {t}
+              </Checkbox>
+            ))}
+          </CheckboxGroup>
+        </>
+      )}
     </div>
   );
 }
