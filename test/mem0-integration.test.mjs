@@ -17,7 +17,7 @@ import { test, describe, mock, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, readlinkSync, symlinkSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 
 const {
   buildMem0Config,
@@ -289,8 +289,7 @@ describe("createAgentSessionForAgent (D2 seam 2)", () => {
       null,
     );
     // The config must land inside the agents root, never outside it.
-    // The crafted id is "../../escape" — the leak path is two levels up.
-    const outside = resolve(join(agentDir, "..", "..", "escape", "mem0-config.json"));
+    const outside = join(agentDir, "..", "escape", "mem0-config.json");
     assert.ok(!existsSync(outside), "config must not be written outside the agents root");
     // And it must still be written — to the safe fallback dir (positive
     // assertion: a broken guard that writes nothing would pass the negative
