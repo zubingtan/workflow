@@ -121,6 +121,12 @@ prefix). Open http://localhost:4001 manually — no auto-open.
   - http://localhost:4010/health/live (fake-provider)
   - http://localhost:4001/health/live (Hono + rsbuild dev server)
 
+### UI testing and verification
+
+Prefer `agent-browser` for browser-based UI testing and verification. Before
+using it in a task, load the version-matched workflow instructions with
+`npx agent-browser skills get core`.
+
 ## Key files
 
 - `src/app.tsx` — app shell: sidebar (Workflows / Agents), editor view, Save Workflow.
