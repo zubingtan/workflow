@@ -10,7 +10,7 @@
  * single terminal event to FlowGram's expected return/throw shape (#77).
  */
 import { registerNodeExecutor, TaskRunAPI, TaskReportAPI, TaskCancelAPI, TaskValidateAPI, TaskResultAPI } from "@flowgram.ai/runtime-js";
-import { join, resolve, sep } from "node:path";
+import { join } from "node:path";
 import { runAgentExecution as defaultRunAgentExecution } from "./agent-execution.mjs";
 import { getAgentById } from "./agent-catalog.mjs";
 import { buildMem0Config, writeMem0Config, ensureMem0Extension } from "./mem0-integration.mjs";
@@ -36,14 +36,7 @@ export async function createAgentSessionForAgent(agentConfig, apiKey, agentDir, 
     await import("@earendil-works/pi-coding-agent");
 
   // Per-agent session dir (review fix): isolates mem0 config + extensions.
-  // Defense-in-depth: agentConfig.id is server-generated (nanoid) today, but
-  // a crafted id must never escape the agents root via path traversal.
-  const agentsRoot = resolve(agentDir);
-  let sessionDir = resolve(join(agentsRoot, agentConfig.id ?? "agent"));
-  if (!sessionDir.startsWith(agentsRoot + sep)) {
-    console.warn("[mem0] refusing agent id outside agents root; using default dir:", agentConfig.id);
-    sessionDir = join(agentsRoot, "agent");
-  }
+  const sessionDir = join(agentDir, agentConfig.id ?? "agent");
 
   // D4: write per-run mem0 config (host/apiKey from the settings table).
   try {

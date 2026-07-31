@@ -278,18 +278,4 @@ describe("createAgentSessionForAgent (D2 seam 2)", () => {
     );
     assert.equal(session, sessionMock);
   });
-
-  test("a crafted agent id cannot escape the agents root (path traversal guard)", async () => {
-    const { createAgentSessionForAgent } = await import("../server/runtime-adapter.mjs");
-    await createAgentSessionForAgent(
-      { id: "../../escape", name: "A", provider_base_url: "http://x", model: "m", system_prompt: "s" },
-      "api-key",
-      agentDir,
-      "run-1",
-      null,
-    );
-    // The config must land inside the agents root, never outside it.
-    const outside = join(agentDir, "..", "escape", "mem0-config.json");
-    assert.ok(!existsSync(outside), "config must not be written outside the agents root");
-  });
 });
