@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 
+import { type LayoutDirection } from '../../../utils/rotate-ports';
 import { useLayoutDirection } from '../../../hooks/use-layout-direction';
 
 /**
@@ -14,5 +15,7 @@ export function useConditionPortLocation() {
   const { direction } = useLayoutDirection();
   const vertical = direction === 'TB';
   const portLocation = vertical ? 'bottom' : 'right';
-  return { vertical, portLocation } as const;
+  return { direction, vertical, portLocation } as const;
 }
+
+export type { LayoutDirection };

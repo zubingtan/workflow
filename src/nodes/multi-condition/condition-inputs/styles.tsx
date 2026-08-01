@@ -10,18 +10,9 @@
 
 import styled from 'styled-components';
 
-/**
- * #190: see `src/nodes/condition/condition-inputs/styles.tsx` for the full
- * rationale. `$vertical` switches the port between the bottom edge (vertical
- * mode) and the right edge (horizontal mode).
- */
-export const ConditionPort = styled.div<{ $vertical?: boolean }>`
-  position: absolute;
-  ${({ $vertical }) => ($vertical ? 'bottom: -12px; left: 50%;' : 'right: -12px; top: 50%;')}
-`;
-
-// Re-export the JS-positioned wrapper from the condition node's styles.
-export { ConditionPortWithPosition } from '../../condition/condition-inputs/styles';
+// #190: share the single ConditionPort anchor (see
+// `src/nodes/condition/condition-inputs/styles.tsx` for the rationale).
+export { ConditionPort } from '../../condition/condition-inputs/styles';
 
 export const ConditionBranch = styled.div`
   display: flex;
