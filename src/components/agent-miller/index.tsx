@@ -13,8 +13,9 @@ import {
   Toast,
   Select,
   Modal,
+  Popconfirm,
 } from '@douyinfe/semi-ui';
-import { IconSearch, IconPlus, IconDownload, IconUpload } from '@douyinfe/semi-icons';
+import { IconSearch, IconPlus, IconDownload, IconUpload, IconDelete } from '@douyinfe/semi-icons';
 
 import * as api from '../../api';
 import { useHashRoute } from './use-hash-route';
@@ -46,6 +47,7 @@ export function AgentMillerColumns() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedExecutionId, setSelectedExecutionId] = useState<string | null>(null);
+  const [hoveredAgentId, setHoveredAgentId] = useState<string | null>(null);
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [importState, setImportState] = useState<{
     visible: boolean;
@@ -199,7 +201,6 @@ export function AgentMillerColumns() {
     },
     [reload, navigate, route.agentId]
   );
-  void handleDelete; // used in future context menu
 
   /** Debounced save for inline editing — per-agent timers prevent cross-agent clobbering */
   const debouncedSave = useCallback(
@@ -323,6 +324,8 @@ export function AgentMillerColumns() {
                     <List.Item
                       key={item.id}
                       onClick={() => navigate(item.id, activeSection)}
+                      onMouseEnter={() => setHoveredAgentId(item.id)}
+                      onMouseLeave={() => setHoveredAgentId(null)}
                       style={{
                         cursor: 'pointer',
                         padding: '8px 12px',
@@ -356,11 +359,29 @@ export function AgentMillerColumns() {
                             })()}
                           </div>
                         </div>
-                        {JSON.parse(item.tags || '[]').length > 0 && (
-                          <Tag size="small" color="blue">
-                            {JSON.parse(item.tags)[0]}
-                          </Tag>
-                        )}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          {JSON.parse(item.tags || '[]').length > 0 && (
+                            <Tag size="small" color="blue">
+                              {JSON.parse(item.tags)[0]}
+                            </Tag>
+                          )}
+                          {hoveredAgentId === item.id && (
+                            <Popconfirm
+                              title={`Delete "${item.name}"?`}
+                              content="Execution history will also be deleted."
+                              onConfirm={() => void handleDelete(item.id)}
+                              position="right"
+                            >
+                              <Button
+                                icon={<IconDelete />}
+                                size="small"
+                                theme="borderless"
+                                type="danger"
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                            </Popconfirm>
+                          )}
+                        </div>
                       </div>
                     </List.Item>
                   )}
