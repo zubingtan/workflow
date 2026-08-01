@@ -23,7 +23,7 @@ echo "→ Rebasing $BRANCH onto origin/main..."
 git rebase origin/main
 
 echo "→ Force-pushing..."
-git push --force-with-lease
+git push --force-with-lease origin HEAD
 
 echo ""
 echo "✓ $BRANCH is now built on latest main."
