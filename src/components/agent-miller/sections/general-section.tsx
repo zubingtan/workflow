@@ -95,8 +95,11 @@ export function GeneralSection({ agent, debouncedSave, reload }: Props) {
     <div style={{ maxWidth: 560 }}>
       <h3 style={{ marginBottom: 16 }}>General</h3>
       <div style={fieldStyle}>
-        <label style={labelStyle}>Name</label>
+        <label style={labelStyle} htmlFor="agent-name">
+          Name
+        </label>
         <Input
+          id="agent-name"
           value={name}
           onChange={setName}
           onBlur={() => {
