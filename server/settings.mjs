@@ -31,6 +31,13 @@ export function setSetting(db, key, value) {
 }
 
 /**
+ * Delete a setting row. No-op if the key doesn't exist.
+ */
+export function deleteSetting(db, key) {
+  db.prepare("DELETE FROM settings WHERE key=?").run(key);
+}
+
+/**
  * Read node_timeout_default_ms as a number, or null if not set / unparseable.
  */
 export function getNodeTimeoutDefaultMs(db) {
@@ -41,14 +48,14 @@ export function getNodeTimeoutDefaultMs(db) {
 }
 
 /**
- * Read mem0_host (URL string) or null if not set.
+ * Read mem0_host (a URL string), or null if not set.
  */
 export function getMem0Host(db) {
   return getSetting(db, "mem0_host");
 }
 
 /**
- * Read mem0_api_key (string) or null if not set.
+ * Read mem0_api_key (a string), or null if not set.
  */
 export function getMem0ApiKey(db) {
   return getSetting(db, "mem0_api_key");
@@ -57,42 +64,40 @@ export function getMem0ApiKey(db) {
 /**
  * Return the full known-settings object for GET /api/settings.
  * Only known keys are included; absent keys appear as null.
- * Sensitive keys (mem0_api_key) are redacted — returns boolean (configured or not).
  */
 export function getKnownSettings(db) {
-  const mem0ApiKey = getMem0ApiKey(db);
   return {
     node_timeout_default_ms: getNodeTimeoutDefaultMs(db),
     mem0_host: getMem0Host(db),
-    mem0_api_key: mem0ApiKey ? true : null, // redacted: only expose presence
+    mem0_api_key: getMem0ApiKey(db),
   };
 }
 
 /**
  * Validate a settings PUT body. Returns {ok:true, value} on success or
- * {ok:false, error} on failure. Known keys are validated individually;
- * unknown keys are rejected (fail-loud so future additions are intentional).
+ * {ok:false, error} on failure. Accepts any subset of KNOWN_KEYS (partial
+ * update); unknown keys are rejected (fail-loud so future additions are
+ * intentional, not accidental writes).
  *
  * Validation rules:
- *   node_timeout_default_ms: Number.isInteger, > 0, <= 24h
- *   mem0_host: non-empty string (URL)
- *   mem0_api_key: non-empty string
+ *   - node_timeout_default_ms: Number.isInteger, > 0, <= 24h (86400000ms)
+ *   - mem0_host: valid URL (http/https)
+ *   - mem0_api_key: non-empty string
  */
 export function validateSettingsBody(body) {
   if (!body || typeof body !== "object") {
     return { ok: false, error: "body must be an object" };
   }
   const keys = Object.keys(body);
+  if (keys.length === 0) {
+    return { ok: false, error: "at least one setting key is required" };
+  }
   for (const k of keys) {
     if (!KNOWN_KEYS.includes(k)) {
       return { ok: false, error: `unknown setting key: ${k}` };
     }
   }
-  if (keys.length === 0) {
-    return { ok: false, error: "at least one setting key is required" };
-  }
-
-  const result = {};
+  const value = {};
 
   if ("node_timeout_default_ms" in body) {
     const v = body.node_timeout_default_ms;
@@ -106,26 +111,40 @@ export function validateSettingsBody(body) {
     if (v > MAX) {
       return { ok: false, error: `node_timeout_default_ms must be <= ${MAX} (24h)` };
     }
-    result.node_timeout_default_ms = v;
+    value.node_timeout_default_ms = v;
   }
 
   if ("mem0_host" in body) {
     const v = body.mem0_host;
-    if (typeof v !== "string" || v.trim().length === 0) {
+    if (v === null) {
+      value.mem0_host = null; // signal to delete the setting row
+    } else if (typeof v !== "string" || v.trim() === "") {
       return { ok: false, error: "mem0_host must be a non-empty string" };
+    } else {
+      try {
+        const url = new URL(v);
+        if (url.protocol !== "http:" && url.protocol !== "https:") {
+          return { ok: false, error: "mem0_host must be a valid http(s) URL" };
+        }
+      } catch {
+        return { ok: false, error: "mem0_host must be a valid URL" };
+      }
+      value.mem0_host = v;
     }
-    result.mem0_host = v.trim();
   }
 
   if ("mem0_api_key" in body) {
     const v = body.mem0_api_key;
-    if (typeof v !== "string" || v.trim().length === 0) {
+    if (v === null) {
+      value.mem0_api_key = null; // signal to delete the setting row
+    } else if (typeof v !== "string" || v.trim() === "") {
       return { ok: false, error: "mem0_api_key must be a non-empty string" };
+    } else {
+      value.mem0_api_key = v;
     }
-    result.mem0_api_key = v.trim();
   }
 
-  return { ok: true, value: result };
+  return { ok: true, value };
 }
 
 export { KNOWN_KEYS };

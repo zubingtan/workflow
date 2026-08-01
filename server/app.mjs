@@ -38,6 +38,7 @@ import {
 import {
   getKnownSettings,
   setSetting,
+  deleteSetting,
   validateSettingsBody,
 } from "./settings.mjs";
 import {
@@ -476,7 +477,11 @@ export function createApp({
     const result = validateSettingsBody(body);
     if (!result.ok) return c.json({ error: result.error }, 400);
     for (const [key, value] of Object.entries(result.value)) {
-      setSetting(db, key, value);
+      if (value === null) {
+        deleteSetting(db, key);
+      } else {
+        setSetting(db, key, value);
+      }
     }
     return c.json(getKnownSettings(db));
   });

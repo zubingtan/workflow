@@ -10,14 +10,15 @@ import { ensureSchema } from "./db-schema.mjs";
 
 /**
  * Phase 9 (#161): GET/PUT /api/settings endpoints.
+ * T3 (#215): mem0_host + mem0_api_key settings.
  *
- * - GET /api/settings returns {node_timeout_default_ms: <number|null>, ...}
- *   with only known keys present.
- * - PUT /api/settings validates Number.isInteger && > 0 && <= 24h (86400000ms)
- *   and upserts into the settings table.
- * - Invalid body (non-integer, <=0, >24h, wrong type) → 400.
- * - Unknown keys in PUT body → 400 (only node_timeout_default_ms is accepted
- *   for now; future settings can be added).
+ * - GET /api/settings returns {node_timeout_default_ms, mem0_host, mem0_api_key}
+ *   with only known keys present (absent = null).
+ * - PUT /api/settings accepts any subset of known keys (partial update).
+ * - node_timeout_default_ms: Number.isInteger && > 0 && <= 24h (86400000ms).
+ * - mem0_host: valid http(s) URL.
+ * - mem0_api_key: non-empty string.
+ * - Unknown keys in PUT body → 400.
  */
 
 function setupDb() {
@@ -42,7 +43,7 @@ async function getSettings(app) {
   return app.fetch(new Request("http://localhost/api/settings"));
 }
 
-test("GET /api/settings returns empty object when no settings row exists", async () => {
+test("GET /api/settings returns null for all keys when no settings row exists", async () => {
   const { db, dir } = setupDb();
   const app = createApp({ db, agentDir: dir });
   const res = await getSettings(app);
@@ -114,10 +115,17 @@ test("PUT /api/settings accepts exactly 24h (86400000ms)", async () => {
   assert.equal(res.status, 200);
 });
 
-test("PUT /api/settings rejects body without node_timeout_default_ms with 400", async () => {
+test("PUT /api/settings rejects unknown key with 400", async () => {
   const { db, dir } = setupDb();
   const app = createApp({ db, agentDir: dir });
   const res = await putSettings(app, { unrelated_key: 123 });
+  assert.equal(res.status, 400);
+});
+
+test("PUT /api/settings rejects empty body with 400", async () => {
+  const { db, dir } = setupDb();
+  const app = createApp({ db, agentDir: dir });
+  const res = await putSettings(app, {});
   assert.equal(res.status, 400);
 });
 
@@ -132,4 +140,82 @@ test("PUT /api/settings rejects invalid JSON body with 400", async () => {
     })
   );
   assert.equal(res.status, 400);
+});
+
+// --- T3 (#215): mem0_host + mem0_api_key ---
+
+test("PUT /api/settings persists mem0_host and mem0_api_key", async () => {
+  const { db, dir } = setupDb();
+  const app = createApp({ db, agentDir: dir });
+  const res = await putSettings(app, {
+    mem0_host: "http://localhost:8890",
+    mem0_api_key: "secret-key-123",
+  });
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.mem0_host, "http://localhost:8890");
+  assert.equal(body.mem0_api_key, "secret-key-123");
+
+  const getBody = await (await getSettings(app)).json();
+  assert.equal(getBody.mem0_host, "http://localhost:8890");
+  assert.equal(getBody.mem0_api_key, "secret-key-123");
+});
+
+test("PUT /api/settings allows partial update (mem0 only, no timeout)", async () => {
+  const { db, dir } = setupDb();
+  const app = createApp({ db, agentDir: dir });
+  await putSettings(app, { node_timeout_default_ms: 300000 });
+  const res = await putSettings(app, { mem0_host: "https://mem0.example.com" });
+  assert.equal(res.status, 200);
+  const getBody = await (await getSettings(app)).json();
+  assert.equal(getBody.node_timeout_default_ms, 300000);
+  assert.equal(getBody.mem0_host, "https://mem0.example.com");
+});
+
+test("PUT /api/settings rejects invalid mem0_host (not a URL)", async () => {
+  const { db, dir } = setupDb();
+  const app = createApp({ db, agentDir: dir });
+  for (const bad of ["not-a-url", "ftp://foo.com", "", 123]) {
+    const res = await putSettings(app, { mem0_host: bad });
+    assert.equal(res.status, 400, `should reject mem0_host=${JSON.stringify(bad)}`);
+    const body = await res.json();
+    assert.match(body.error || "", /mem0_host/i);
+  }
+});
+
+test("PUT /api/settings accepts valid mem0_host URLs", async () => {
+  const { db, dir } = setupDb();
+  const app = createApp({ db, agentDir: dir });
+  for (const good of ["http://localhost:8890", "https://mem0.example.com", "http://192.168.1.1:9000"]) {
+    const res = await putSettings(app, { mem0_host: good });
+    assert.equal(res.status, 200, `should accept mem0_host=${good}`);
+  }
+});
+
+test("PUT /api/settings rejects invalid mem0_api_key (empty or non-string)", async () => {
+  const { db, dir } = setupDb();
+  const app = createApp({ db, agentDir: dir });
+  for (const bad of ["", "   ", 123, {}]) {
+    const res = await putSettings(app, { mem0_api_key: bad });
+    assert.equal(res.status, 400, `should reject mem0_api_key=${JSON.stringify(bad)}`);
+    const body = await res.json();
+    assert.match(body.error || "", /mem0_api_key/i);
+  }
+});
+
+test("PUT /api/settings with null clears mem0 settings", async () => {
+  const { db, dir } = setupDb();
+  const app = createApp({ db, agentDir: dir });
+  // Set values first.
+  await putSettings(app, { mem0_host: "http://localhost:8890", mem0_api_key: "key123" });
+  let getBody = await (await getSettings(app)).json();
+  assert.equal(getBody.mem0_host, "http://localhost:8890");
+  assert.equal(getBody.mem0_api_key, "key123");
+
+  // Clear with null.
+  const res = await putSettings(app, { mem0_host: null, mem0_api_key: null });
+  assert.equal(res.status, 200);
+  getBody = await (await getSettings(app)).json();
+  assert.equal(getBody.mem0_host, null);
+  assert.equal(getBody.mem0_api_key, null);
 });

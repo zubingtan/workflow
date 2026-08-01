@@ -322,6 +322,8 @@ export const deleteRun = (runID: string) =>
 
 export interface AppSettings {
   node_timeout_default_ms: number | null;
+  mem0_host: string | null;
+  mem0_api_key: string | null;
 }
 
 export const getSettings = () =>
