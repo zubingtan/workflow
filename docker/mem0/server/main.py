@@ -112,10 +112,20 @@ POSTGRES_USER = os.environ.get("POSTGRES_USER", "postgres")
 POSTGRES_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "postgres")
 POSTGRES_COLLECTION_NAME = os.environ.get("POSTGRES_COLLECTION_NAME", "memories")
 
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+OPENAI_API_KEY = os.environ.get("MEM0_LLM_API_KEY") or os.environ.get("OPENAI_API_KEY")
+OPENAI_BASE_URL = os.environ.get("MEM0_LLM_BASE_URL") or os.environ.get("OPENAI_BASE_URL")
 HISTORY_DB_PATH = os.environ.get("HISTORY_DB_PATH", "/app/history/history.db")
-DEFAULT_LLM_MODEL = os.environ.get("MEM0_DEFAULT_LLM_MODEL", "gpt-5-mini")
-DEFAULT_EMBEDDER_MODEL = os.environ.get("MEM0_DEFAULT_EMBEDDER_MODEL", "text-embedding-3-small")
+DEFAULT_LLM_MODEL = os.environ.get("MEM0_LLM_MODEL", "gpt-5-mini")
+DEFAULT_EMBEDDER_MODEL = os.environ.get("MEM0_EMBEDDER_MODEL", "text-embedding-3-small")
+DEFAULT_EMBEDDING_DIMS = os.environ.get("MEM0_EMBEDDING_DIMS")  # e.g. "1024"
+
+_llm_config = {"api_key": OPENAI_API_KEY, "temperature": 0.2, "model": DEFAULT_LLM_MODEL}
+_embedder_config = {"api_key": OPENAI_API_KEY, "model": DEFAULT_EMBEDDER_MODEL}
+if OPENAI_BASE_URL:
+    _llm_config["openai_base_url"] = OPENAI_BASE_URL
+    _embedder_config["openai_base_url"] = OPENAI_BASE_URL
+if DEFAULT_EMBEDDING_DIMS:
+    _embedder_config["embedding_dims"] = int(DEFAULT_EMBEDDING_DIMS)
 
 DEFAULT_CONFIG = {
     "version": "v1.1",
@@ -128,13 +138,11 @@ DEFAULT_CONFIG = {
             "user": POSTGRES_USER,
             "password": POSTGRES_PASSWORD,
             "collection_name": POSTGRES_COLLECTION_NAME,
+            **({"embedding_model_dims": int(DEFAULT_EMBEDDING_DIMS)} if DEFAULT_EMBEDDING_DIMS else {}),
         },
     },
-    "llm": {
-        "provider": "openai",
-        "config": {"api_key": OPENAI_API_KEY, "temperature": 0.2, "model": DEFAULT_LLM_MODEL},
-    },
-    "embedder": {"provider": "openai", "config": {"api_key": OPENAI_API_KEY, "model": DEFAULT_EMBEDDER_MODEL}},
+    "llm": {"provider": "openai", "config": _llm_config},
+    "embedder": {"provider": "openai", "config": _embedder_config},
     "history_db_path": HISTORY_DB_PATH,
 }
 

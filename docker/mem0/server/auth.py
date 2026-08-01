@@ -160,6 +160,9 @@ async def verify_auth(
         if ADMIN_API_KEY and secrets.compare_digest(x_api_key, ADMIN_API_KEY):
             _mark_auth_type(request, "admin_api_key")
             return None
+        if AUTH_DISABLED:
+            _mark_auth_type(request, "disabled")
+            return None
         _mark_auth_type(request, "api_key")
         with SessionLocal() as db:
             return _resolve_user_from_api_key(x_api_key, db)

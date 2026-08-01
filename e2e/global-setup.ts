@@ -19,7 +19,7 @@
  * Polls each until ready (timeout 60s), then stashes the child processes on
  * `globalThis` so global-teardown can kill them.
  */
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, execSync, type ChildProcess } from 'node:child_process';
 import { mkdirSync, mkdtempSync, openSync, writeSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -35,6 +35,13 @@ const POLL_INTERVAL = 250;
 const processes: { fake?: ChildProcess; server?: ChildProcess } = {};
 (globalThis as any).__E2E_PROCESSES__ = processes;
 (globalThis as any).__E2E_DATA_DIR__ = DATA_DIR;
+
+// --- mem0 E2E support (T6 #219) ---
+// When MEM0_E2E=1, start mem0 + pgvector via docker compose and configure the
+// server's settings table so agent runs activate the memory extension.
+const MEM0_E2E = process.env.MEM0_E2E === '1';
+const MEM0_E2E_PORT = process.env.MEM0_E2E_PORT ?? '8890';
+(globalThis as any).__E2E_MEM0__ = MEM0_E2E;
 
 /**
  * Spawn a child as its own process-group leader (detached: true), with stdio
@@ -120,6 +127,26 @@ function assertDistExists() {
 }
 
 export default async function globalSetup() {
+  // --- mem0 containers (T6 #219, conditional) ---
+  if (MEM0_E2E) {
+    // eslint-disable-next-line no-console
+    console.log(`[e2e] starting mem0 + pgvector (port ${MEM0_E2E_PORT})...`);
+    execSync(
+      `docker compose -f docker-compose.e2e-mem0.yml up -d --wait --wait-timeout 120 --force-recreate`,
+      {
+        cwd: ROOT,
+        stdio: 'inherit',
+        env: {
+          ...process.env,
+          MEM0_E2E_PORT,
+          MEM0_E2E_API_KEY: process.env.MEM0_E2E_API_KEY ?? 'e2e-admin-key',
+        },
+      }
+    );
+    // eslint-disable-next-line no-console
+    console.log('[e2e] mem0 containers ready');
+  }
+
   // Build a clean env for the children. We load .env ourselves (rather than
   // relying on `node --env-file=.env`) so we control precedence — the E2E
   // overrides below must win over whatever's in .env.
@@ -162,6 +189,22 @@ export default async function globalSetup() {
     NODE_ENV: 'production', // enables serveStatic + SPA fallback
   });
   await waitForUrl('http://localhost:4099/health/live', 'Hono server', 'server');
+
+  // --- Configure mem0 settings (T6 #219) ---
+  if (MEM0_E2E) {
+    const mem0Host = `http://localhost:${MEM0_E2E_PORT}`;
+    const mem0ApiKey = process.env.MEM0_E2E_API_KEY ?? 'e2e-admin-key';
+    const res = await fetch('http://localhost:4099/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mem0_host: mem0Host, mem0_api_key: mem0ApiKey }),
+    });
+    if (!res.ok) {
+      throw new Error(`[e2e] failed to configure mem0 settings: HTTP ${res.status}`);
+    }
+    // eslint-disable-next-line no-console
+    console.log(`[e2e] mem0 settings configured (host: ${mem0Host})`);
+  }
 
   // eslint-disable-next-line no-console
   console.log(`[e2e] all processes ready; data dir: ${DATA_DIR}`);

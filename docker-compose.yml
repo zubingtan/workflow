@@ -56,8 +56,12 @@ services:
       - mem0-history:/app/history
     environment:
       # LLM / Embedding provider (OpenAI-compatible).
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      MEM0_LLM_API_KEY: ${MEM0_LLM_API_KEY:-}
+      MEM0_LLM_BASE_URL: ${MEM0_LLM_BASE_URL:-}
+      # Model configuration (override for non-OpenAI providers).
+      MEM0_LLM_MODEL: ${MEM0_LLM_MODEL:-gpt-5-mini}
+      MEM0_EMBEDDER_MODEL: ${MEM0_EMBEDDER_MODEL:-text-embedding-3-small}
+      MEM0_EMBEDDING_DIMS: ${MEM0_EMBEDDING_DIMS:-}
       # Disable telemetry.
       MEM0_TELEMETRY: 'false'
       # Auth: use ADMIN_API_KEY for programmatic access, or AUTH_DISABLED for

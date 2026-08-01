@@ -9,13 +9,16 @@
 # to avoid conflicts with local mem0 instances.
 #
 # Environment variables (set in docker-compose.yml):
-#   OPENAI_API_KEY      — API key for the LLM/embedding provider
-#   OPENAI_BASE_URL     — custom OpenAI-compatible endpoint (optional)
-#   MEM0_TELEMETRY      — set to "false" to disable telemetry
-#   AUTH_DISABLED       — "true" for local dev (no auth)
-#   ADMIN_API_KEY       — legacy admin key (alternative to AUTH_DISABLED)
+#   MEM0_LLM_API_KEY      — API key for the LLM/embedding provider
+#   MEM0_LLM_BASE_URL     — custom OpenAI-compatible endpoint (optional)
+#   MEM0_LLM_MODEL        — LLM model name (default: gpt-5-mini)
+#   MEM0_EMBEDDER_MODEL   — embedding model name (default: text-embedding-3-small)
+#   MEM0_EMBEDDING_DIMS   — embedding vector dimensions (e.g. 1024)
+#   MEM0_TELEMETRY        — set to "false" to disable telemetry
+#   AUTH_DISABLED          — "true" for local dev (no auth)
+#   ADMIN_API_KEY          — legacy admin key (alternative to AUTH_DISABLED)
 #   POSTGRES_HOST/PORT/USER/PASSWORD/DB — pgvector connection
-#   APP_DB_NAME         — SQLAlchemy app database (default: mem0_app)
+#   APP_DB_NAME            — SQLAlchemy app database (default: mem0_app)
 
 FROM python:3.12-slim
 
