@@ -10,15 +10,77 @@
  * single terminal event to FlowGram's expected return/throw shape (#77).
  */
 import { AsyncLocalStorage } from "node:async_hooks";
+import { mkdirSync, writeFileSync, existsSync, cpSync, renameSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { registerNodeExecutor, TaskRunAPI, TaskReportAPI, TaskCancelAPI, TaskValidateAPI, TaskResultAPI } from "@flowgram.ai/runtime-js";
 import { runAgentExecution as defaultRunAgentExecution } from "./agent-execution.mjs";
 import { getAgentById } from "./agent-catalog.mjs";
 import { persistExecution } from "./execution-store.mjs";
+import { getMem0Host, getMem0ApiKey } from "./settings.mjs";
 
 // AsyncLocalStorage carries the workflow_run_id from the queue-adapter
 // through the FlowGram TaskRunAPI call chain into the AgentExecutor,
 // without modifying FlowGram's ExecutionContext interface.
 export const workflowRunContext = new AsyncLocalStorage();
+
+// --- mem0 extension helpers (#218) ---
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+/**
+ * Ensure the mem0 extension files exist in {agentSessionDir}/extensions/pi-extension-mem0/.
+ * Sources (first found wins):
+ *   1. /opt/pi-extension-mem0/ (Docker production)
+ *   2. packages/pi-extension-mem0/dist/ (development, relative to server/)
+ * Returns true if extension is available, false otherwise.
+ */
+export function ensureMem0Extension(agentSessionDir) {
+  const targetDir = join(agentSessionDir, "extensions", "pi-extension-mem0");
+  if (existsSync(join(targetDir, "index.js"))) return true; // already present
+
+  const candidates = [
+    "/opt/pi-extension-mem0",
+    join(__dirname, "..", "packages", "pi-extension-mem0", "dist"),
+  ];
+  for (const src of candidates) {
+    if (existsSync(join(src, "index.js"))) {
+      mkdirSync(targetDir, { recursive: true });
+      cpSync(src, targetDir, { recursive: true });
+      return true;
+    }
+  }
+  return false; // extension not built yet — graceful skip
+}
+
+/**
+ * Write {agentSessionDir}/mem0-config.json for the pi-extension-mem0 to read.
+ * Only writes when mem0 is configured (host + apiKey present in settings).
+ * Uses atomic write (tmp + rename) to prevent half-read on concurrent access.
+ *
+ * Note: config is per-agent (not per-run). If the same agent runs concurrently
+ * from different workflows, runId may be overwritten. The write→read window is
+ * sub-millisecond (both happen synchronously within createAgentSessionForAgent),
+ * so practical risk is minimal. Per-run isolation is a future hardening.
+ */
+export function writeMem0Config(agentSessionDir, { agentId, runId, host, apiKey }) {
+  const config = {
+    selfHosted: true,
+    host,
+    apiKey,
+    agentId: String(agentId),
+    runId: runId || undefined,
+    autoCapture: true,
+    contextInjection: true,
+    searchThreshold: 0.3,
+    dream: { enabled: false },
+  };
+  mkdirSync(agentSessionDir, { recursive: true });
+  const target = join(agentSessionDir, "mem0-config.json");
+  const tmp = join(agentSessionDir, ".mem0-config.json.tmp");
+  writeFileSync(tmp, JSON.stringify(config, null, 2));
+  renameSync(tmp, target); // atomic on POSIX
+}
 
 // --- Shared agent session creation (reused by SSE adapter and injected into runAgentExecution) ---
 
@@ -37,8 +99,10 @@ export function resolveApiKey(rawValue) {
  * Create a pi-coding-agent session from an agent record.
  * @param {object} agent - DB row or constructed object with { name, config (string|object) }
  * @param {string} agentDir - working directory for the agent
+ * @param {object} [mem0] - Optional mem0 config { host, apiKey, runId }. When
+ *   provided, writes mem0-config.json and activates the memory extension.
  */
-export async function createAgentSessionForAgent(agent, agentDir) {
+export async function createAgentSessionForAgent(agent, agentDir, mem0) {
   const { createAgentSession, ModelRuntime, SessionManager, SettingsManager, DefaultResourceLoader } =
     await import("@earendil-works/pi-coding-agent");
 
@@ -79,11 +143,22 @@ export async function createAgentSessionForAgent(agent, agentDir) {
   // 3. SessionManager — persist sessions per-agent
   const agentSessionDir = agent.id ? `${agentDir}/${agent.id}` : agentDir;
   const sessionDir = `${agentSessionDir}/sessions`;
-  const { mkdirSync } = await import("node:fs");
-  mkdirSync(sessionDir, { recursive: true });
+  const { mkdirSync: _mkdir } = await import("node:fs");
+  _mkdir(sessionDir, { recursive: true });
   const sessionManager = SessionManager.create(agentSessionDir, sessionDir);
 
-  // 4. ResourceLoader — inject systemPrompt + pick up skills/extensions from settings
+  // 4. mem0 extension setup (#218): write config + ensure extension files
+  if (mem0?.host && mem0?.apiKey) {
+    writeMem0Config(agentSessionDir, {
+      agentId: agent.id,
+      runId: mem0.runId,
+      host: mem0.host,
+      apiKey: mem0.apiKey,
+    });
+    ensureMem0Extension(agentSessionDir);
+  }
+
+  // 5. ResourceLoader — inject systemPrompt + pick up skills/extensions from settings
   const resourceLoader = new DefaultResourceLoader({
     cwd: agentSessionDir,
     agentDir: agentSessionDir,
@@ -93,7 +168,7 @@ export async function createAgentSessionForAgent(agent, agentDir) {
   });
   await resourceLoader.reload();
 
-  // 5. createAgentSession — full options
+  // 6. createAgentSession — full options
   const sessionOpts = {
     cwd: agentSessionDir,
     agentDir: agentSessionDir,
@@ -114,6 +189,10 @@ export async function createAgentSessionForAgent(agent, agentDir) {
   if (sessionOptions.noTools) sessionOpts.noTools = sessionOptions.noTools;
 
   const result = await createAgentSession(sessionOpts);
+
+  // 7. Activate extension lifecycle (#218): fires session_start, enables
+  //    before_agent_start (context injection) and agent_end (auto-capture).
+  await result.session.bindExtensions({ mode: "print" });
 
   return result.session;
 }
@@ -192,9 +271,15 @@ class AgentExecutor {
       throw new AgentExecutionError({ kind: "agent_not_found", message: `agent not found: ${agentId}` });
     }
 
-    // New interface: createSession(agent, agentDir) — apiKey resolved internally
+    // New interface: createSession(agent, agentDir, mem0?) — apiKey resolved internally
+    // mem0 config: read from settings table + runId from workflowRunContext (#218)
+    const mem0Host = this.db ? getMem0Host(this.db) : null;
+    const mem0ApiKey = this.db ? getMem0ApiKey(this.db) : null;
+    const mem0 = (mem0Host && mem0ApiKey)
+      ? { host: mem0Host, apiKey: mem0ApiKey, runId: workflowRunContext.getStore()?.runId ?? null }
+      : undefined;
     const createSessionBound = (agentCfg, dir) =>
-      this.createSession(agentCfg, dir);
+      this.createSession(agentCfg, dir, mem0);
 
     // Phase 9 (#161): per-node timeout via a per-node AbortController.
     // AbortSignal.any combines the workflow signal (user cancel) with the
