@@ -48,7 +48,7 @@ test("GET /api/settings returns empty object when no settings row exists", async
   const res = await getSettings(app);
   assert.equal(res.status, 200);
   const body = await res.json();
-  assert.deepEqual(body, { node_timeout_default_ms: null });
+  assert.deepEqual(body, { node_timeout_default_ms: null, mem0_host: null, mem0_api_key: null });
 });
 
 test("PUT /api/settings persists node_timeout_default_ms and GET returns it", async () => {
