@@ -78,12 +78,15 @@ if (legacyCols.some((c) => c.name === "provider_api_key_env")) {
 ensureSchema(db);
 
 // --- Seed fake-provider agent if empty ---
+// Use FAKE_PROVIDER_PORT so worktree-isolated environments (which derive a
+// per-worktree port in their .env) seed the correct provider URL.
+const fakeProviderPort = Number(process.env.FAKE_PROVIDER_PORT ?? 4010);
 const seeded = seedAgentIfEmpty(db, {
   id: "fake-default",
   name: "Fake Provider",
   config: {
     provider: {
-      base_url: "http://localhost:4010/v1",
+      base_url: `http://localhost:${fakeProviderPort}/v1`,
       api_key: "fake-provider-local",
       model: "fake-model",
     },
@@ -92,7 +95,7 @@ const seeded = seedAgentIfEmpty(db, {
     pi_settings: { defaultProjectTrust: "always" },
   },
 });
-if (seeded) console.log("  seeded fake-provider agent");
+if (seeded) console.log(`  seeded fake-provider agent (port ${fakeProviderPort})`);
 
 // --- Init runtime (register AgentExecutor to replace built-in LLMExecutor) ---
 // Phase 9 (#161): pass a settingsProvider so AgentExecutor.resolveTimeoutMs
