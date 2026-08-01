@@ -9,6 +9,11 @@
       "types": "./dist/index.d.ts"
     }
   },
+  "pi": {
+    "extensions": [
+      "./dist/extension.js"
+    ]
+  },
   "files": [
     "dist"
   ],
@@ -17,9 +22,28 @@
     "test": "node --import tsx --test '__tests__/**/*.spec.ts'",
     "ts-check": "tsc --noEmit"
   },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=1.0.0",
+    "@earendil-works/pi-ai": ">=1.0.0",
+    "typebox": ">=1.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    },
+    "@earendil-works/pi-ai": {
+      "optional": true
+    },
+    "typebox": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@earendil-works/pi-ai": "^0.81.0",
+    "@earendil-works/pi-coding-agent": "^0.81.0",
     "tsx": "^4.19.0",
     "tsup": "^8.4.0",
+    "typebox": "1.1.38",
     "typescript": "^5.8.3"
   }
 }
