@@ -9,6 +9,7 @@
  * Falls back to a direct process.kill(pid) if the group kill fails (happens
  * if the child already exited or wasn't a group leader for some reason).
  */
+import { execSync } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 
 const processes: { fake?: ChildProcess; server?: ChildProcess } =
@@ -40,6 +41,20 @@ export default async function globalTeardown() {
   // fake-provider.
   killGroup(processes.server, 'server');
   killGroup(processes.fake, 'fake-provider');
+
+  // --- mem0 containers (T6 #219) ---
+  if ((globalThis as any).__E2E_MEM0__) {
+    try {
+      execSync('docker compose -f docker-compose.e2e-mem0.yml down -v', {
+        cwd: process.cwd(),
+        stdio: 'inherit',
+      });
+      // eslint-disable-next-line no-console
+      console.log('[e2e teardown] mem0 containers stopped');
+    } catch {
+      // Non-fatal: containers may already be down.
+    }
+  }
 
   // Give the OS a moment to release the ports.
   await new Promise((r) => setTimeout(r, 500));

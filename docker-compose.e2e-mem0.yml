@@ -1,0 +1,85 @@
+# E2E-only mem0 + pgvector (T6 #219).
+#
+# Isolated from the main docker-compose.yml:
+#   - mem0 on host port ${MEM0_E2E_PORT:-8890} (configurable to avoid conflicts)
+#   - pgvector on host port ${MEM0_E2E_PG_PORT:-8434} (no conflict with dev 8432/8433)
+#   - Separate volumes (suffixed -e2e) so E2E never touches dev/prod data
+#
+# Usage (automated by e2e/global-setup.ts when MEM0_E2E=1):
+#   docker compose -f docker-compose.e2e-mem0.yml up -d --wait
+#   docker compose -f docker-compose.e2e-mem0.yml down -v
+#
+# Requires:
+#   OPENAI_API_KEY / OPENAI_BASE_URL for the LLM+embedding provider.
+#   Default: open-webui.corp.pony.ai (Deepseek flash v4 + text-embedding-v4).
+
+name: workflow-e2e-mem0
+
+services:
+  mem0:
+    build: ./docker/mem0
+    ports:
+      - '127.0.0.1:${MEM0_E2E_PORT:-8890}:8000'
+    environment:
+      MEM0_LLM_API_KEY: ${MEM0_LLM_API_KEY:-}
+      MEM0_LLM_BASE_URL: ${MEM0_LLM_BASE_URL:-}
+      # Model configuration (defaults match open-webui.corp.pony.ai provider).
+      MEM0_LLM_MODEL: ${MEM0_LLM_MODEL:-deepseek-v4-flash}
+      MEM0_EMBEDDER_MODEL: ${MEM0_EMBEDDER_MODEL:-text-embedding-v4}
+      MEM0_EMBEDDING_DIMS: ${MEM0_EMBEDDING_DIMS:-1024}
+      MEM0_TELEMETRY: 'false'
+      AUTH_DISABLED: 'true'
+      # Must match the apiKey written to mem0-config.json by global-setup.
+      # mem0's auth checks X-API-Key BEFORE AUTH_DISABLED — a mismatched key
+      # still gets 401 even with AUTH_DISABLED=true.
+      ADMIN_API_KEY: e2e-admin-key
+      POSTGRES_HOST: pgvector
+      POSTGRES_PORT: '5432'
+      POSTGRES_USER: mem0
+      POSTGRES_PASSWORD: mem0e2e
+      POSTGRES_DB: mem0
+      APP_DB_NAME: mem0_app
+    depends_on:
+      pgvector:
+        condition: service_healthy
+    restart: 'no'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'python',
+          '-c',
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/')",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  pgvector:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: mem0
+      POSTGRES_PASSWORD: mem0e2e
+      POSTGRES_DB: mem0
+    ports:
+      - '127.0.0.1:${MEM0_E2E_PG_PORT:-8434}:5432'
+    volumes:
+      - pgvector-data-e2e:/var/lib/postgresql/data
+      - ./docker/mem0/init-app-db.sql:/docker-entrypoint-initdb.d/init-app-db.sql:ro
+    restart: 'no'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U mem0']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+volumes:
+  pgvector-data-e2e:
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.31.254.0/24

@@ -54,4 +54,5 @@ export { DREAM_PROTOCOL } from './dream/prompt.js';
 export { captureEvent, captureToolEvent } from './telemetry.js';
 
 // Extension entry (default export)
+export { default } from './extension.js';
 export { default as mem0Extension, buildRecallContext } from './extension.js';

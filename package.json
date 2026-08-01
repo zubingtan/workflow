@@ -90,6 +90,7 @@
     "test": "node --test",
     "test:cov": "exit",
     "test:e2e": "playwright test",
+    "test:e2e:mem0": "MEM0_E2E=1 playwright test e2e/mem0-persistence.spec.ts",
     "watch": "exit 0",
     "fake-provider": "node scripts/check-node.mjs && node --env-file-if-exists=.env scripts/fake-provider.mjs",
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,less,css,md}\"",
