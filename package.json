@@ -75,26 +75,29 @@
     "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
-    "build": "cross-env MODE=app NODE_ENV=production rsbuild build",
+    "build": "node scripts/check-node.mjs && cross-env MODE=app NODE_ENV=production rsbuild build",
     "build:fast": "exit 0",
     "build:watch": "exit 0",
     "build:analyze": "BUNDLE_ANALYZE=true rsbuild build",
     "clean": "rimraf dist",
     "dev": "concurrently -n fake,server -c green,blue \"pnpm fake-provider\" \"pnpm dev:server\"",
-    "dev:server": "cross-env MODE=app NODE_ENV=development node --env-file-if-exists=.env server/index.mjs",
+    "dev:server": "node scripts/check-node.mjs && cross-env MODE=app NODE_ENV=development node --env-file-if-exists=.env server/index.mjs",
     "lint": "eslint ./src --cache",
     "lint:fix": "eslint ./src --fix",
     "lint:style": "stylelint \"src/**/*.less\" \"src/**/*.module.less\" \"src/**/styles.tsx\"",
     "ts-check": "tsc --noEmit",
-    "start": "cross-env NODE_ENV=production node --env-file-if-exists=.env server/index.mjs",
+    "start": "node scripts/check-node.mjs && cross-env NODE_ENV=production node --env-file-if-exists=.env server/index.mjs",
     "test": "node --test",
     "test:cov": "exit",
     "test:e2e": "playwright test",
     "watch": "exit 0",
-    "fake-provider": "node --env-file-if-exists=.env scripts/fake-provider.mjs",
+    "fake-provider": "node scripts/check-node.mjs && node --env-file-if-exists=.env scripts/fake-provider.mjs",
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,less,css,md}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,json,less,css,md}\"",
     "prepare": "husky"
   },
-  "packageManager": "pnpm@11.13.0"
+  "packageManager": "pnpm@11.13.0",
+  "engines": {
+    "node": "^22.23.1"
+  }
 }
