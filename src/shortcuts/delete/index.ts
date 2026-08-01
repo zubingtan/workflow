@@ -17,6 +17,7 @@ import {
 import { Toast } from '@douyinfe/semi-ui';
 
 import { FlowCommandId } from '../constants';
+import { canRemoveEndNodes } from '../../utils/end-node.mjs';
 import { WorkflowNodeType } from '../../nodes';
 
 export class DeleteShortcut implements ShortcutsHandler {
@@ -84,17 +85,36 @@ export class DeleteShortcut implements ShortcutsHandler {
 
   /**
    * validate if nodes can be deleted
+   *
+   * - The Start node can never be deleted.
+   * - End nodes can be deleted, but at least one End must always remain
+   *   (a workflow may have several Ends, one per condition branch).
    */
   private isValid(nodes: WorkflowNodeEntity[]): boolean {
-    const hasSystemNodes = nodes.some((n) =>
-      [WorkflowNodeType.Start, WorkflowNodeType.End].includes(n.flowNodeType as WorkflowNodeType)
+    const hasStart = nodes.some(
+      (n) => (n.flowNodeType as WorkflowNodeType) === WorkflowNodeType.Start
     );
-    if (hasSystemNodes) {
+    if (hasStart) {
       Toast.error({
-        content: 'Start or End node cannot be deleted',
+        content: 'Start node cannot be deleted',
         showClose: false,
       });
       return false;
+    }
+    const selectedEndCount = nodes.filter(
+      (n) => (n.flowNodeType as WorkflowNodeType) === WorkflowNodeType.End
+    ).length;
+    if (selectedEndCount > 0) {
+      const totalEndCount = this.document
+        .getAllNodes()
+        .filter((n) => (n.flowNodeType as WorkflowNodeType) === WorkflowNodeType.End).length;
+      if (!canRemoveEndNodes(totalEndCount, selectedEndCount)) {
+        Toast.error({
+          content: 'At least one End node must remain',
+          showClose: false,
+        });
+        return false;
+      }
     }
     return true;
   }

@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
-  '@flowgram.ai/runtime-js@1.0.12': e8489a0d171d81e0a237b491d3d88a73fda33340ef713211671e2fbcd4f0f98e
+  '@flowgram.ai/runtime-js@1.0.12': 51bdde57e71d52e6e7db94056c98907e6031c24a42dbec5f5d4880f84031e39e
 
 importers:
 
@@ -64,7 +64,7 @@ importers:
         version: 1.0.12
       '@flowgram.ai/runtime-js':
         specifier: 1.0.12
-        version: 1.0.12(patch_hash=e8489a0d171d81e0a237b491d3d88a73fda33340ef713211671e2fbcd4f0f98e)(@opentelemetry/api@1.9.0)(openai@6.26.0(ws@8.21.1)(zod@3.25.76))(ws@8.21.1)
+        version: 1.0.12(patch_hash=51bdde57e71d52e6e7db94056c98907e6031c24a42dbec5f5d4880f84031e39e)(@opentelemetry/api@1.9.0)(openai@6.26.0(ws@8.21.1)(zod@3.25.76))(ws@8.21.1)
       '@hono/node-server':
         specifier: ^2.0.10
         version: 2.0.10(hono@4.12.31)
@@ -8714,7 +8714,7 @@ snapshots:
     dependencies:
       zod: 3.25.76
 
-  '@flowgram.ai/runtime-js@1.0.12(patch_hash=e8489a0d171d81e0a237b491d3d88a73fda33340ef713211671e2fbcd4f0f98e)(@opentelemetry/api@1.9.0)(openai@6.26.0(ws@8.21.1)(zod@3.25.76))(ws@8.21.1)':
+  '@flowgram.ai/runtime-js@1.0.12(patch_hash=51bdde57e71d52e6e7db94056c98907e6031c24a42dbec5f5d4880f84031e39e)(@opentelemetry/api@1.9.0)(openai@6.26.0(ws@8.21.1)(zod@3.25.76))(ws@8.21.1)':
     dependencies:
       '@langchain/core': 0.3.80(@opentelemetry/api@1.9.0)(openai@6.26.0(ws@8.21.1)(zod@3.25.76))
       '@langchain/openai': 0.5.18(@langchain/core@0.3.80(@opentelemetry/api@1.9.0)(openai@6.26.0(ws@8.21.1)(zod@3.25.76)))(ws@8.21.1)

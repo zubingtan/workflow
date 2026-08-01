@@ -1,8 +1,18 @@
 diff --git a/dist/esm/index.js b/dist/esm/index.js
-index 51c0433fbae8ebd8ef3af2a6ec26be97b07216f6..3705a0fa694fdc012c8a48545393e7ce8fd33ea1 100644
+index 51c0433fbae8ebd8ef3af2a6ec26be97b07216f6..6e394a0ffd34137e6bf66468ac065e29a998d6e5 100644
 --- a/dist/esm/index.js
 +++ b/dist/esm/index.js
-@@ -1883,6 +1883,7 @@ var WorkflowRuntimeTask = class _WorkflowRuntimeTask {
+@@ -1675,9 +1675,6 @@ var startEndNode = (schema) => {
+   if (startNodes.length > 1) {
+     throw new Error("Workflow schema must have only one start node");
+   }
+-  if (endNodes.length > 1) {
+-    throw new Error("Workflow schema must have only one end node");
+-  }
+   schema.nodes.forEach((node) => {
+     if (node.blocks) {
+       blockStartEndNode({
+@@ -1884,6 +1881,7 @@ var WorkflowRuntimeTask = class _WorkflowRuntimeTask {
      this.processing = params.processing;
    }
    cancel() {
@@ -10,7 +20,7 @@ index 51c0433fbae8ebd8ef3af2a6ec26be97b07216f6..3705a0fa694fdc012c8a48545393e7ce
      this.context.statusCenter.workflow.cancel();
      const cancelNodeIDs = this.context.statusCenter.getStatusNodeIDs(WorkflowStatus.Processing);
      cancelNodeIDs.forEach((nodeID) => {
-@@ -2842,6 +2843,7 @@ var WorkflowRuntimeContext = class _WorkflowRuntimeContext {
+@@ -2843,6 +2841,7 @@ var WorkflowRuntimeContext = class _WorkflowRuntimeContext {
    constructor(data) {
      this.subContexts = [];
      this.id = uuid();
@@ -18,7 +28,7 @@ index 51c0433fbae8ebd8ef3af2a6ec26be97b07216f6..3705a0fa694fdc012c8a48545393e7ce
      this.cache = data.cache;
      this.document = data.document;
      this.variableStore = data.variableStore;
-@@ -2894,6 +2896,7 @@ var WorkflowRuntimeContext = class _WorkflowRuntimeContext {
+@@ -2894,6 +2893,7 @@ var WorkflowRuntimeContext = class _WorkflowRuntimeContext {
        messageCenter: this.messageCenter,
        reporter: this.reporter,
        variableStore,
@@ -26,7 +36,7 @@ index 51c0433fbae8ebd8ef3af2a6ec26be97b07216f6..3705a0fa694fdc012c8a48545393e7ce
        state
      };
      const subContext = new _WorkflowRuntimeContext(contextData);
-@@ -2977,6 +2980,7 @@ var WorkflowRuntimeEngine = class {
+@@ -2977,6 +2977,7 @@ var WorkflowRuntimeEngine = class {
          node,
          inputs,
          runtime: context,
@@ -34,7 +44,7 @@ index 51c0433fbae8ebd8ef3af2a6ec26be97b07216f6..3705a0fa694fdc012c8a48545393e7ce
          container: WorkflowRuntimeContainer.instance,
          snapshot
        });
-@@ -3246,12 +3246,18 @@ var WorkflowRuntimeAPIs = {
+@@ -3246,12 +3247,18 @@ var WorkflowRuntimeAPIs = {
    [FlowGramAPIName.TaskCancel]: TaskCancelAPI,
    [FlowGramAPIName.TaskValidate]: TaskValidateAPI
  };
@@ -80,10 +90,20 @@ index 41b0cc498a8c1e21e79c88d799f44af326ae6b85..c9789d11c27789a73ef8ceccec831150
 +
 +export { TaskCancelAPI, TaskReportAPI, TaskResultAPI, TaskRunAPI, TaskValidateAPI, WorkflowRuntimeAPIs, registerNodeExecutor };
 diff --git a/dist/index.js b/dist/index.js
-index 3c8b340c49028c61612954bd5cfc836a8a8cd21e..d7605778c0934cf4936ca5da945fbf614e5e2ad4 100644
+index 3c8b340c49028c61612954bd5cfc836a8a8cd21e..59f3bb4b7356a54e9ccaaa6cd6a0b4b7e2fbaa59 100644
 --- a/dist/index.js
 +++ b/dist/index.js
-@@ -1924,6 +1924,7 @@ var WorkflowRuntimeTask = class _WorkflowRuntimeTask {
+@@ -1716,9 +1716,6 @@ var startEndNode = (schema) => {
+   if (startNodes.length > 1) {
+     throw new Error("Workflow schema must have only one start node");
+   }
+-  if (endNodes.length > 1) {
+-    throw new Error("Workflow schema must have only one end node");
+-  }
+   schema.nodes.forEach((node) => {
+     if (node.blocks) {
+       blockStartEndNode({
+@@ -1925,6 +1922,7 @@ var WorkflowRuntimeTask = class _WorkflowRuntimeTask {
      this.processing = params.processing;
    }
    cancel() {
@@ -91,7 +111,7 @@ index 3c8b340c49028c61612954bd5cfc836a8a8cd21e..d7605778c0934cf4936ca5da945fbf61
      this.context.statusCenter.workflow.cancel();
      const cancelNodeIDs = this.context.statusCenter.getStatusNodeIDs(WorkflowStatus.Processing);
      cancelNodeIDs.forEach((nodeID) => {
-@@ -2885,6 +2886,7 @@ var WorkflowRuntimeContext = class _WorkflowRuntimeContext {
+@@ -2884,6 +2882,7 @@ var WorkflowRuntimeContext = class _WorkflowRuntimeContext {
    constructor(data) {
      this.subContexts = [];
      this.id = uuid();
@@ -99,7 +119,7 @@ index 3c8b340c49028c61612954bd5cfc836a8a8cd21e..d7605778c0934cf4936ca5da945fbf61
      this.cache = data.cache;
      this.document = data.document;
      this.variableStore = data.variableStore;
-@@ -2937,6 +2939,7 @@ var WorkflowRuntimeContext = class _WorkflowRuntimeContext {
+@@ -2935,6 +2934,7 @@ var WorkflowRuntimeContext = class _WorkflowRuntimeContext {
        messageCenter: this.messageCenter,
        reporter: this.reporter,
        variableStore,
@@ -107,7 +127,7 @@ index 3c8b340c49028c61612954bd5cfc836a8a8cd21e..d7605778c0934cf4936ca5da945fbf61
        state
      };
      const subContext = new _WorkflowRuntimeContext(contextData);
-@@ -3020,6 +3023,7 @@ var WorkflowRuntimeEngine = class {
+@@ -3018,6 +3018,7 @@ var WorkflowRuntimeEngine = class {
          node,
          inputs,
          runtime: context,
@@ -115,7 +135,7 @@ index 3c8b340c49028c61612954bd5cfc836a8a8cd21e..d7605778c0934cf4936ca5da945fbf61
          container: WorkflowRuntimeContainer.instance,
          snapshot
        });
-@@ -3287,6 +3287,11 @@ var WorkflowRuntimeAPIs = {
+@@ -3287,6 +3288,11 @@ var WorkflowRuntimeAPIs = {
    [FlowGramAPIName.TaskCancel]: TaskCancelAPI,
    [FlowGramAPIName.TaskValidate]: TaskValidateAPI
  };
@@ -127,7 +147,7 @@ index 3c8b340c49028c61612954bd5cfc836a8a8cd21e..d7605778c0934cf4936ca5da945fbf61
  // Annotate the CommonJS export names for ESM import in node:
  0 && (module.exports = {
    TaskCancelAPI,
-@@ -3294,6 +3299,7 @@ var WorkflowRuntimeAPIs = {
+@@ -3294,6 +3300,7 @@ var WorkflowRuntimeAPIs = {
    TaskResultAPI,
    TaskRunAPI,
    TaskValidateAPI,

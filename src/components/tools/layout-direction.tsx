@@ -14,6 +14,7 @@ import {
 import { IconButton, Tooltip } from '@douyinfe/semi-ui';
 
 import { rotateAllPorts, type LayoutDirection } from '../../utils/rotate-ports';
+import { fireLayoutSettled } from '../../utils/layout-settled-bus.mjs';
 import { useLayoutDirection } from '../../hooks/use-layout-direction';
 import { IconLayoutDirection } from '../../assets/icon-layout-direction';
 
@@ -24,12 +25,11 @@ import { IconLayoutDirection } from '../../assets/icon-layout-direction';
  * Clicking the toggle performs, atomically from the user's perspective:
  *  1. `rotateAllPorts` — rotate every main-canvas node's port anchors
  *     (output→bottom/input→top for TB, output→right/input→left for LR).
- *  2. `tools.autoLayout` — reflow node positions with the new `rankdir`.
- *  3. `setDirection` — update `LayoutDirectionContext` (and its ref mirror)
- *     so the condition renderer sees the new direction.
+ *  2. `setDirection` — update `LayoutDirectionContext` (and its ref mirror)
+ *     so the condition renderer re-rotates its static input port immediately.
+ *  3. `tools.autoLayout` — reflow node positions with the new `rankdir`.
  *  4. `document.fireRender()` — force connection lines to re-render against
- *     the new anchor positions (the `@observeEntities(WorkflowPortEntity)`
- *     → line update chain is unproven, so we trigger manually).
+ *     the final anchor positions after the animation settles.
  *  5. Persistence — the autoLayout move fires `MOVE_NODE` → `onContentChange`
  *     → `onDirty`, which surfaces the Save button; `saveWorkflow` in app.tsx
  *     reads `directionRef` and writes the `direction` field to the workflow
@@ -51,7 +51,12 @@ export const LayoutDirectionSwitch = () => {
     const next: LayoutDirection = direction === 'LR' ? 'TB' : 'LR';
     // 1. Rotate all main-canvas port anchors to the new direction.
     rotateAllPorts(ctx.document as WorkflowDocument, next);
-    // 2. Reflow node positions with the new rankdir (1s animation).
+    // 2. Update context state + ref mirror IMMEDIATELY so the condition
+    //    renderer's useLayoutEffect fires (updateDynamicPorts + re-rotate
+    //    static ports) before the animation starts. Without this, the
+    //    condition input port stays at 'left' for the entire 1s animation.
+    setDirection(next);
+    // 3. Reflow node positions with the new rankdir (1s animation).
     await tools.autoLayout({
       enableAnimation: true,
       animationDuration: 1000,
@@ -62,14 +67,15 @@ export const LayoutDirectionSwitch = () => {
         ranksep: 100,
       },
     });
-    // 3. Update context state + ref mirror BEFORE fireRender so the
-    //    condition renderer (which reads `direction` from context) sees the
-    //    new direction when the render pass redraws connection lines.
-    //    (ref is read by the ADD_NODE listener in useEditorProps to rotate
-    //    newly-added nodes' ports.)
-    setDirection(next);
-    // 4. Force line re-render so connections pick up the new anchors.
+    // 4. Force line re-render so connections pick up the final anchors
+    //    after the animation settles.
     ctx.document.fireRender();
+    // 5. Notify condition / multi-condition nodes to recompute their output
+    //    port slot order against the SETTLED positions. autoLayout interpolates
+    //    positions over the animation, so a recompute fired mid-animation can
+    //    lock the slots to a transient target order and cross the branch lines
+    //    in TB mode; this final recompute removes the crossing.
+    fireLayoutSettled();
   }, [playground, tools, ctx, direction, setDirection]);
 
   const tooltipContent = direction === 'LR' ? 'Layout: Horizontal' : 'Layout: Vertical';

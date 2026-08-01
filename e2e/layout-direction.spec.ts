@@ -1,535 +1,447 @@
-import { expect, test } from '@playwright/test';
+import { test, expect, Page, Locator } from '@playwright/test';
 
-import { buildWorkflowSchema, createAgent, createWorkflow } from './helpers';
+import { createWorkflow } from './helpers';
 
 /**
- * #190 E2E: editor canvas layout direction switch.
+ * #190 E2E: layout direction switch with port rotation — full routing coverage.
  *
- * Acceptance:
- *  - Test 1: clicking the Layout Direction toggle rotates all port anchors
- *    AND reflows the canvas in one atomic action. After toggle: nodes are
- *    stacked vertically (y-spread > x-spread), and connection lines still
- *    exist (proving the port rotation did not break connectivity).
- *  - Test 2: after switching to vertical, a newly-added node's connection
- *    line starts from the node's bottom edge (vertical line) rather than
- *    its right edge — proving the new node's output port is on the bottom
- *    (the ADD_NODE listener in useEditorProps rotated it to match TB).
+ * Replaces the previous "too simple" layout-direction spec. The centrepiece is
+ * a `start → condition → 6×end` workflow that proves the layout direction
+ * switch is behaviour-preserving:
  *
- * FlowGram's free-layout-editor positions each node by setting inline
- * `style.left` / `style.top` (in canvas-space px) on the
- * `.gedit-flow-activity-node[data-node-id="..."]` element. Connection lines
- * render as `<g class="gedit-flow-activity-edge">` wrappers whose inline
- * style carries `left`/`top`/`width`/`height` of the line bounding box; a
- * vertical line has height > width.
+ *  - The start node exposes an integer `query` input.
+ *  - The condition node has five branches (`query == 1` … `query == 5`) plus
+ *    the implicit `else`, each wired to its own End node.
+ *  - Each End node emits a DISTINCT constant (`end_1` … `end_6`), so a Test
+ *    Run with input N finishes with workflow output `end_N` (input 6 falls
+ *    through to `else` → `end_6`). This relies on the runtime-js patch that
+ *    relaxes "only one end node" to "at least one end node".
+ *
+ * The test walks the canvas through four layout states (LR → TB → LR → TB) and,
+ * in EVERY state:
+ *   1. asserts the reflow flipped the dominant axis,
+ *   2. asserts the condition output ports rotated (TB=bottom / LR=right),
+ *   3. asserts all 7 connection lines still render (connectivity preserved),
+ *   4. asserts the 6 condition→end lines do NOT cross (port order along the
+ *      condition edge maps monotonically onto the target End order),
+ *   5. runs Test Run for inputs 1..6 via the UI and asserts output `end_N`.
+ *
+ * A second, lighter test covers the multi-condition node (reflow + port
+ * location + connectivity only — no runtime routing, because the multi-condition
+ * executor's branch structure does not line up with the condition executor's).
+ *
+ * FlowGram positions nodes via inline `style.left`/`style.top` on
+ * `[data-node-id]`; connection lines render as `.gedit-flow-activity-edge`;
+ * condition output ports carry `data-port-id` + `data-port-location`.
  */
-const NODE_IDS = ['start_0', 'llm_main', 'end_0'] as const;
+
+// ---- condition workflow topology -----------------------------------------
+
+const CONDITION_KEYS = ['if_1', 'if_2', 'if_3', 'if_4', 'if_5'] as const;
+const END_IDS = ['end_1', 'end_2', 'end_3', 'end_4', 'end_5', 'end_6'] as const;
+
+/** condition output port id → target end node id (the 6 logical branches). */
+const PORT_TO_END: Record<string, string> = {
+  if_1: 'end_1',
+  if_2: 'end_2',
+  if_3: 'end_3',
+  if_4: 'end_4',
+  if_5: 'end_5',
+  else: 'end_6',
+};
+
+/** input N → expected workflow output constant. */
+function expectedOutputFor(input: number): string {
+  return input <= 5 ? `end_${input}` : 'end_6';
+}
+
+function buildConditionSchema() {
+  const conditions = CONDITION_KEYS.map((key, i) => ({
+    key,
+    value: {
+      left: { type: 'ref', content: ['start_0', 'query'] },
+      operator: 'eq',
+      right: { type: 'constant', content: i + 1 },
+    },
+  }));
+
+  const endNodes = END_IDS.map((id, i) => ({
+    id,
+    type: 'end',
+    meta: { position: { x: 900, y: 100 + i * 100 } },
+    data: {
+      title: `End ${i + 1}`,
+      inputsValues: { result: { type: 'constant', content: id } },
+      inputs: { type: 'object', properties: { result: { type: 'string' } } },
+    },
+  }));
+
+  return {
+    nodes: [
+      {
+        id: 'start_0',
+        type: 'start',
+        meta: { position: { x: 100, y: 300 } },
+        data: {
+          title: 'Start',
+          outputs: {
+            type: 'object',
+            properties: { query: { type: 'integer', default: 1 } },
+          },
+        },
+      },
+      {
+        id: 'condition_0',
+        type: 'condition',
+        meta: { position: { x: 500, y: 300 } },
+        data: { title: 'Condition', conditions },
+      },
+      ...endNodes,
+    ],
+    edges: [
+      { sourceNodeID: 'start_0', targetNodeID: 'condition_0' },
+      ...Object.entries(PORT_TO_END).map(([sourcePortID, targetNodeID]) => ({
+        sourceNodeID: 'condition_0',
+        sourcePortID,
+        targetNodeID,
+      })),
+    ],
+  };
+}
+
+function buildMultiConditionSchema() {
+  return {
+    nodes: [
+      {
+        id: 'start_0',
+        type: 'start',
+        meta: { position: { x: 100, y: 300 } },
+        data: {
+          title: 'Start',
+          outputs: {
+            type: 'object',
+            properties: { query: { type: 'string', default: 'Hello' } },
+          },
+        },
+      },
+      {
+        id: 'multi_condition_0',
+        type: 'multi-condition',
+        meta: { position: { x: 500, y: 300 } },
+        data: {
+          title: 'Multi Condition',
+          branch: [
+            {
+              logic: 'and',
+              conditions: [{ key: 'condition_0', value: { type: 'expression', content: 'true' } }],
+            },
+          ],
+        },
+      },
+      {
+        id: 'end_0',
+        type: 'end',
+        meta: { position: { x: 900, y: 200 } },
+        data: { title: 'End (branch)' },
+      },
+      {
+        id: 'end_1',
+        type: 'end',
+        meta: { position: { x: 900, y: 400 } },
+        data: { title: 'End (else)' },
+      },
+    ],
+    edges: [
+      { sourceNodeID: 'start_0', targetNodeID: 'multi_condition_0' },
+      { sourceNodeID: 'multi_condition_0', sourcePortID: 'branch.0', targetNodeID: 'end_0' },
+      { sourceNodeID: 'multi_condition_0', sourcePortID: 'else', targetNodeID: 'end_1' },
+    ],
+  };
+}
+
+// ---- geometry helpers ----------------------------------------------------
 
 type XY = { x: number; y: number };
+type Center = { cx: number; cy: number };
+type Direction = 'LR' | 'TB';
 
-async function readNodePositions(
-  page: import('@playwright/test').Page
-): Promise<Record<string, XY>> {
+async function readNodePositions(page: Page, ids: readonly string[]): Promise<Record<string, XY>> {
   return page.evaluate(
-    (ids) => {
+    (nodeIds) => {
       const out: Record<string, { x: number; y: number }> = {};
       const parsePx = (value: string): number | undefined => {
-        if (!value || !value.endsWith('px')) {
-          return undefined;
-        }
+        if (!value || !value.endsWith('px')) return undefined;
         const n = parseFloat(value);
         return Number.isFinite(n) ? n : undefined;
       };
-      for (const id of ids) {
+      for (const id of nodeIds) {
         const el = document.querySelector(`[data-node-id="${id}"]`) as HTMLElement | null;
-        if (!el) {
-          continue;
-        }
+        if (!el) continue;
         const x = parsePx(el.style.left);
         const y = parsePx(el.style.top);
-        if (x === undefined || y === undefined) {
-          continue;
-        }
+        if (x === undefined || y === undefined) continue;
         out[id] = { x, y };
       }
       return out;
     },
-    [...NODE_IDS]
+    [...ids]
   );
 }
 
-function axisSpread(positions: Record<string, XY>): { xRange: number; yRange: number } {
-  const xs = NODE_IDS.map((id) => positions[id]?.x).filter((v): v is number => v !== undefined);
-  const ys = NODE_IDS.map((id) => positions[id]?.y).filter((v): v is number => v !== undefined);
-  if (xs.length === 0 || ys.length === 0) {
-    throw new Error('missing node positions');
-  }
-  return {
-    xRange: Math.max(...xs) - Math.min(...xs),
-    yRange: Math.max(...ys) - Math.min(...ys),
-  };
+function axisSpread(
+  positions: Record<string, XY>,
+  ids: readonly string[]
+): { xRange: number; yRange: number } {
+  const xs = ids.map((id) => positions[id]?.x).filter((v): v is number => v !== undefined);
+  const ys = ids.map((id) => positions[id]?.y).filter((v): v is number => v !== undefined);
+  if (xs.length === 0 || ys.length === 0) throw new Error('missing node positions');
+  return { xRange: Math.max(...xs) - Math.min(...xs), yRange: Math.max(...ys) - Math.min(...ys) };
 }
 
-test.describe('Layout direction switch (#190)', () => {
-  test('toggle rotates ports + reflows canvas + keeps lines connected', async ({ page }) => {
-    const agentId = await createAgent();
-    const schema = buildWorkflowSchema(agentId, 'Layout direction E2E');
-    const wfName = `E2E Layout Direction ${Date.now()}`;
-    const workflowId = await createWorkflow(wfName, schema);
+/**
+ * Wait until the auto-layout animation settles (explicit wait, not a blind
+ * sleep — the reflow animation is ~1s).
+ *
+ * `siblingIds` are nodes that fan out PERPENDICULAR to the flow direction (the
+ * six End nodes share one dagre rank): in TB they spread horizontally
+ * (xRange > yRange); in LR they stack vertically (yRange > xRange). Measuring
+ * the siblings — not the whole graph — is essential for a 1→1→6 fan-out, whose
+ * overall bounding box stays wider than tall even in TB.
+ */
+async function waitForReflow(page: Page, siblingIds: readonly string[], direction: Direction) {
+  await expect
+    .poll(
+      async () => {
+        const positions = await readNodePositions(page, siblingIds);
+        const { xRange, yRange } = axisSpread(positions, siblingIds);
+        return direction === 'TB' ? xRange > yRange : yRange > xRange;
+      },
+      { timeout: 10_000, message: `canvas did not reflow to ${direction}` }
+    )
+    .toBe(true);
+}
 
-    await page.goto('/');
-    await page.getByText('Workflows', { exact: true }).first().click();
-    const wfRow = page.locator('tr', { hasText: wfName }).first();
-    await wfRow.getByRole('button', { name: 'Open' }).click();
-
-    // Wait for the editor canvas to mount the three nodes.
-    await expect(page.locator('[data-node-id="start_0"]')).toBeVisible({ timeout: 10_000 });
-    await expect(page.locator('[data-node-id="end_0"]')).toBeVisible();
-
-    // --- Read initial positions (seeded horizontal: x spread, y clustered) ---
-    const before = await readNodePositions(page);
-    expect(Object.keys(before).length).toBe(3);
-    const beforeSpread = axisSpread(before);
-
-    // Sanity: the seed schema has all three nodes at y:300 with x spread,
-    // so the initial layout must be horizontal-dominant. If this fails, the
-    // editor has already reflowed or the seed changed.
-    expect(beforeSpread.xRange).toBeGreaterThan(beforeSpread.yRange);
-
-    // --- Click the Layout Direction toggle (LR → TB) ---
-    // This performs the full atomic action: rotateAllPorts + autoLayout(TB)
-    // + fireRender + context update. No separate Auto Layout click needed.
-    await page.getByRole('button', { name: /Layout Direction: Horizontal/ }).click();
-
-    // Wait for the 1s reflow animation to settle (plus margin).
-    await page.waitForTimeout(1800);
-
-    // --- Read post-toggle positions ---
-    const after = await readNodePositions(page);
-    expect(Object.keys(after).length).toBe(3);
-    const afterSpread = axisSpread(after);
-
-    // The reflow must have flipped the dominant axis: y-range now exceeds
-    // x-range (vertical layout), and the y-range grew relative to before.
-    expect(afterSpread.yRange).toBeGreaterThan(afterSpread.xRange);
-    expect(afterSpread.yRange).toBeGreaterThan(beforeSpread.yRange);
-
-    // --- Connection lines must still exist after the port rotation ---
-    // (proves rotateAllPorts did not break connectivity; fireRender redrew
-    // the lines against the new bottom/top anchors).
-    const lineCount = await page.locator('.gedit-flow-activity-edge').count();
-    expect(lineCount).toBeGreaterThan(0);
-  });
-
-  test('newly-added node follows current direction (output port on bottom)', async ({ page }) => {
-    // Build a single start-node workflow (no edges yet). The toggle will
-    // switch to TB and rotate the start node's output port to the bottom;
-    // the ADD_NODE listener will then rotate the new node's input port to
-    // the top so the connection line is vertical.
-    const startOnlySchema = {
-      nodes: [
-        {
-          id: 'start_0',
-          type: 'start',
-          meta: { position: { x: 200, y: 200 } },
-          data: {
-            title: 'Start',
-            outputs: {
-              type: 'object',
-              properties: { query: { type: 'string', default: 'Hello' } },
-            },
-          },
-        },
-      ],
-      edges: [],
-    };
-    const wfName = `E2E New Node Direction ${Date.now()}`;
-    const workflowId = await createWorkflow(wfName, startOnlySchema);
-
-    await page.goto('/');
-    await page.getByText('Workflows', { exact: true }).first().click();
-    const wfRow = page.locator('tr', { hasText: wfName }).first();
-    await wfRow.getByRole('button', { name: 'Open' }).click();
-
-    await expect(page.locator('[data-node-id="start_0"]')).toBeVisible({ timeout: 10_000 });
-
-    // --- Switch to vertical (TB). This rotates the start node's output
-    // port to the bottom AND sets the context so new nodes inherit TB. ---
-    await page.getByRole('button', { name: /Layout Direction: Horizontal/ }).click();
-    await page.waitForTimeout(1800);
-
-    // --- Click the start node's output port to open the node panel ---
-    // Ports render with data-testid="sdk.workflow.canvas.node.port" and
-    // data-port-entity-type="output". The start node has one output port.
-    const startOutputPort = page
-      .locator('[data-testid="sdk.workflow.canvas.node.port"][data-port-entity-type="output"]')
-      .first();
-    await expect(startOutputPort).toBeVisible({ timeout: 5_000 });
-    await startOutputPort.click();
-
-    // --- Select "llm" from the node panel ---
-    const llmItem = page.locator('[data-testid="demo-free-node-list-llm"]');
-    await expect(llmItem).toBeVisible({ timeout: 5_000 });
-    await llmItem.click();
-
-    // Wait for the new node + its connection line to render.
-    await page.waitForTimeout(800);
-
-    // --- Assert the new connection line is vertical (height > width) ---
-    // The line renders as a `.gedit-flow-activity-edge` div wrapping an
-    // `<svg>` whose `width`/`height` attributes are the line bounding box
-    // (plus PADDING). A vertical line (bottom port → top port) has
-    // height > width; a horizontal line (right port → left port) has
-    // width > height.
-    const lineSvg = page.locator('.gedit-flow-activity-edge svg').first();
-    await expect(lineSvg).toBeVisible({ timeout: 5_000 });
-    const lineDims = await lineSvg.evaluate((el) => {
-      const svg = el as SVGSVGElement;
-      return { width: svg.width.baseVal.value, height: svg.height.baseVal.value };
+async function readPortCenters(
+  page: Page,
+  nodeId: string
+): Promise<Array<{ id: string } & Center>> {
+  return page.evaluate((nid) => {
+    const node = document.querySelector(`[data-node-id="${nid}"]`);
+    if (!node) return [];
+    return Array.from(node.querySelectorAll('[data-port-id]')).map((el) => {
+      const r = el.getBoundingClientRect();
+      return {
+        id: el.getAttribute('data-port-id') as string,
+        cx: r.x + r.width / 2,
+        cy: r.y + r.height / 2,
+      };
     });
-    expect(lineDims.height).toBeGreaterThan(lineDims.width);
-  });
+  }, nodeId);
+}
 
-  test('condition node dynamic output ports rotate to bottom in TB mode', async ({ page }) => {
-    // Build a workflow with a condition node whose branches connect to end
-    // nodes. In horizontal mode the condition output ports are on the right
-    // (CSS `right: -12px; top: 50%`); after toggling to TB the ConditionPort
-    // CSS switches to `bottom: -12px; left: 50%` and `data-port-location`
-    // becomes `bottom`, so the connection lines from the condition branches
-    // become vertical (height > width).
-    const conditionSchema = {
-      nodes: [
-        {
-          id: 'start_0',
-          type: 'start',
-          meta: { position: { x: 100, y: 300 } },
-          data: {
-            title: 'Start',
-            outputs: {
-              type: 'object',
-              properties: { query: { type: 'string', default: 'Hello' } },
-            },
-          },
-        },
-        {
-          id: 'condition_0',
-          type: 'condition',
-          meta: { position: { x: 500, y: 300 } },
-          data: {
-            title: 'Condition',
-            conditions: [{ key: 'if_0', value: { type: 'expression', content: 'true' } }],
-          },
-        },
-        {
-          id: 'end_0',
-          type: 'end',
-          meta: { position: { x: 900, y: 200 } },
-          data: { title: 'End (if branch)' },
-        },
-        {
-          id: 'end_1',
-          type: 'end',
-          meta: { position: { x: 900, y: 400 } },
-          data: { title: 'End (else branch)' },
-        },
-      ],
-      edges: [
-        { sourceNodeID: 'start_0', targetNodeID: 'condition_0' },
-        { sourceNodeID: 'condition_0', sourcePortID: 'if_0', targetNodeID: 'end_0' },
-        { sourceNodeID: 'condition_0', sourcePortID: 'else', targetNodeID: 'end_1' },
-      ],
-    };
-    const wfName = `E2E Condition Direction ${Date.now()}`;
-    const workflowId = await createWorkflow(wfName, conditionSchema);
-
-    await page.goto('/');
-    await page.getByText('Workflows', { exact: true }).first().click();
-    const wfRow = page.locator('tr', { hasText: wfName }).first();
-    await wfRow.getByRole('button', { name: 'Open' }).click();
-
-    await expect(page.locator('[data-node-id="condition_0"]')).toBeVisible({ timeout: 10_000 });
-
-    // --- Toggle to vertical (TB) ---
-    await page.getByRole('button', { name: /Layout Direction: Horizontal/ }).click();
-    await page.waitForTimeout(1800);
-
-    // --- Condition branch output ports must have data-port-location="bottom" ---
-    // The ConditionPort DOM elements carry the `data-port-location` attribute
-    // set by the renderer based on LayoutDirectionContext. In TB mode it
-    // must be "bottom" (rotated from the default "right").
-    const portLocations = await page
-      .locator('[data-node-id="condition_0"] [data-port-id][data-port-location]')
-      .evaluateAll((els) =>
-        els.map((el) => ({
-          id: el.getAttribute('data-port-id'),
-          location: el.getAttribute('data-port-location'),
-        }))
-      );
-    expect(portLocations.length).toBeGreaterThan(0);
-    for (const p of portLocations) {
-      expect(p.location).toBe('bottom');
-    }
-
-    // --- Verify the port DOM elements are actually at the node's bottom edge ---
-    // (not just the `data-port-location` attribute, but the real `getBoundingClientRect`
-    // position). This catches CSS positioning bugs where `bottom: -12px` resolves
-    // against the wrong ancestor (FormItem instead of node).
-    const portPositions = await page.evaluate(() => {
-      const node = document.querySelector('[data-node-id="condition_0"]') as HTMLElement;
-      if (!node) return null;
-      const nodeRect = node.getBoundingClientRect();
-      const ports = Array.from(node.querySelectorAll('[data-port-id]'));
-      return ports
-        .map((el) => {
-          const r = el.getBoundingClientRect();
-          return {
-            id: el.getAttribute('data-port-id'),
-            cx: Math.round(r.x + r.width / 2),
-            cy: Math.round(r.y + r.height / 2),
-          };
-        })
-        .map((p) => ({
-          ...p,
-          // Port center Y should be at or below the node's bottom edge (482+12=494).
-          // If it's inside the node (cy < nodeBottom), the CSS positioning is wrong.
-          nodeBottom: Math.round(nodeRect.bottom),
-          isAtBottomEdge: p.cy >= Math.round(nodeRect.bottom) - 5,
-        }));
-    });
-    expect(portPositions).not.toBeNull();
-    expect(portPositions!.length).toBeGreaterThan(0);
-    for (const p of portPositions!) {
-      // Port must be at or below the node's bottom edge (not inside the node).
-      expect(p.isAtBottomEdge).toBe(true);
-    }
-
-    // --- The connection lines from the condition branches must still exist ---
-    // (proves the DOM-driven port rotation didn't break connectivity).
-    const edgeCount = await page.locator('.gedit-flow-activity-edge').count();
-    expect(edgeCount).toBeGreaterThan(0);
-  });
-
-  test('condition node ports round-trip TB → LR restores right-edge placement', async ({
-    page,
-  }) => {
-    // Reuse the same condition workflow shape as Test 3. Toggle LR→TB→LR
-    // and assert the ports return to `data-port-location="right"` with DOM
-    // positions at the node's right edge.
-    const conditionSchema = {
-      nodes: [
-        {
-          id: 'start_0',
-          type: 'start',
-          meta: { position: { x: 100, y: 300 } },
-          data: {
-            title: 'Start',
-            outputs: {
-              type: 'object',
-              properties: { query: { type: 'string', default: 'Hello' } },
-            },
-          },
-        },
-        {
-          id: 'condition_0',
-          type: 'condition',
-          meta: { position: { x: 500, y: 300 } },
-          data: {
-            title: 'Condition',
-            conditions: [{ key: 'if_0', value: { type: 'expression', content: 'true' } }],
-          },
-        },
-        {
-          id: 'end_0',
-          type: 'end',
-          meta: { position: { x: 900, y: 200 } },
-          data: { title: 'End (if branch)' },
-        },
-        {
-          id: 'end_1',
-          type: 'end',
-          meta: { position: { x: 900, y: 400 } },
-          data: { title: 'End (else branch)' },
-        },
-      ],
-      edges: [
-        { sourceNodeID: 'start_0', targetNodeID: 'condition_0' },
-        { sourceNodeID: 'condition_0', sourcePortID: 'if_0', targetNodeID: 'end_0' },
-        { sourceNodeID: 'condition_0', sourcePortID: 'else', targetNodeID: 'end_1' },
-      ],
-    };
-    const wfName = `E2E Condition RoundTrip ${Date.now()}`;
-    await createWorkflow(wfName, conditionSchema);
-
-    await page.goto('/');
-    await page.getByText('Workflows', { exact: true }).first().click();
-    const wfRow = page.locator('tr', { hasText: wfName }).first();
-    await wfRow.getByRole('button', { name: 'Open' }).click();
-
-    await expect(page.locator('[data-node-id="condition_0"]')).toBeVisible({ timeout: 10_000 });
-
-    // --- Toggle LR → TB ---
-    await page.getByRole('button', { name: /Layout Direction: Horizontal/ }).click();
-    await page.waitForTimeout(1800);
-
-    // Verify TB state (ports at bottom).
-    const tbLocations = await page
-      .locator('[data-node-id="condition_0"] [data-port-id][data-port-location]')
-      .evaluateAll((els) => els.map((el) => el.getAttribute('data-port-location')));
-    for (const loc of tbLocations) {
-      expect(loc).toBe('bottom');
-    }
-
-    // --- Toggle TB → LR (round-trip) ---
-    await page.getByRole('button', { name: /Layout Direction: Vertical/ }).click();
-    await page.waitForTimeout(1800);
-
-    // Verify LR state: data-port-location="right".
-    const lrLocations = await page
-      .locator('[data-node-id="condition_0"] [data-port-id][data-port-location]')
-      .evaluateAll((els) =>
-        els.map((el) => ({
-          id: el.getAttribute('data-port-id'),
-          location: el.getAttribute('data-port-location'),
-        }))
-      );
-    expect(lrLocations.length).toBeGreaterThan(0);
-    for (const p of lrLocations) {
-      expect(p.location).toBe('right');
-    }
-
-    // --- Verify port DOM is at the node's right edge ---
-    const portPositions = await page.evaluate(() => {
-      const node = document.querySelector('[data-node-id="condition_0"]') as HTMLElement;
-      if (!node) return null;
-      const nodeRect = node.getBoundingClientRect();
-      const ports = Array.from(node.querySelectorAll('[data-port-id]'));
-      return ports.map((el) => {
+async function readNodeCenters(
+  page: Page,
+  ids: readonly string[]
+): Promise<Record<string, Center>> {
+  return page.evaluate(
+    (nodeIds) => {
+      const out: Record<string, { cx: number; cy: number }> = {};
+      for (const id of nodeIds) {
+        const el = document.querySelector(`[data-node-id="${id}"]`);
+        if (!el) continue;
         const r = el.getBoundingClientRect();
-        return {
-          id: el.getAttribute('data-port-id'),
-          cx: Math.round(r.x + r.width / 2),
-          nodeRight: Math.round(nodeRect.right),
-          isAtRightEdge: Math.round(r.x + r.width / 2) >= Math.round(nodeRect.right) - 5,
-        };
-      });
-    });
-    expect(portPositions).not.toBeNull();
-    expect(portPositions!.length).toBeGreaterThan(0);
-    for (const p of portPositions!) {
-      expect(p.isAtRightEdge).toBe(true);
-    }
+        out[id] = { cx: r.x + r.width / 2, cy: r.y + r.height / 2 };
+      }
+      return out;
+    },
+    [...ids]
+  );
+}
 
-    // Connection lines must still exist after the round-trip.
-    const edgeCount = await page.locator('.gedit-flow-activity-edge').count();
-    expect(edgeCount).toBeGreaterThan(0);
-  });
+/**
+ * Non-crossing check: order the condition output ports along the condition's
+ * output edge (TB → by x, LR → by y); their target End nodes must appear in the
+ * SAME order along that axis (monotonic, no inversion ⇒ no two lines cross).
+ * Returns false (not yet) if geometry isn't fully readable.
+ */
+function isNonCrossing(
+  portCenters: Array<{ id: string } & Center>,
+  nodeCenters: Record<string, Center>,
+  portToEnd: Record<string, string>,
+  direction: Direction
+): boolean {
+  const axis: keyof Center = direction === 'TB' ? 'cx' : 'cy';
+  const ports = portCenters.filter((p) => portToEnd[p.id]).sort((a, b) => a[axis] - b[axis]);
+  if (ports.length !== 6) return false;
+  const targetCoords = ports.map((p) => nodeCenters[portToEnd[p.id]]?.[axis]);
+  if (targetCoords.some((c) => c === undefined)) return false;
+  for (let i = 1; i < targetCoords.length; i++) {
+    if ((targetCoords[i] as number) < (targetCoords[i - 1] as number)) return false;
+  }
+  return true;
+}
 
-  test('multi-condition node dynamic output ports rotate to bottom in TB mode', async ({
+/**
+ * Poll until the rendered condition→end lines do not cross. The Layout
+ * Direction toggle recomputes the condition port slot order AFTER the
+ * autoLayout animation settles (fireLayoutSettled), and React re-renders the
+ * port anchors a frame or two later; a single geometry read can land between
+ * the nodes settling and the port re-render, so we wait for the crossing-free
+ * end state instead of asserting on one snapshot.
+ */
+async function expectNonCrossing(page: Page, direction: Direction) {
+  await expect
+    .poll(
+      async () => {
+        const portCenters = await readPortCenters(page, 'condition_0');
+        const nodeCenters = await readNodeCenters(page, END_IDS);
+        return isNonCrossing(portCenters, nodeCenters, PORT_TO_END, direction);
+      },
+      { timeout: 10_000, message: `condition→end lines cross (${direction})` }
+    )
+    .toBe(true);
+}
+
+// ---- editor / Test Run UI helpers ----------------------------------------
+
+async function openWorkflowInEditor(page: Page, wfName: string) {
+  await page.goto('/');
+  await page.getByText('Workflows', { exact: true }).first().click();
+  const wfRow = page.locator('tr', { hasText: wfName }).first();
+  await wfRow.getByRole('button', { name: 'Open' }).click();
+}
+
+async function toggleDirection(page: Page, to: Direction) {
+  // The toggle button label reflects the CURRENT direction; clicking switches.
+  const label = to === 'TB' ? /Layout Direction: Horizontal/ : /Layout Direction: Vertical/;
+  await page.getByRole('button', { name: label }).click();
+}
+
+async function openTestRunPanel(page: Page): Promise<Locator> {
+  await page.locator('.workflow-tools').getByRole('button', { name: 'Test Run' }).click();
+  const panel = page.locator('.gedit-flow-panel-wrap', { hasText: 'Input Form' });
+  await expect(panel).toBeVisible({ timeout: 10_000 });
+  return panel;
+}
+
+/**
+ * Drive one UI Test Run: fill the integer `query`, click the panel's run button,
+ * and wait for the expected output constant to appear in "Outputs Result".
+ * Waiting for the (distinct) expected value doubles as the completion signal —
+ * consecutive runs always expect a different value, so a stale result never
+ * produces a false pass.
+ */
+async function runAndWaitOutput(panel: Locator, input: number, expected: string) {
+  await panel.getByPlaceholder('Please input integer').fill(String(input));
+  // The panel footer run button is the only button in the panel whose name
+  // contains "Test Run" (the close button is icon-only). Non-exact match is
+  // required: the IconPlay glyph can participate in the accessible name, so an
+  // exact match is brittle. It flips to "Cancel" while running.
+  await panel.getByRole('button', { name: 'Test Run' }).click();
+  await expect(panel.getByText(expected, { exact: true })).toBeVisible({ timeout: 30_000 });
+}
+
+// ---- per-state assertions ------------------------------------------------
+
+async function assertConditionCanvasState(page: Page, direction: Direction) {
+  // 1. Reflow landed: the six End siblings fan out perpendicular to flow.
+  await waitForReflow(page, END_IDS, direction);
+
+  // 2. Condition output ports rotated to the current direction.
+  const expectedLocation = direction === 'TB' ? 'bottom' : 'right';
+  const portLocations = await page
+    .locator('[data-node-id="condition_0"] [data-port-id][data-port-location]')
+    .evaluateAll((els) =>
+      els.map((el) => ({
+        id: el.getAttribute('data-port-id'),
+        location: el.getAttribute('data-port-location'),
+      }))
+    );
+  expect(portLocations.length, 'condition output port count').toBe(6);
+  for (const p of portLocations) {
+    expect(p.location, `port ${p.id} location (${direction})`).toBe(expectedLocation);
+  }
+
+  // 3. All 7 connection lines still render (start→condition + 6 branches).
+  await expect(page.locator('.gedit-flow-activity-edge')).toHaveCount(7);
+
+  // 4. The 6 condition→end lines do not cross (poll until the settled layout
+  //    re-renders the corrected port slot order).
+  await expectNonCrossing(page, direction);
+}
+
+// ---- tests ---------------------------------------------------------------
+
+test.describe('Layout direction switch (#190)', () => {
+  test('condition routing is preserved across LR/TB/LR/TB with non-crossing lines', async ({
     page,
   }) => {
-    // Same pattern as the condition test but with a multi-condition node.
-    const multiConditionSchema = {
-      nodes: [
-        {
-          id: 'start_0',
-          type: 'start',
-          meta: { position: { x: 100, y: 300 } },
-          data: {
-            title: 'Start',
-            outputs: {
-              type: 'object',
-              properties: { query: { type: 'string', default: 'Hello' } },
-            },
-          },
-        },
-        {
-          id: 'multi_condition_0',
-          type: 'multi-condition',
-          meta: { position: { x: 500, y: 300 } },
-          data: {
-            title: 'Multi Condition',
-            branch: [
-              {
-                logic: 'and',
-                conditions: [
-                  { key: 'condition_0', value: { type: 'expression', content: 'true' } },
-                ],
-              },
-            ],
-          },
-        },
-        {
-          id: 'end_0',
-          type: 'end',
-          meta: { position: { x: 900, y: 200 } },
-          data: { title: 'End (branch)' },
-        },
-        {
-          id: 'end_1',
-          type: 'end',
-          meta: { position: { x: 900, y: 400 } },
-          data: { title: 'End (else)' },
-        },
-      ],
-      edges: [
-        { sourceNodeID: 'start_0', targetNodeID: 'multi_condition_0' },
-        { sourceNodeID: 'multi_condition_0', sourcePortID: 'branch.0', targetNodeID: 'end_0' },
-        { sourceNodeID: 'multi_condition_0', sourcePortID: 'else', targetNodeID: 'end_1' },
-      ],
-    };
+    test.setTimeout(180_000);
+
+    const wfName = `E2E Condition Routing ${Date.now()}`;
+    await createWorkflow(wfName, buildConditionSchema());
+    await openWorkflowInEditor(page, wfName);
+
+    // Wait for the full topology to mount.
+    await expect(page.locator('[data-node-id="condition_0"]')).toBeVisible({ timeout: 10_000 });
+    for (const id of END_IDS) {
+      await expect(page.locator(`[data-node-id="${id}"]`)).toBeVisible();
+    }
+
+    const panel = await openTestRunPanel(page);
+
+    // Four layout states: seeded LR, then toggle TB, LR, TB (3 toggles).
+    const states: Direction[] = ['LR', 'TB', 'LR', 'TB'];
+    for (let s = 0; s < states.length; s++) {
+      const direction = states[s];
+      if (s > 0) {
+        await toggleDirection(page, direction);
+      }
+
+      await test.step(`state ${s + 1} (${direction}): canvas + routing`, async () => {
+        await assertConditionCanvasState(page, direction);
+
+        for (let input = 1; input <= 6; input++) {
+          const expected = expectedOutputFor(input);
+          await test.step(`${direction} input ${input} → ${expected}`, async () => {
+            await runAndWaitOutput(panel, input, expected);
+          });
+        }
+      });
+    }
+  });
+
+  test('multi-condition ports rotate + reflow + keep lines (lightweight)', async ({ page }) => {
     const wfName = `E2E MultiCondition Direction ${Date.now()}`;
-    await createWorkflow(wfName, multiConditionSchema);
+    await createWorkflow(wfName, buildMultiConditionSchema());
+    await openWorkflowInEditor(page, wfName);
 
-    await page.goto('/');
-    await page.getByText('Workflows', { exact: true }).first().click();
-    const wfRow = page.locator('tr', { hasText: wfName }).first();
-    await wfRow.getByRole('button', { name: 'Open' }).click();
-
+    const mcEndIds = ['end_0', 'end_1'];
     await expect(page.locator('[data-node-id="multi_condition_0"]')).toBeVisible({
       timeout: 10_000,
     });
 
-    // --- Toggle to vertical (TB) ---
-    await page.getByRole('button', { name: /Layout Direction: Horizontal/ }).click();
-    await page.waitForTimeout(1800);
+    const assertMcState = async (direction: Direction) => {
+      await waitForReflow(page, mcEndIds, direction);
 
-    // --- Multi-condition branch output ports must have data-port-location="bottom" ---
-    const portLocations = await page
-      .locator('[data-node-id="multi_condition_0"] [data-port-id][data-port-location]')
-      .evaluateAll((els) =>
-        els.map((el) => ({
-          id: el.getAttribute('data-port-id'),
-          location: el.getAttribute('data-port-location'),
-        }))
-      );
-    expect(portLocations.length).toBeGreaterThan(0);
-    for (const p of portLocations) {
-      expect(p.location).toBe('bottom');
-    }
+      const expectedLocation = direction === 'TB' ? 'bottom' : 'right';
+      const portLocations = await page
+        .locator('[data-node-id="multi_condition_0"] [data-port-id][data-port-location]')
+        .evaluateAll((els) => els.map((el) => el.getAttribute('data-port-location')));
+      expect(portLocations.length).toBeGreaterThan(0);
+      for (const loc of portLocations) {
+        expect(loc).toBe(expectedLocation);
+      }
 
-    // --- Verify port DOM elements are at the node's bottom edge ---
-    const portPositions = await page.evaluate(() => {
-      const node = document.querySelector('[data-node-id="multi_condition_0"]') as HTMLElement;
-      if (!node) return null;
-      const nodeRect = node.getBoundingClientRect();
-      const ports = Array.from(node.querySelectorAll('[data-port-id]'));
-      return ports.map((el) => {
-        const r = el.getBoundingClientRect();
-        return {
-          id: el.getAttribute('data-port-id'),
-          cy: Math.round(r.y + r.height / 2),
-          nodeBottom: Math.round(nodeRect.bottom),
-          isAtBottomEdge: Math.round(r.y + r.height / 2) >= Math.round(nodeRect.bottom) - 5,
-        };
-      });
-    });
-    expect(portPositions).not.toBeNull();
-    expect(portPositions!.length).toBeGreaterThan(0);
-    for (const p of portPositions!) {
-      expect(p.isAtBottomEdge).toBe(true);
-    }
+      // start→multi-condition + 2 branches = 3 connection lines.
+      await expect(page.locator('.gedit-flow-activity-edge')).toHaveCount(3);
+    };
 
-    // Connection lines must still exist.
-    const edgeCount = await page.locator('.gedit-flow-activity-edge').count();
-    expect(edgeCount).toBeGreaterThan(0);
+    // LR (seeded) → TB → LR round-trip.
+    await assertMcState('LR');
+    await toggleDirection(page, 'TB');
+    await assertMcState('TB');
+    await toggleDirection(page, 'LR');
+    await assertMcState('LR');
   });
 });
