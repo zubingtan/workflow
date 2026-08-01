@@ -43,7 +43,7 @@ echo "→ Fetching latest from origin..."
 git fetch origin
 
 echo "→ Creating worktree: $WORKTREE_DIR (branch: $BRANCH, base: origin/main)"
-git worktree add -b "$BRANCH" "$WORKTREE_DIR" origin/main
+git worktree add --no-track -b "$BRANCH" "$WORKTREE_DIR" origin/main
 
 echo ""
 echo "✓ Ready. Work in: $WORKTREE_DIR"
