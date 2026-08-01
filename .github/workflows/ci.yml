@@ -7,8 +7,8 @@ on:
     branches: [main]
 
 jobs:
-  merge-base:
-    runs-on: ubuntu-latest
+  require-branch-built-on-latest:
+    runs-on: ubuntu-22.04
     if: github.event_name == 'pull_request'
 
     steps:
@@ -21,21 +21,16 @@ jobs:
           MERGE_BASE=$(git merge-base HEAD origin/main)
           MAIN_HEAD=$(git rev-parse origin/main)
           if [ "$MERGE_BASE" != "$MAIN_HEAD" ]; then
-            echo "::error::Branch is behind main — please rebase onto latest main locally, then force-push to update this PR."
+            echo "::error::Branch is behind main — run scripts/sync-branch.sh locally, then the PR will update automatically."
             echo ""
             echo "  merge-base:  $MERGE_BASE"
             echo "  origin/main: $MAIN_HEAD"
-            echo ""
-            echo "  Run locally:"
-            echo "    git fetch origin"
-            echo "    git rebase origin/main"
-            echo "    git push --force-with-lease"
             exit 1
           fi
           echo "merge-base is up to date with main."
 
   check:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
       - uses: actions/checkout@v4
@@ -59,7 +54,7 @@ jobs:
       - run: pnpm build
 
   e2e:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
       - uses: actions/checkout@v4

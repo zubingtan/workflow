@@ -153,16 +153,19 @@ new branch checked out in the main working directory.
   on `main` and is used only for: pulling latest `main`, running dev
   servers for ad-hoc checks, and creating new worktrees. **Never** run
   `git checkout -b <feature>` here.
-- **Create a worktree** for every piece of work:
+- **Create a worktree** for every piece of work via the helper script
+  (fetches latest remote main automatically):
   ```bash
-  git worktree add -b <type>/<name> .worktrees/<name> main
+  scripts/create-worktree.sh <type> <name>
   ```
   - `<type>` ∈ `feat` | `fix` | `chore` | `research` | `docs`
   - `<name>` is kebab-case, short
   - Worktrees live under `.worktrees/` (gitignored — see `.gitignore`)
 - **Work in the worktree**: edit, commit, push, open PR from there.
-- **Cleanup after merge**: `git worktree remove .worktrees/<name>` and
-  delete the branch (`git branch -D <type>/<name>`).
+- **Before opening a PR**: run `scripts/sync-branch.sh` inside the
+  worktree to rebase onto latest main. CI enforces this via the
+  `require-branch-built-on-latest` check.
+- **Cleanup after merge**: `scripts/remove-worktree.sh <name>`
 - **Why**: keeps `main` working tree clean and always on `main` so the
   dev server reflects the merged state; lets multiple work streams run
   in parallel without stashing; avoids accidental commits to `main`.
