@@ -116,6 +116,21 @@
   background: var(--background);
 }
 
+.stack-screen {
+  opacity: 1;
+  transform: translateX(0);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.stack-screen.is-leaving {
+  opacity: 0;
+  transform: translateX(24px);
+}
+
+.stack-screen.is-entering {
+  animation: stack-screen-enter 200ms ease both;
+}
+
 .workflow-canvas {
   background-color: var(--canvas);
   background-image: url("data:image/svg+xml,%3Csvg width='24' height='24' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Ccircle cx='2' cy='2' r='0.7' fill='%2394a3b8' fill-opacity='0.25'/%3E%3C/svg%3E");
@@ -157,6 +172,27 @@
 @keyframes flow-dash {
   to {
     stroke-dashoffset: -10;
+  }
+}
+
+@keyframes stack-screen-enter {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stack-screen,
+  .stack-screen.is-leaving,
+  .stack-screen.is-entering {
+    animation: none;
+    transition: none;
   }
 }
 

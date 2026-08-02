@@ -1,0 +1,32 @@
+# Modern shell interaction audit
+
+## Scope
+
+Validate the preferred Variant A structure after the latest navigation feedback:
+
+- remove repeated page identity and duplicate agent names;
+- keep only a collection list and primary New action at the top level;
+- replace the collection with a full-width editor or settings surface after selection;
+- restore the collection through an explicit Back action;
+- make the floating sidebar collapsible and place theme switching inside it;
+- retain the dark workflow canvas without the former red cast.
+
+## Findings
+
+- Before: Agents repeated the selected name in the switcher and detail header; Workflows repeated its identity across the product label, navigation, header, and page heading.
+- After: management collections have no redundant page header; search, count, and the primary creation action share one compact tool row.
+- After: both collection-to-detail paths use the same short fade-and-horizontal-shift transition and preserve an obvious return path.
+- After: the Agent settings surface fills the entire right pane instead of sitting inside a second rounded card.
+- After: the sidebar keeps only navigation and theme switching; the collapse control is visually muted and the unused account block is removed.
+- After: the dark editor uses neutral near-black layers; node cards and connections stay visually separated without a red background tint.
+
+## Evidence
+
+- `01-agents-before.png` and `02-workflows-before.png`: repetition baseline.
+- `03-workflows-after.png`: simplified Workflow collection.
+- `04-agents-list-after.png` and `05-agent-detail-after.png`: Agent collection and full-width settings detail.
+- `06-collapsed-sidebar.png`: compact icon rail.
+- `07-workflow-editor-after.png`: Workflow detail/editor.
+- `08-dark-workflow-list.png` and `09-dark-editor.png`: dark-mode checks.
+
+Browser verification covered Workflow list -> editor -> Back, Agent list -> settings -> Back, sidebar collapse/expand, theme switching, and console warnings/errors.

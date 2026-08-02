@@ -5,6 +5,7 @@ import {
   AlignHorizontalSpaceAround,
   Archive,
   ArrowDownToLine,
+  ArrowLeft,
   ArrowRight,
   Bot,
   Box,
@@ -24,7 +25,6 @@ import {
   Globe2,
   GripVertical,
   History,
-  ListFilter,
   LoaderCircle,
   Maximize2,
   MessageSquareText,
@@ -71,20 +71,13 @@ import {
 import { Separator } from '@/prototypes/shadcn-ui/components/ui/separator';
 import { ScrollArea } from '@/prototypes/shadcn-ui/components/ui/scroll-area';
 import { Input } from '@/prototypes/shadcn-ui/components/ui/input';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
-} from '@/prototypes/shadcn-ui/components/ui/dropdown-menu';
 import { Card } from '@/prototypes/shadcn-ui/components/ui/card';
 import { Button, buttonVariants } from '@/prototypes/shadcn-ui/components/ui/button';
 import { Badge } from '@/prototypes/shadcn-ui/components/ui/badge';
 
 type View = 'workflows' | 'agents' | 'settings' | 'editor';
 type Variant = 'A' | 'B' | 'C';
+type StackTransition = 'idle' | 'leaving' | 'entering';
 type Icon = ComponentType<{ className?: string }>;
 
 const VIEW_ITEMS: Array<{ id: View; label: string; shortLabel: string; icon: Icon }> = [
@@ -171,6 +164,9 @@ export function PrototypeApp() {
   const [view, setView] = useState<View>(initial.view);
   const [dark, setDark] = useState(false);
   const [running, setRunning] = useState(false);
+  const [selectedWorkflow, setSelectedWorkflow] = useState('Support triage');
+  const [selectedAgent, setSelectedAgent] = useState<number | null>(null);
+  const [agentTransition, setAgentTransition] = useState<StackTransition>('idle');
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -203,12 +199,49 @@ export function PrototypeApp() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [initial.compare, variant]);
 
+  const changeView = (nextView: View) => {
+    if (nextView !== 'agents') {
+      setSelectedAgent(null);
+      setAgentTransition('idle');
+    }
+    setView(nextView);
+  };
+
+  const openAgent = (index: number) => {
+    setAgentTransition('leaving');
+    window.setTimeout(() => {
+      setSelectedAgent(index);
+      setAgentTransition('entering');
+      window.setTimeout(() => setAgentTransition('idle'), 220);
+    }, 160);
+  };
+
+  const closeAgent = () => {
+    setAgentTransition('leaving');
+    window.setTimeout(() => {
+      setSelectedAgent(null);
+      setAgentTransition('entering');
+      window.setTimeout(() => setAgentTransition('idle'), 220);
+    }, 160);
+  };
+
+  const openWorkflow = (name: string) => {
+    setSelectedWorkflow(name);
+    setView('editor');
+  };
+
   const shared: LayoutProps = {
     view,
-    setView,
+    setView: changeView,
     dark,
     setDark,
     running,
+    selectedWorkflow,
+    selectedAgent,
+    agentTransition,
+    onOpenAgent: openAgent,
+    onCloseAgent: closeAgent,
+    onOpenWorkflow: openWorkflow,
     onRun: () => {
       setRunning(true);
       window.setTimeout(() => setRunning(false), 1400);
@@ -236,32 +269,75 @@ interface LayoutProps {
   setDark: (dark: boolean) => void;
   running: boolean;
   onRun: () => void;
+  selectedWorkflow: string;
+  selectedAgent: number | null;
+  agentTransition: StackTransition;
+  onOpenAgent: (index: number) => void;
+  onCloseAgent: () => void;
+  onOpenWorkflow: (name: string) => void;
 }
 
 function WorkbenchRail(props: LayoutProps) {
-  const { view, setView } = props;
+  const { view, setView, dark, setDark } = props;
+  const [collapsed, setCollapsed] = useState(false);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background text-foreground">
-      <aside className="flex w-[224px] shrink-0 flex-col border-r border-border/80 bg-sidebar">
-        <Brand compact={false} />
-        <nav className="space-y-1 px-2">
+    <div className="flex h-screen gap-2 overflow-hidden bg-muted/40 p-2 text-foreground">
+      <aside
+        className={cn(
+          'flex shrink-0 flex-col overflow-hidden rounded-2xl border bg-sidebar shadow-sm transition-[width] duration-200',
+          collapsed ? 'w-14' : 'w-[212px]'
+        )}
+      >
+        <div className={cn('flex h-14 shrink-0 items-center px-2', collapsed && 'justify-center')}>
+          {collapsed ? (
+            <IconButton
+              className="text-muted-foreground/50 hover:text-muted-foreground"
+              label="Expand sidebar"
+              onClick={() => setCollapsed(false)}
+            >
+              <PanelLeftClose className="rotate-180" />
+            </IconButton>
+          ) : (
+            <>
+              <button
+                aria-label="Open workflow editor"
+                className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-foreground text-background"
+                onClick={() => setView('editor')}
+                type="button"
+              >
+                <Zap className="size-4" />
+              </button>
+              <span className="ml-2 text-sm font-semibold">Studio</span>
+              <div className="flex-1" />
+              <IconButton
+                className="text-muted-foreground/50 hover:text-muted-foreground"
+                label="Collapse sidebar"
+                onClick={() => setCollapsed(true)}
+              >
+                <PanelLeftClose />
+              </IconButton>
+            </>
+          )}
+        </div>
+        <nav className="flex flex-col gap-1 px-2">
           {VIEW_ITEMS.map((item) => (
             <RailNavItem
               key={item.id}
               active={view === item.id}
+              collapsed={collapsed}
               icon={item.icon}
               label={item.label}
               onClick={() => setView(item.id)}
             />
           ))}
         </nav>
-        <div className="mt-auto p-3">
-          <UserFooter />
+        <div className="mt-auto flex justify-center p-2">
+          <ThemeToggle dark={dark} setDark={setDark} />
         </div>
       </aside>
 
-      <section className="flex min-w-0 flex-1 flex-col">
+      <section className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border bg-background shadow-sm">
         <WorkbenchHeader {...props} />
         <div className="flex min-h-0 flex-1">
           <main className="min-w-0 flex-1 overflow-auto">
@@ -275,64 +351,38 @@ function WorkbenchRail(props: LayoutProps) {
 }
 
 function WorkbenchHeader(props: LayoutProps) {
-  const { view, setView, dark, setDark, running, onRun } = props;
-  const isEditor = view === 'editor';
+  const { view, setView, running, onRun, selectedWorkflow } = props;
+
+  if (view !== 'editor') {
+    return null;
+  }
 
   return (
     <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border/80 bg-background px-4">
-      {isEditor ? (
-        <>
-          <button
-            className="text-sm text-muted-foreground hover:text-foreground"
-            onClick={() => setView('workflows')}
-            type="button"
-          >
-            Workflows
-          </button>
-          <span className="text-muted-foreground/50">/</span>
-          <span className="text-sm font-semibold">Support triage</span>
-          <Badge className="ml-1" variant="outline">
-            Draft
-          </Badge>
-          <span className="text-xs text-muted-foreground">Saved just now</span>
-        </>
-      ) : (
-        <span className="text-sm font-semibold">{view[0].toUpperCase() + view.slice(1)}</span>
-      )}
+      <Button variant="ghost" size="sm" onClick={() => setView('workflows')}>
+        <ArrowLeft data-icon="inline-start" /> Workflows
+      </Button>
+      <span className="text-muted-foreground/50">/</span>
+      <span className="text-sm font-semibold">{selectedWorkflow}</span>
+      <Badge className="ml-1" variant="outline">
+        Draft
+      </Badge>
+      <span className="text-xs text-muted-foreground">Saved just now</span>
       <div className="ml-auto flex items-center gap-1.5">
-        {view === 'agents' && (
-          <>
-            <Button variant="outline" size="sm">
-              <ArrowDownToLine data-icon="inline-start" /> Import
-            </Button>
-            <Button size="sm">
-              <Plus data-icon="inline-start" /> New agent
-            </Button>
-          </>
-        )}
-        {isEditor && (
-          <>
-            <IconButton label="Undo">
-              <Undo2 />
-            </IconButton>
-            <IconButton label="Redo">
-              <Redo2 />
-            </IconButton>
-            <Separator className="mx-1 h-5" orientation="vertical" />
-            <Button variant="outline" size="sm">
-              <Save data-icon="inline-start" /> Save
-            </Button>
-            <Button size="sm" onClick={onRun} disabled={running}>
-              {running ? (
-                <LoaderCircle className="animate-spin" />
-              ) : (
-                <Play data-icon="inline-start" />
-              )}
-              {running ? 'Running' : 'Test run'}
-            </Button>
-          </>
-        )}
-        <ThemeToggle dark={dark} setDark={setDark} />
+        <IconButton label="Undo">
+          <Undo2 />
+        </IconButton>
+        <IconButton label="Redo">
+          <Redo2 />
+        </IconButton>
+        <Separator className="mx-1 h-5" orientation="vertical" />
+        <Button variant="outline" size="sm">
+          <Save data-icon="inline-start" /> Save
+        </Button>
+        <Button size="sm" onClick={onRun} disabled={running}>
+          {running ? <LoaderCircle className="animate-spin" /> : <Play data-icon="inline-start" />}
+          {running ? 'Running' : 'Test run'}
+        </Button>
         <IconButton label="More options">
           <Ellipsis />
         </IconButton>
@@ -342,7 +392,17 @@ function WorkbenchHeader(props: LayoutProps) {
 }
 
 function CommandDeck(props: LayoutProps) {
-  const { view, setView, dark, setDark, running, onRun } = props;
+  const {
+    view,
+    setView,
+    dark,
+    setDark,
+    running,
+    onRun,
+    selectedAgent,
+    selectedWorkflow,
+    onOpenWorkflow,
+  } = props;
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
@@ -370,15 +430,15 @@ function CommandDeck(props: LayoutProps) {
         </button>
         <div className="ml-auto flex items-center gap-1.5">
           <ThemeToggle dark={dark} setDark={setDark} />
-          {view === 'agents' && (
-            <>
-              <Button variant="outline" size="sm">
-                <ArrowDownToLine data-icon="inline-start" /> Import
-              </Button>
-              <Button size="sm">
-                <Plus data-icon="inline-start" /> New agent
-              </Button>
-            </>
+          {view === 'workflows' && (
+            <Button size="sm" onClick={() => onOpenWorkflow('Untitled workflow')}>
+              <Plus data-icon="inline-start" /> New workflow
+            </Button>
+          )}
+          {view === 'agents' && selectedAgent === null && (
+            <Button size="sm">
+              <Plus data-icon="inline-start" /> New agent
+            </Button>
           )}
           <div className="ml-1 flex size-8 items-center justify-center rounded-full bg-foreground text-xs font-semibold text-background">
             ZT
@@ -392,7 +452,7 @@ function CommandDeck(props: LayoutProps) {
             <PanelLeftClose data-icon="inline-start" /> All workflows
           </Button>
           <Separator className="mx-1 h-5" orientation="vertical" />
-          <span className="text-sm font-semibold">Support triage</span>
+          <span className="text-sm font-semibold">{selectedWorkflow}</span>
           <Badge variant="secondary">Draft</Badge>
           <div className="ml-auto flex items-center gap-1">
             <IconButton label="History">
@@ -422,7 +482,17 @@ function CommandDeck(props: LayoutProps) {
 }
 
 function FocusDock(props: LayoutProps) {
-  const { view, setView, dark, setDark, running, onRun } = props;
+  const {
+    view,
+    setView,
+    dark,
+    setDark,
+    running,
+    onRun,
+    selectedAgent,
+    selectedWorkflow,
+    onOpenWorkflow,
+  } = props;
 
   return (
     <div className="grid h-screen grid-cols-[64px_minmax(0,1fr)] overflow-hidden bg-muted/30 text-foreground">
@@ -466,7 +536,7 @@ function FocusDock(props: LayoutProps) {
               {view === 'editor' ? 'Workflow editor' : 'Management'}
             </div>
             <div className="text-sm font-semibold">
-              {view === 'editor' ? 'Support triage' : view[0].toUpperCase() + view.slice(1)}
+              {view === 'editor' ? selectedWorkflow : view[0].toUpperCase() + view.slice(1)}
             </div>
           </div>
           {view === 'editor' && <Badge variant="outline">Draft</Badge>}
@@ -480,15 +550,15 @@ function FocusDock(props: LayoutProps) {
             <IconButton label="Workflow history">
               <FileClock />
             </IconButton>
-            {view === 'agents' && (
-              <>
-                <Button variant="outline" size="sm">
-                  <ArrowDownToLine data-icon="inline-start" /> Import
-                </Button>
-                <Button size="sm">
-                  <Plus data-icon="inline-start" /> New agent
-                </Button>
-              </>
+            {view === 'workflows' && (
+              <Button size="sm" onClick={() => onOpenWorkflow('Untitled workflow')}>
+                <Plus data-icon="inline-start" /> New workflow
+              </Button>
+            )}
+            {view === 'agents' && selectedAgent === null && (
+              <Button size="sm">
+                <Plus data-icon="inline-start" /> New agent
+              </Button>
             )}
             {view === 'editor' && (
               <>
@@ -519,9 +589,17 @@ function FocusDock(props: LayoutProps) {
 function ViewContent(props: LayoutProps & { variant: Variant }) {
   switch (props.view) {
     case 'workflows':
-      return <WorkflowsPage variant={props.variant} onOpen={() => props.setView('editor')} />;
+      return <WorkflowsPage variant={props.variant} onOpen={props.onOpenWorkflow} />;
     case 'agents':
-      return <AgentsPage variant={props.variant} />;
+      return (
+        <AgentsPage
+          variant={props.variant}
+          selectedAgent={props.selectedAgent}
+          transition={props.agentTransition}
+          onSelectAgent={props.onOpenAgent}
+          onClose={props.onCloseAgent}
+        />
+      );
     case 'settings':
       return <SettingsPage variant={props.variant} />;
     default:
@@ -529,120 +607,78 @@ function ViewContent(props: LayoutProps & { variant: Variant }) {
   }
 }
 
-function WorkflowsPage({ variant, onOpen }: { variant: Variant; onOpen: () => void }) {
+function WorkflowsPage({ variant, onOpen }: { variant: Variant; onOpen: (name: string) => void }) {
+  const [query, setQuery] = useState('');
+  const [leaving, setLeaving] = useState(false);
+  const visibleWorkflows = WORKFLOWS.filter((workflow) =>
+    `${workflow.name} ${workflow.description}`.toLowerCase().includes(query.toLowerCase())
+  );
+
+  const openWorkflow = (name: string) => {
+    setLeaving(true);
+    window.setTimeout(() => onOpen(name), 160);
+  };
+
   return (
     <div
       className={cn(
-        'mx-auto min-h-full max-w-[1240px] p-6 lg:p-8',
+        'stack-screen mx-auto min-h-full max-w-[1240px] p-6 lg:p-8',
+        leaving && 'is-leaving',
+        !leaving && 'is-entering',
         variant === 'C' && 'max-w-[1120px]'
       )}
     >
-      <PageHeading
-        eyebrow="Automation"
-        title="Workflows"
-        description="Build, test and monitor reusable agent workflows."
-        action={
-          <Button onClick={onOpen}>
+      <div className="mb-5 flex items-center gap-3">
+        <div className="relative w-full max-w-sm">
+          <Search className="absolute top-2 left-2.5 size-4 text-muted-foreground" />
+          <Input
+            aria-label="Search workflows"
+            className="pl-8"
+            placeholder="Search workflows"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </div>
+        <Badge variant="secondary">{visibleWorkflows.length} workflows</Badge>
+        {variant === 'A' && (
+          <Button className="ml-auto" size="sm" onClick={() => openWorkflow('Untitled workflow')}>
             <Plus data-icon="inline-start" /> New workflow
           </Button>
-        }
-      />
-      <div className="mt-6 grid gap-3 md:grid-cols-3">
-        {WORKFLOWS.map((workflow) => (
-          <Card
-            key={workflow.name}
-            className="group gap-4 border-border/80 p-4 shadow-[0_1px_2px_rgb(15_23_42/0.04)] transition hover:border-foreground/20 hover:shadow-[0_6px_18px_rgb(15_23_42/0.06)]"
-          >
-            <div className="flex items-start gap-3">
-              <span className={cn('mt-1 size-2 rounded-full', workflow.accent)} />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-2">
-                  <h3 className="truncate text-sm font-semibold">{workflow.name}</h3>
-                  <Button
-                    className="opacity-0 group-hover:opacity-100"
-                    variant="ghost"
-                    size="icon-xs"
-                  >
-                    <MoreHorizontal />
-                  </Button>
+        )}
+      </div>
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {visibleWorkflows.map((workflow) => (
+          <button key={workflow.name} onClick={() => openWorkflow(workflow.name)} type="button">
+            <Card className="group h-full gap-4 border-border/80 p-4 text-left shadow-none transition hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-sm">
+              <div className="flex items-start gap-3">
+                <span className={cn('mt-1 size-2 rounded-full', workflow.accent)} />
+                <div className="min-w-0 flex-1">
+                  <h2 className="truncate text-sm font-semibold">{workflow.name}</h2>
+                  <p className="mt-1 min-h-10 text-xs leading-5 text-muted-foreground">
+                    {workflow.description}
+                  </p>
                 </div>
-                <p className="mt-1 min-h-10 text-xs leading-5 text-muted-foreground">
-                  {workflow.description}
-                </p>
               </div>
-            </div>
-            <div className="flex items-center gap-2 text-xs">
-              <Badge variant={workflow.status === 'Published' ? 'secondary' : 'outline'}>
-                {workflow.status}
-              </Badge>
-              <span className="text-muted-foreground">{workflow.nodes} nodes</span>
-              <span className="ml-auto font-medium text-emerald-600 dark:text-emerald-400">
-                {workflow.success}
-              </span>
-            </div>
-            <Separator />
-            <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span className="flex items-center gap-1.5">
-                <Clock3 className="size-3.5" /> {workflow.lastRun}
-              </span>
-              <button
-                className="flex items-center gap-1 font-medium text-foreground"
-                onClick={onOpen}
-                type="button"
-              >
-                Open <ArrowRight className="size-3.5" />
-              </button>
-            </div>
-          </Card>
+              <div className="flex items-center gap-2 text-xs">
+                <Badge variant={workflow.status === 'Published' ? 'secondary' : 'outline'}>
+                  {workflow.status}
+                </Badge>
+                <span className="text-muted-foreground">{workflow.nodes} nodes</span>
+                <span className="ml-auto font-medium">{workflow.success}</span>
+              </div>
+              <Separator />
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span className="flex items-center gap-1.5">
+                  <Clock3 className="size-3.5" /> {workflow.lastRun}
+                </span>
+                <span className="flex items-center gap-1 font-medium text-foreground">
+                  Open <ArrowRight className="size-3.5" />
+                </span>
+              </div>
+            </Card>
+          </button>
         ))}
       </div>
-
-      <section className="mt-8">
-        <div className="mb-3 flex items-center justify-between">
-          <div>
-            <h2 className="text-sm font-semibold">Recent executions</h2>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Latest runs across all workflows.
-            </p>
-          </div>
-          <Button variant="outline" size="sm">
-            <ListFilter data-icon="inline-start" /> Filter
-          </Button>
-        </div>
-        <div className="overflow-hidden rounded-xl border border-border bg-card">
-          <div className="grid grid-cols-[1.4fr_.7fr_.65fr_.7fr_36px] border-b bg-muted/35 px-4 py-2 text-[11px] font-semibold text-muted-foreground uppercase">
-            <span>Workflow</span>
-            <span>Status</span>
-            <span>Duration</span>
-            <span>Started</span>
-            <span />
-          </div>
-          {WORKFLOWS.map((workflow, index) => (
-            <div
-              className="grid grid-cols-[1.4fr_.7fr_.65fr_.7fr_36px] items-center border-b border-border/60 px-4 py-3 text-sm last:border-b-0"
-              key={workflow.name}
-            >
-              <span className="font-medium">{workflow.name}</span>
-              <span className="flex items-center gap-2 text-xs">
-                <span
-                  className={cn(
-                    'size-1.5 rounded-full',
-                    index === 1 ? 'bg-amber-500' : 'bg-emerald-500'
-                  )}
-                />
-                {index === 1 ? 'Needs review' : 'Completed'}
-              </span>
-              <span className="text-xs text-muted-foreground">
-                {index === 0 ? '18.4s' : index === 1 ? '1m 12s' : '8.2s'}
-              </span>
-              <span className="text-xs text-muted-foreground">{workflow.lastRun}</span>
-              <Button variant="ghost" size="icon-xs">
-                <ArrowRight />
-              </Button>
-            </div>
-          ))}
-        </div>
-      </section>
     </div>
   );
 }
@@ -658,9 +694,22 @@ const AGENT_TABS = [
   'Stats',
 ] as const;
 
-function AgentsPage({ variant }: { variant: Variant }) {
-  const [selected, setSelected] = useState(0);
+function AgentsPage({
+  variant,
+  selectedAgent,
+  transition,
+  onSelectAgent,
+  onClose,
+}: {
+  variant: Variant;
+  selectedAgent: number | null;
+  transition: StackTransition;
+  onSelectAgent: (index: number) => void;
+  onClose: () => void;
+}) {
+  const selected = selectedAgent ?? 0;
   const [agentNames, setAgentNames] = useState(() => AGENTS.map((agent) => agent.name));
+  const [query, setQuery] = useState('');
   const [editingName, setEditingName] = useState(false);
   const [providerUrl, setProviderUrl] = useState('https://api.openai.com/v1');
   const [models, setModels] = useState<string[]>([AGENTS[0].model]);
@@ -675,10 +724,12 @@ function AgentsPage({ variant }: { variant: Variant }) {
   const [enabledExtensions, setEnabledExtensions] = useState(['Git context']);
 
   const agent = { ...AGENTS[selected], name: agentNames[selected], model };
+  const visibleAgents = AGENTS.map((item, index) => ({ item, index })).filter(({ item, index }) =>
+    `${agentNames[index]} ${item.model}`.toLowerCase().includes(query.toLowerCase())
+  );
 
   const selectAgent = (index: number) => {
     const nextAgent = AGENTS[index];
-    setSelected(index);
     setEditingName(false);
     setModel(nextAgent.model);
     setModels([nextAgent.model]);
@@ -688,6 +739,7 @@ function AgentsPage({ variant }: { variant: Variant }) {
         : 'https://api.openai.com/v1'
     );
     setProviderStatus('idle');
+    onSelectAgent(index);
   };
 
   const fetchModels = () => {
@@ -713,378 +765,394 @@ function AgentsPage({ variant }: { variant: Variant }) {
       current.includes(value) ? current.filter((item) => item !== value) : [...current, value]
     );
 
+  if (selectedAgent === null) {
+    return (
+      <div
+        className={cn(
+          'stack-screen mx-auto min-h-full max-w-[1120px] p-4 lg:p-6',
+          transition === 'leaving' && 'is-leaving',
+          transition === 'entering' && 'is-entering'
+        )}
+      >
+        <div className="mb-4 flex items-center gap-3">
+          <div className="relative w-full max-w-sm">
+            <Search className="absolute top-2 left-2.5 size-4 text-muted-foreground" />
+            <Input
+              aria-label="Search agents"
+              className="pl-8"
+              placeholder="Search agents"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </div>
+          <Badge variant="secondary">{visibleAgents.length} agents</Badge>
+          {variant === 'A' && (
+            <Button className="ml-auto" size="sm">
+              <Plus data-icon="inline-start" /> New agent
+            </Button>
+          )}
+        </div>
+        <Card className="gap-0 overflow-hidden p-0 shadow-none">
+          {visibleAgents.map(({ item, index }) => (
+            <button
+              className="group flex w-full items-center gap-4 border-b px-4 py-4 text-left transition-colors last:border-b-0 hover:bg-muted/50"
+              key={item.name}
+              onClick={() => selectAgent(index)}
+              type="button"
+            >
+              <span
+                className={cn(
+                  'flex size-10 shrink-0 items-center justify-center rounded-xl text-white',
+                  item.color
+                )}
+              >
+                <Bot className="size-5" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-semibold">{agentNames[index]}</span>
+                <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                  OpenAI-compatible · {item.model}
+                </span>
+              </span>
+              <Badge variant={item.status === 'Ready' ? 'secondary' : 'outline'}>
+                {item.status}
+              </Badge>
+              <ArrowRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+            </button>
+          ))}
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div
       className={cn(
-        'mx-auto min-h-full max-w-[1440px] p-4 lg:p-6',
-        variant === 'C' && 'max-w-[1320px]'
+        'stack-screen flex h-full min-h-0 flex-col overflow-hidden',
+        transition === 'leaving' && 'is-leaving',
+        transition === 'entering' && 'is-entering'
       )}
     >
-      <Card className="min-h-[calc(100vh-104px)] gap-0 overflow-hidden p-0 shadow-none">
-        <div className="flex min-h-16 items-center gap-3 border-b px-4 lg:px-5">
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              aria-label="Switch agent"
-              className={cn(
-                buttonVariants({ variant: 'outline', size: 'sm' }),
-                'h-10 min-w-40 justify-between px-2.5'
-              )}
+      <div className="flex min-h-16 items-center gap-3 border-b px-4 lg:px-5">
+        <IconButton label="Back to agents" onClick={onClose}>
+          <ArrowLeft />
+        </IconButton>
+        <span
+          className={cn(
+            'flex size-10 shrink-0 items-center justify-center rounded-xl text-white',
+            agent.color
+          )}
+        >
+          <Bot className="size-5" />
+        </span>
+        <div className="min-w-0">
+          {editingName ? (
+            <Input
+              aria-label="Agent name"
+              autoFocus
+              className="h-8 max-w-sm text-base font-semibold"
+              value={agent.name}
+              onBlur={() => setEditingName(false)}
+              onChange={(event) =>
+                setAgentNames((current) =>
+                  current.map((name, index) => (index === selected ? event.target.value : name))
+                )
+              }
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') setEditingName(false);
+              }}
+            />
+          ) : (
+            <button
+              className="group flex max-w-sm items-center gap-1.5 text-left"
+              onClick={() => setEditingName(true)}
+              type="button"
             >
-              <span className="flex items-center gap-2">
-                <Bot className="size-4" />
-                <span className="text-left">
-                  <span className="block text-[10px] leading-none text-muted-foreground">
-                    Agents
-                  </span>
-                  <span className="mt-1 block max-w-28 truncate leading-none">{agent.name}</span>
-                </span>
-              </span>
-              <ChevronDown className="size-3.5 text-muted-foreground" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-64">
-              <DropdownMenuGroup>
-                <DropdownMenuLabel>Switch agent</DropdownMenuLabel>
-                {AGENTS.map((item, index) => (
-                  <DropdownMenuItem key={item.name} onClick={() => selectAgent(index)}>
-                    <span
-                      className={cn(
-                        'flex size-7 items-center justify-center rounded-md text-white',
-                        item.color
-                      )}
-                    >
-                      <Bot className="size-3.5" />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-medium">{agentNames[index]}</span>
-                      <span className="block truncate text-xs text-muted-foreground">
-                        {item.model}
-                      </span>
-                    </span>
-                    {selected === index && <Check className="size-4" />}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <Separator className="mx-1 h-8" orientation="vertical" />
+              <h1 className="truncate text-base font-semibold">{agent.name}</h1>
+              <Pencil className="size-3.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+            </button>
+          )}
+          <p className="truncate text-xs text-muted-foreground">
+            OpenAI-compatible · {agent.model}
+          </p>
+        </div>
+        <Badge className="ml-1" variant="secondary">
           <span
             className={cn(
-              'flex size-10 shrink-0 items-center justify-center rounded-xl text-white',
-              agent.color
+              'mr-1 size-1.5 rounded-full',
+              agent.status === 'Ready' ? 'bg-emerald-500' : 'bg-amber-500'
             )}
-          >
-            <Bot className="size-5" />
-          </span>
-          <div className="min-w-0">
-            {editingName ? (
-              <Input
-                aria-label="Agent name"
-                autoFocus
-                className="h-8 max-w-sm text-base font-semibold"
-                value={agent.name}
-                onBlur={() => setEditingName(false)}
-                onChange={(event) =>
-                  setAgentNames((current) =>
-                    current.map((name, index) => (index === selected ? event.target.value : name))
-                  )
-                }
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') setEditingName(false);
-                }}
-              />
-            ) : (
-              <button
-                className="group flex max-w-sm items-center gap-1.5 text-left"
-                onClick={() => setEditingName(true)}
-                type="button"
+          />
+          {agent.status}
+        </Badge>
+        <Button className="ml-auto" variant="ghost" size="icon-sm" aria-label="Agent options">
+          <MoreHorizontal />
+        </Button>
+      </div>
+
+      <Tabs defaultValue="general" className="min-h-0 flex-1 gap-0 overflow-hidden">
+        <div className="overflow-x-auto border-b px-4 lg:px-5">
+          <TabsList variant="line" className="h-11 w-max justify-start pb-1">
+            {AGENT_TABS.map((tab) => (
+              <TabsTrigger
+                className="flex-none px-3 text-xs"
+                key={tab}
+                value={tab.toLowerCase().replace(' ', '-')}
               >
-                <h1 className="truncate text-base font-semibold">{agent.name}</h1>
-                <Pencil className="size-3.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-              </button>
-            )}
-            <p className="truncate text-xs text-muted-foreground">
-              OpenAI-compatible · {agent.model}
-            </p>
-          </div>
-          <Badge className="ml-1" variant="secondary">
-            <span
-              className={cn(
-                'mr-1 size-1.5 rounded-full',
-                agent.status === 'Ready' ? 'bg-emerald-500' : 'bg-amber-500'
-              )}
-            />
-            {agent.status}
-          </Badge>
-          <Button className="ml-auto" variant="ghost" size="icon-sm" aria-label="Agent options">
-            <MoreHorizontal />
-          </Button>
+                {tab}
+              </TabsTrigger>
+            ))}
+          </TabsList>
         </div>
 
-        <Tabs defaultValue="general" className="min-h-0 flex-1 gap-0">
-          <div className="overflow-x-auto border-b px-4 lg:px-5">
-            <TabsList variant="line" className="h-11 w-max justify-start pb-1">
-              {AGENT_TABS.map((tab) => (
-                <TabsTrigger
-                  className="flex-none px-3 text-xs"
-                  key={tab}
-                  value={tab.toLowerCase().replace(' ', '-')}
-                >
-                  {tab}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </div>
-
-          <ScrollArea className="h-[calc(100vh-260px)] min-h-[460px]">
-            <TabsContent value="general" className="m-0 p-5 lg:p-7">
-              <div className="mx-auto max-w-5xl space-y-7">
-                <FormSection
-                  title="Identity"
-                  description="Click the agent name above to rename it without leaving your current context."
-                >
-                  <Field
-                    label="Description"
-                    value="Analyzes incoming support requests and prepares a grounded response for human review."
-                    multiline
-                  />
-                </FormSection>
-                <FormSection
-                  title="Provider"
-                  description="Connect the provider, discover its available models, then verify the connection here."
-                >
-                  <Card className="gap-4 bg-muted/20 p-4 shadow-none">
-                    <div className="grid gap-3 lg:grid-cols-[1.3fr_1fr]">
-                      <label className="block space-y-1.5">
-                        <span className="text-xs font-medium">Provider base URL</span>
-                        <Input
-                          aria-label="Provider base URL"
-                          className="text-xs"
-                          value={providerUrl}
-                          onChange={(event) => {
-                            setProviderUrl(event.target.value);
-                            setProviderStatus('idle');
-                          }}
-                        />
-                      </label>
-                      <Field label="API key" value="••••••••••••••••••••" />
-                    </div>
-                    <div className="grid items-end gap-3 lg:grid-cols-[1fr_auto]">
-                      <label className="block space-y-1.5">
-                        <span className="text-xs font-medium">Model</span>
-                        <select
-                          aria-label="Model"
-                          className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-xs outline-none focus:ring-2 focus:ring-ring/30"
-                          value={model}
-                          onChange={(event) => setModel(event.target.value)}
-                        >
-                          {models.map((item) => (
-                            <option key={item} value={item}>
-                              {item}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={fetchModels}
-                        disabled={fetchingModels}
-                      >
-                        {fetchingModels ? (
-                          <LoaderCircle className="animate-spin" />
-                        ) : (
-                          <RefreshCw data-icon="inline-start" />
-                        )}
-                        {fetchingModels ? 'Fetching' : 'Fetch models'}
-                      </Button>
-                    </div>
-                    <Separator />
-                    <div className="flex flex-wrap items-center gap-3">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={testProvider}
-                        disabled={providerStatus === 'testing'}
-                      >
-                        {providerStatus === 'testing' ? (
-                          <LoaderCircle className="animate-spin" />
-                        ) : (
-                          <Play data-icon="inline-start" />
-                        )}
-                        {providerStatus === 'testing' ? 'Testing provider' : 'Test provider'}
-                      </Button>
-                      {providerStatus === 'connected' && (
-                        <span className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
-                          <Check className="size-3.5" /> Provider connected
-                        </span>
-                      )}
-                      <span className="text-xs text-muted-foreground">
-                        {models.length} model{models.length === 1 ? '' : 's'} available from this
-                        URL
-                      </span>
-                    </div>
-                  </Card>
-                </FormSection>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="system-prompt" className="m-0 p-5 lg:p-7">
-              <AgentSection
-                title="System prompt"
-                description="Define the standing instructions used at the start of every session."
+        <ScrollArea className="min-h-0 flex-1">
+          <TabsContent value="general" className="m-0 p-5 lg:p-7">
+            <div className="mx-auto max-w-5xl space-y-7">
+              <FormSection
+                title="Identity"
+                description="Click the agent name above to rename it without leaving your current context."
               >
-                <textarea
-                  aria-label="System prompt"
-                  className="min-h-64 w-full resize-y rounded-lg border border-input bg-background p-4 text-sm leading-6 outline-none focus:ring-2 focus:ring-ring/30"
-                  value={systemPrompt}
-                  onChange={(event) => setSystemPrompt(event.target.value)}
+                <Field
+                  label="Description"
+                  value="Analyzes incoming support requests and prepares a grounded response for human review."
+                  multiline
                 />
-                <p className="text-right text-xs text-muted-foreground">
-                  {systemPrompt.length} characters
-                </p>
-              </AgentSection>
-            </TabsContent>
-
-            <TabsContent value="tools" className="m-0 p-5 lg:p-7">
-              <AgentSection
-                title="Tools"
-                description="Choose the capabilities this agent may invoke during a run."
+              </FormSection>
+              <FormSection
+                title="Provider"
+                description="Connect the provider, discover its available models, then verify the connection here."
               >
-                {[
-                  ['web_search', 'Search current public information'],
-                  ['shell', 'Run approved local commands'],
-                  ['read_file', 'Read files supplied to the agent'],
-                ].map(([name, description]) => (
-                  <ToggleRow
-                    key={name}
-                    title={name}
-                    description={description}
-                    enabled={enabledTools.includes(name)}
-                    onToggle={() => toggleValue(name, enabledTools, setEnabledTools)}
-                  />
-                ))}
-              </AgentSection>
-            </TabsContent>
-
-            <TabsContent value="runtime" className="m-0 p-5 lg:p-7">
-              <AgentSection
-                title="Runtime"
-                description="Set the execution limits and local context for new sessions."
-              >
-                <div className="grid gap-4 md:grid-cols-2">
-                  <Field
-                    label="Working directory"
-                    value="~/.config/workflow/agents/support-analyst"
-                  />
-                  <Field label="Timeout" value="300" suffix="seconds" />
-                  <Field label="Maximum turns" value="24" />
-                  <Field label="Context window" value="Automatic" />
-                </div>
-              </AgentSection>
-            </TabsContent>
-
-            <TabsContent value="skills" className="m-0 p-5 lg:p-7">
-              <AgentSection
-                title="Skills"
-                description="Attach reusable instruction packages to this agent."
-              >
-                {['Support triage', 'Source verification', 'Response editor'].map((name) => (
-                  <ToggleRow
-                    key={name}
-                    title={name}
-                    description="Reusable instructions loaded only when this agent needs them."
-                    enabled={enabledSkills.includes(name)}
-                    onToggle={() => toggleValue(name, enabledSkills, setEnabledSkills)}
-                  />
-                ))}
-              </AgentSection>
-            </TabsContent>
-
-            <TabsContent value="extensions" className="m-0 p-5 lg:p-7">
-              <AgentSection
-                title="Extensions"
-                description="Connect optional integrations to this agent."
-              >
-                {['Git context', 'mem0 memory', 'Issue tracker'].map((name) => (
-                  <ToggleRow
-                    key={name}
-                    title={name}
-                    description="Share scoped integration context with new sessions."
-                    enabled={enabledExtensions.includes(name)}
-                    onToggle={() => toggleValue(name, enabledExtensions, setEnabledExtensions)}
-                  />
-                ))}
-              </AgentSection>
-            </TabsContent>
-
-            <TabsContent value="sessions" className="m-0 p-5 lg:p-7">
-              <AgentSection title="Sessions" description="Recent runs started with this agent.">
-                <div className="overflow-hidden rounded-xl border">
-                  {[
-                    ['Support request #1842', 'Completed', '4 min ago'],
-                    ['Refund escalation', 'Completed', 'Yesterday'],
-                    ['Account access review', 'Stopped', '2 days ago'],
-                  ].map(([name, status, time]) => (
-                    <div
-                      className="grid grid-cols-[1fr_auto_auto] items-center gap-6 border-b px-4 py-3 text-sm last:border-b-0"
-                      key={name}
+                <Card className="gap-4 bg-muted/20 p-4 shadow-none">
+                  <div className="grid gap-3 lg:grid-cols-[1.3fr_1fr]">
+                    <label className="block space-y-1.5">
+                      <span className="text-xs font-medium">Provider base URL</span>
+                      <Input
+                        aria-label="Provider base URL"
+                        className="text-xs"
+                        value={providerUrl}
+                        onChange={(event) => {
+                          setProviderUrl(event.target.value);
+                          setProviderStatus('idle');
+                        }}
+                      />
+                    </label>
+                    <Field label="API key" value="••••••••••••••••••••" />
+                  </div>
+                  <div className="grid items-end gap-3 lg:grid-cols-[1fr_auto]">
+                    <label className="block space-y-1.5">
+                      <span className="text-xs font-medium">Model</span>
+                      <select
+                        aria-label="Model"
+                        className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-xs outline-none focus:ring-2 focus:ring-ring/30"
+                        value={model}
+                        onChange={(event) => setModel(event.target.value)}
+                      >
+                        {models.map((item) => (
+                          <option key={item} value={item}>
+                            {item}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={fetchModels}
+                      disabled={fetchingModels}
                     >
-                      <span className="font-medium">{name}</span>
-                      <Badge variant="outline">{status}</Badge>
-                      <span className="text-xs text-muted-foreground">{time}</span>
+                      {fetchingModels ? (
+                        <LoaderCircle className="animate-spin" />
+                      ) : (
+                        <RefreshCw data-icon="inline-start" />
+                      )}
+                      {fetchingModels ? 'Fetching' : 'Fetch models'}
+                    </Button>
+                  </div>
+                  <Separator />
+                  <div className="flex flex-wrap items-center gap-3">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={testProvider}
+                      disabled={providerStatus === 'testing'}
+                    >
+                      {providerStatus === 'testing' ? (
+                        <LoaderCircle className="animate-spin" />
+                      ) : (
+                        <Play data-icon="inline-start" />
+                      )}
+                      {providerStatus === 'testing' ? 'Testing provider' : 'Test provider'}
+                    </Button>
+                    {providerStatus === 'connected' && (
+                      <span className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
+                        <Check className="size-3.5" /> Provider connected
+                      </span>
+                    )}
+                    <span className="text-xs text-muted-foreground">
+                      {models.length} model{models.length === 1 ? '' : 's'} available from this URL
+                    </span>
+                  </div>
+                </Card>
+              </FormSection>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="system-prompt" className="m-0 p-5 lg:p-7">
+            <AgentSection
+              title="System prompt"
+              description="Define the standing instructions used at the start of every session."
+            >
+              <textarea
+                aria-label="System prompt"
+                className="min-h-64 w-full resize-y rounded-lg border border-input bg-background p-4 text-sm leading-6 outline-none focus:ring-2 focus:ring-ring/30"
+                value={systemPrompt}
+                onChange={(event) => setSystemPrompt(event.target.value)}
+              />
+              <p className="text-right text-xs text-muted-foreground">
+                {systemPrompt.length} characters
+              </p>
+            </AgentSection>
+          </TabsContent>
+
+          <TabsContent value="tools" className="m-0 p-5 lg:p-7">
+            <AgentSection
+              title="Tools"
+              description="Choose the capabilities this agent may invoke during a run."
+            >
+              {[
+                ['web_search', 'Search current public information'],
+                ['shell', 'Run approved local commands'],
+                ['read_file', 'Read files supplied to the agent'],
+              ].map(([name, description]) => (
+                <ToggleRow
+                  key={name}
+                  title={name}
+                  description={description}
+                  enabled={enabledTools.includes(name)}
+                  onToggle={() => toggleValue(name, enabledTools, setEnabledTools)}
+                />
+              ))}
+            </AgentSection>
+          </TabsContent>
+
+          <TabsContent value="runtime" className="m-0 p-5 lg:p-7">
+            <AgentSection
+              title="Runtime"
+              description="Set the execution limits and local context for new sessions."
+            >
+              <div className="grid gap-4 md:grid-cols-2">
+                <Field
+                  label="Working directory"
+                  value="~/.config/workflow/agents/support-analyst"
+                />
+                <Field label="Timeout" value="300" suffix="seconds" />
+                <Field label="Maximum turns" value="24" />
+                <Field label="Context window" value="Automatic" />
+              </div>
+            </AgentSection>
+          </TabsContent>
+
+          <TabsContent value="skills" className="m-0 p-5 lg:p-7">
+            <AgentSection
+              title="Skills"
+              description="Attach reusable instruction packages to this agent."
+            >
+              {['Support triage', 'Source verification', 'Response editor'].map((name) => (
+                <ToggleRow
+                  key={name}
+                  title={name}
+                  description="Reusable instructions loaded only when this agent needs them."
+                  enabled={enabledSkills.includes(name)}
+                  onToggle={() => toggleValue(name, enabledSkills, setEnabledSkills)}
+                />
+              ))}
+            </AgentSection>
+          </TabsContent>
+
+          <TabsContent value="extensions" className="m-0 p-5 lg:p-7">
+            <AgentSection
+              title="Extensions"
+              description="Connect optional integrations to this agent."
+            >
+              {['Git context', 'mem0 memory', 'Issue tracker'].map((name) => (
+                <ToggleRow
+                  key={name}
+                  title={name}
+                  description="Share scoped integration context with new sessions."
+                  enabled={enabledExtensions.includes(name)}
+                  onToggle={() => toggleValue(name, enabledExtensions, setEnabledExtensions)}
+                />
+              ))}
+            </AgentSection>
+          </TabsContent>
+
+          <TabsContent value="sessions" className="m-0 p-5 lg:p-7">
+            <AgentSection title="Sessions" description="Recent runs started with this agent.">
+              <div className="overflow-hidden rounded-xl border">
+                {[
+                  ['Support request #1842', 'Completed', '4 min ago'],
+                  ['Refund escalation', 'Completed', 'Yesterday'],
+                  ['Account access review', 'Stopped', '2 days ago'],
+                ].map(([name, status, time]) => (
+                  <div
+                    className="grid grid-cols-[1fr_auto_auto] items-center gap-6 border-b px-4 py-3 text-sm last:border-b-0"
+                    key={name}
+                  >
+                    <span className="font-medium">{name}</span>
+                    <Badge variant="outline">{status}</Badge>
+                    <span className="text-xs text-muted-foreground">{time}</span>
+                  </div>
+                ))}
+              </div>
+            </AgentSection>
+          </TabsContent>
+
+          <TabsContent value="stats" className="m-0 p-5 lg:p-7">
+            <AgentSection
+              title="Stats"
+              description="Performance and usage for this agent over the last 7 days."
+            >
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <Metric label="Runs" value="184" />
+                <Metric label="Success" value="98.1%" />
+                <Metric label="Median duration" value="12.4s" />
+                <Metric label="Tokens" value="1.2M" />
+              </div>
+              <Card className="mt-4 gap-3 bg-muted/20 p-4 shadow-none">
+                <div className="flex items-center justify-between text-xs font-semibold">
+                  <span>Daily successful runs</span>
+                  <Activity className="size-4 text-muted-foreground" />
+                </div>
+                <div className="flex h-36 items-end gap-3">
+                  {[48, 65, 54, 78, 71, 88, 82].map((height, index) => (
+                    <div
+                      className="flex h-full flex-1 flex-col items-center justify-end gap-2"
+                      key={height}
+                    >
+                      <div
+                        className="w-full rounded-t bg-primary/80"
+                        style={{ height: `${height}%` }}
+                      />
+                      <span className="text-[10px] text-muted-foreground">
+                        {['M', 'T', 'W', 'T', 'F', 'S', 'S'][index]}
+                      </span>
                     </div>
                   ))}
                 </div>
-              </AgentSection>
-            </TabsContent>
+              </Card>
+            </AgentSection>
+          </TabsContent>
+        </ScrollArea>
+      </Tabs>
 
-            <TabsContent value="stats" className="m-0 p-5 lg:p-7">
-              <AgentSection
-                title="Stats"
-                description="Performance and usage for this agent over the last 7 days."
-              >
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  <Metric label="Runs" value="184" />
-                  <Metric label="Success" value="98.1%" />
-                  <Metric label="Median duration" value="12.4s" />
-                  <Metric label="Tokens" value="1.2M" />
-                </div>
-                <Card className="mt-4 gap-3 bg-muted/20 p-4 shadow-none">
-                  <div className="flex items-center justify-between text-xs font-semibold">
-                    <span>Daily successful runs</span>
-                    <Activity className="size-4 text-muted-foreground" />
-                  </div>
-                  <div className="flex h-36 items-end gap-3">
-                    {[48, 65, 54, 78, 71, 88, 82].map((height, index) => (
-                      <div
-                        className="flex h-full flex-1 flex-col items-center justify-end gap-2"
-                        key={height}
-                      >
-                        <div
-                          className="w-full rounded-t bg-primary/80"
-                          style={{ height: `${height}%` }}
-                        />
-                        <span className="text-[10px] text-muted-foreground">
-                          {['M', 'T', 'W', 'T', 'F', 'S', 'S'][index]}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </Card>
-              </AgentSection>
-            </TabsContent>
-          </ScrollArea>
-        </Tabs>
-
-        <div className="flex items-center justify-end gap-2 border-t bg-muted/20 px-5 py-3">
-          <Button variant="ghost" size="sm">
-            Discard
-          </Button>
-          <Button size="sm">
-            <Save data-icon="inline-start" /> Save agent
-          </Button>
-        </div>
-      </Card>
+      <div className="flex shrink-0 items-center justify-end gap-2 border-t bg-muted/20 px-5 py-3">
+        <Button variant="ghost" size="sm">
+          Discard
+        </Button>
+        <Button size="sm">
+          <Save data-icon="inline-start" /> Save agent
+        </Button>
+      </div>
     </div>
   );
 }
@@ -1705,26 +1773,34 @@ function Brand({ compact }: { compact: boolean }) {
 
 function RailNavItem({
   active,
+  collapsed,
   icon: IconComponent,
   label,
   onClick,
 }: {
   active: boolean;
+  collapsed: boolean;
   icon: Icon;
   label: string;
   onClick: () => void;
 }) {
   return (
-    <button
-      className={cn(
-        'flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground',
-        active && 'bg-accent font-medium text-foreground'
-      )}
-      onClick={onClick}
-      type="button"
-    >
-      <IconComponent className="size-4" /> {label}
-    </button>
+    <Tooltip>
+      <TooltipTrigger
+        aria-label={label}
+        className={cn(
+          'flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground',
+          collapsed && 'justify-center px-0',
+          active && 'bg-accent font-medium text-foreground'
+        )}
+        onClick={onClick}
+      >
+        <IconComponent className="size-4" /> {!collapsed && label}
+      </TooltipTrigger>
+      <TooltipContent side="right" hidden={!collapsed}>
+        {label}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -1732,16 +1808,18 @@ function IconButton({
   label,
   children,
   onClick,
+  className,
 }: {
   label: string;
   children: ReactNode;
   onClick?: () => void;
+  className?: string;
 }) {
   return (
     <Tooltip>
       <TooltipTrigger
         aria-label={label}
-        className={buttonVariants({ variant: 'ghost', size: 'icon-sm' })}
+        className={cn(buttonVariants({ variant: 'ghost', size: 'icon-sm' }), className)}
         onClick={onClick}
       >
         {children}
@@ -1756,24 +1834,6 @@ function ThemeToggle({ dark, setDark }: { dark: boolean; setDark: (value: boolea
     <IconButton label={dark ? 'Use light theme' : 'Use dark theme'} onClick={() => setDark(!dark)}>
       {dark ? <Sun /> : <Moon />}
     </IconButton>
-  );
-}
-
-function UserFooter() {
-  return (
-    <button
-      className="mt-3 flex w-full items-center gap-2 rounded-lg px-1 py-2 text-left hover:bg-muted"
-      type="button"
-    >
-      <span className="flex size-7 items-center justify-center rounded-full bg-foreground text-[10px] font-semibold text-background">
-        ZT
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-xs font-medium">Zubing Tan</span>
-        <span className="block text-[10px] text-muted-foreground">Local account</span>
-      </span>
-      <MoreHorizontal className="size-3.5 text-muted-foreground" />
-    </button>
   );
 }
 
