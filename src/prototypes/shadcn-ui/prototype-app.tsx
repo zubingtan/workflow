@@ -20,7 +20,6 @@ import {
   Ellipsis,
   ExternalLink,
   FileClock,
-  FileJson,
   GitBranch,
   Globe2,
   GripVertical,
@@ -31,6 +30,7 @@ import {
   MessageSquareText,
   Moon,
   MoreHorizontal,
+  Pencil,
   PanelLeftClose,
   Play,
   Plus,
@@ -44,7 +44,6 @@ import {
   Sparkles,
   Split,
   Sun,
-  TerminalSquare,
   TextCursorInput,
   Undo2,
   Variable,
@@ -63,10 +62,23 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/prototypes/shadcn-ui/components/ui/tooltip';
-import { Tabs, TabsList, TabsTrigger } from '@/prototypes/shadcn-ui/components/ui/tabs';
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from '@/prototypes/shadcn-ui/components/ui/tabs';
 import { Separator } from '@/prototypes/shadcn-ui/components/ui/separator';
 import { ScrollArea } from '@/prototypes/shadcn-ui/components/ui/scroll-area';
 import { Input } from '@/prototypes/shadcn-ui/components/ui/input';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from '@/prototypes/shadcn-ui/components/ui/dropdown-menu';
 import { Card } from '@/prototypes/shadcn-ui/components/ui/card';
 import { Button, buttonVariants } from '@/prototypes/shadcn-ui/components/ui/button';
 import { Badge } from '@/prototypes/shadcn-ui/components/ui/badge';
@@ -141,7 +153,7 @@ const NODE_TYPES = [
   ['Break', CircleStop],
 ] as const;
 
-function readQuery(): { variant: Variant; view: View } {
+function readQuery(): { variant: Variant; view: View; compare: boolean } {
   const params = new URLSearchParams(window.location.search);
   const variant = params.get('variant');
   const view = params.get('view');
@@ -149,6 +161,7 @@ function readQuery(): { variant: Variant; view: View } {
   return {
     variant: variant === 'B' || variant === 'C' ? variant : 'A',
     view: view === 'workflows' || view === 'agents' || view === 'settings' ? view : 'editor',
+    compare: params.get('compare') === '1',
   };
 }
 
@@ -167,6 +180,10 @@ export function PrototypeApp() {
   }, [variant, view]);
 
   useEffect(() => {
+    if (!initial.compare) {
+      return;
+    }
+
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
         return;
@@ -184,7 +201,7 @@ export function PrototypeApp() {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [variant]);
+  }, [initial.compare, variant]);
 
   const shared: LayoutProps = {
     view,
@@ -204,7 +221,7 @@ export function PrototypeApp() {
         {variant === 'A' && <WorkbenchRail {...shared} />}
         {variant === 'B' && <CommandDeck {...shared} />}
         {variant === 'C' && <FocusDock {...shared} />}
-        {process.env.NODE_ENV !== 'production' && (
+        {initial.compare && view === 'editor' && (
           <VariantSwitcher variant={variant} onChange={setVariant} />
         )}
       </div>
@@ -228,11 +245,6 @@ function WorkbenchRail(props: LayoutProps) {
     <div className="flex h-screen overflow-hidden bg-background text-foreground">
       <aside className="flex w-[224px] shrink-0 flex-col border-r border-border/80 bg-sidebar">
         <Brand compact={false} />
-        <div className="px-3 pb-2">
-          <Button className="w-full justify-start" size="sm" onClick={() => setView('editor')}>
-            <Plus data-icon="inline-start" /> New workflow
-          </Button>
-        </div>
         <nav className="space-y-1 px-2">
           {VIEW_ITEMS.map((item) => (
             <RailNavItem
@@ -244,37 +256,7 @@ function WorkbenchRail(props: LayoutProps) {
             />
           ))}
         </nav>
-        <Separator className="my-4" />
-        <div className="px-4 text-[11px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
-          Current workspace
-        </div>
-        <button
-          className="mx-2 mt-2 flex items-center gap-3 rounded-lg border border-border/70 bg-background/60 px-3 py-2 text-left hover:bg-accent"
-          onClick={() => setView('editor')}
-          type="button"
-        >
-          <span className="flex size-8 items-center justify-center rounded-md bg-blue-600 text-white">
-            <Workflow className="size-4" />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-medium">Support triage</span>
-            <span className="block text-xs text-muted-foreground">Draft · 8 nodes</span>
-          </span>
-          <ChevronDown className="size-3.5 text-muted-foreground" />
-        </button>
         <div className="mt-auto p-3">
-          <Card className="gap-2 border-border/70 bg-background/70 p-3 shadow-none">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-muted-foreground">Executions</span>
-              <span className="font-medium">742 / 1k</span>
-            </div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-              <div className="h-full w-[74%] rounded-full bg-primary" />
-            </div>
-            <span className="text-[11px] text-muted-foreground">
-              Workspace plan resets in 12 days
-            </span>
-          </Card>
           <UserFooter />
         </div>
       </aside>
@@ -318,6 +300,16 @@ function WorkbenchHeader(props: LayoutProps) {
         <span className="text-sm font-semibold">{view[0].toUpperCase() + view.slice(1)}</span>
       )}
       <div className="ml-auto flex items-center gap-1.5">
+        {view === 'agents' && (
+          <>
+            <Button variant="outline" size="sm">
+              <ArrowDownToLine data-icon="inline-start" /> Import
+            </Button>
+            <Button size="sm">
+              <Plus data-icon="inline-start" /> New agent
+            </Button>
+          </>
+        )}
         {isEditor && (
           <>
             <IconButton label="Undo">
@@ -378,9 +370,16 @@ function CommandDeck(props: LayoutProps) {
         </button>
         <div className="ml-auto flex items-center gap-1.5">
           <ThemeToggle dark={dark} setDark={setDark} />
-          <Button size="sm" onClick={() => setView('editor')}>
-            <Plus data-icon="inline-start" /> Create
-          </Button>
+          {view === 'agents' && (
+            <>
+              <Button variant="outline" size="sm">
+                <ArrowDownToLine data-icon="inline-start" /> Import
+              </Button>
+              <Button size="sm">
+                <Plus data-icon="inline-start" /> New agent
+              </Button>
+            </>
+          )}
           <div className="ml-1 flex size-8 items-center justify-center rounded-full bg-foreground text-xs font-semibold text-background">
             ZT
           </div>
@@ -464,7 +463,7 @@ function FocusDock(props: LayoutProps) {
         <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-4">
           <div>
             <div className="text-[11px] font-medium tracking-[0.08em] text-muted-foreground uppercase">
-              {view === 'editor' ? 'Workflow editor' : 'Workspace'}
+              {view === 'editor' ? 'Workflow editor' : 'Management'}
             </div>
             <div className="text-sm font-semibold">
               {view === 'editor' ? 'Support triage' : view[0].toUpperCase() + view.slice(1)}
@@ -481,6 +480,16 @@ function FocusDock(props: LayoutProps) {
             <IconButton label="Workflow history">
               <FileClock />
             </IconButton>
+            {view === 'agents' && (
+              <>
+                <Button variant="outline" size="sm">
+                  <ArrowDownToLine data-icon="inline-start" /> Import
+                </Button>
+                <Button size="sm">
+                  <Plus data-icon="inline-start" /> New agent
+                </Button>
+              </>
+            )}
             {view === 'editor' && (
               <>
                 <Button variant="outline" size="sm">
@@ -529,7 +538,7 @@ function WorkflowsPage({ variant, onOpen }: { variant: Variant; onOpen: () => vo
       )}
     >
       <PageHeading
-        eyebrow="Workspace"
+        eyebrow="Automation"
         title="Workflows"
         description="Build, test and monitor reusable agent workflows."
         action={
@@ -593,7 +602,7 @@ function WorkflowsPage({ variant, onOpen }: { variant: Variant; onOpen: () => vo
           <div>
             <h2 className="text-sm font-semibold">Recent executions</h2>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Latest workflow runs across this workspace.
+              Latest runs across all workflows.
             </p>
           </div>
           <Button variant="outline" size="sm">
@@ -638,128 +647,185 @@ function WorkflowsPage({ variant, onOpen }: { variant: Variant; onOpen: () => vo
   );
 }
 
+const AGENT_TABS = [
+  'General',
+  'System prompt',
+  'Tools',
+  'Runtime',
+  'Skills',
+  'Extensions',
+  'Sessions',
+  'Stats',
+] as const;
+
 function AgentsPage({ variant }: { variant: Variant }) {
   const [selected, setSelected] = useState(0);
+  const [agentNames, setAgentNames] = useState(() => AGENTS.map((agent) => agent.name));
+  const [editingName, setEditingName] = useState(false);
+  const [providerUrl, setProviderUrl] = useState('https://api.openai.com/v1');
+  const [models, setModels] = useState<string[]>([AGENTS[0].model]);
+  const [model, setModel] = useState(AGENTS[0].model);
+  const [fetchingModels, setFetchingModels] = useState(false);
+  const [providerStatus, setProviderStatus] = useState<'idle' | 'testing' | 'connected'>('idle');
+  const [systemPrompt, setSystemPrompt] = useState(
+    'Analyze incoming support requests, ground every claim in available context, and prepare a concise response for human review.'
+  );
+  const [enabledTools, setEnabledTools] = useState(['web_search', 'read_file']);
+  const [enabledSkills, setEnabledSkills] = useState(['Support triage']);
+  const [enabledExtensions, setEnabledExtensions] = useState(['Git context']);
+
+  const agent = { ...AGENTS[selected], name: agentNames[selected], model };
+
+  const selectAgent = (index: number) => {
+    const nextAgent = AGENTS[index];
+    setSelected(index);
+    setEditingName(false);
+    setModel(nextAgent.model);
+    setModels([nextAgent.model]);
+    setProviderUrl(
+      nextAgent.model.startsWith('deepseek')
+        ? 'https://api.deepseek.com/v1'
+        : 'https://api.openai.com/v1'
+    );
+    setProviderStatus('idle');
+  };
+
+  const fetchModels = () => {
+    setFetchingModels(true);
+    setProviderStatus('idle');
+    window.setTimeout(() => {
+      const discovered = providerUrl.includes('deepseek')
+        ? ['deepseek-v4-pro', 'deepseek-chat', 'deepseek-reasoner']
+        : ['gpt-5', 'gpt-5-mini', 'gpt-4.1'];
+      setModels(discovered);
+      setModel(discovered[0]);
+      setFetchingModels(false);
+    }, 450);
+  };
+
+  const testProvider = () => {
+    setProviderStatus('testing');
+    window.setTimeout(() => setProviderStatus('connected'), 650);
+  };
+
+  const toggleValue = (value: string, current: string[], update: (next: string[]) => void) =>
+    update(
+      current.includes(value) ? current.filter((item) => item !== value) : [...current, value]
+    );
 
   return (
-    <div className="mx-auto min-h-full max-w-[1240px] p-6 lg:p-8">
-      <PageHeading
-        eyebrow="Agent catalog"
-        title="Agents"
-        description="Configure the reusable agent identities your LLM nodes execute."
-        action={
-          <div className="flex gap-2">
-            <Button variant="outline">
-              <ArrowDownToLine data-icon="inline-start" /> Import
-            </Button>
-            <Button>
-              <Plus data-icon="inline-start" /> New agent
-            </Button>
-          </div>
-        }
-      />
-
-      <div
-        className={cn(
-          'mt-6 grid min-h-[620px] gap-3',
-          variant === 'B' ? 'grid-cols-[280px_1fr]' : 'grid-cols-[300px_1fr]'
-        )}
-      >
-        <Card className="gap-3 p-3 shadow-none">
-          <div className="relative">
-            <Search className="absolute top-2 left-2.5 size-4 text-muted-foreground" />
-            <Input className="pl-8" placeholder="Search agents" />
-          </div>
-          <div className="flex gap-1.5">
-            <Badge variant="secondary">All 3</Badge>
-            <Badge variant="outline">Ready 2</Badge>
-            <Badge variant="outline">Draft 1</Badge>
-          </div>
-          <Separator />
-          <div className="space-y-1">
-            {AGENTS.map((agent, index) => (
-              <button
-                className={cn(
-                  'flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left hover:bg-muted',
-                  selected === index && 'bg-muted'
-                )}
-                key={agent.name}
-                onClick={() => setSelected(index)}
-                type="button"
-              >
-                <span
-                  className={cn(
-                    'flex size-8 items-center justify-center rounded-lg text-white',
-                    agent.color
-                  )}
-                >
-                  <Bot className="size-4" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium">{agent.name}</span>
-                  <span className="block truncate text-xs text-muted-foreground">
-                    {agent.model}
-                  </span>
-                </span>
-                <span
-                  className={cn(
-                    'size-1.5 rounded-full',
-                    agent.status === 'Ready' ? 'bg-emerald-500' : 'bg-amber-500'
-                  )}
-                />
-              </button>
-            ))}
-          </div>
-          <div className="mt-auto rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
-            <div className="mb-1 flex items-center gap-2 font-medium text-foreground">
-              <FileJson className="size-3.5" /> Portable catalog
-            </div>
-            Export agents as JSON without exposing provider keys.
-          </div>
-        </Card>
-
-        <Card className="overflow-hidden p-0 shadow-none">
-          <div className="flex items-center gap-3 border-b p-4">
-            <span
+    <div
+      className={cn(
+        'mx-auto min-h-full max-w-[1440px] p-4 lg:p-6',
+        variant === 'C' && 'max-w-[1320px]'
+      )}
+    >
+      <Card className="min-h-[calc(100vh-104px)] gap-0 overflow-hidden p-0 shadow-none">
+        <div className="flex min-h-16 items-center gap-3 border-b px-4 lg:px-5">
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              aria-label="Switch agent"
               className={cn(
-                'flex size-10 items-center justify-center rounded-xl text-white',
-                AGENTS[selected].color
+                buttonVariants({ variant: 'outline', size: 'sm' }),
+                'h-10 min-w-40 justify-between px-2.5'
               )}
             >
-              <Bot className="size-5" />
-            </span>
-            <div>
-              <h2 className="text-sm font-semibold">{AGENTS[selected].name}</h2>
-              <p className="text-xs text-muted-foreground">
-                OpenAI-compatible · {AGENTS[selected].model}
-              </p>
-            </div>
-            <Badge className="ml-1" variant="secondary">
-              <span className="mr-1 size-1.5 rounded-full bg-emerald-500" /> Ready
-            </Badge>
-            <div className="ml-auto flex gap-1">
-              <Button variant="outline" size="sm">
-                <Play data-icon="inline-start" /> Test
-              </Button>
-              <Button variant="ghost" size="icon-sm">
-                <MoreHorizontal />
-              </Button>
-            </div>
+              <span className="flex items-center gap-2">
+                <Bot className="size-4" />
+                <span className="text-left">
+                  <span className="block text-[10px] leading-none text-muted-foreground">
+                    Agents
+                  </span>
+                  <span className="mt-1 block max-w-28 truncate leading-none">{agent.name}</span>
+                </span>
+              </span>
+              <ChevronDown className="size-3.5 text-muted-foreground" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-64">
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>Switch agent</DropdownMenuLabel>
+                {AGENTS.map((item, index) => (
+                  <DropdownMenuItem key={item.name} onClick={() => selectAgent(index)}>
+                    <span
+                      className={cn(
+                        'flex size-7 items-center justify-center rounded-md text-white',
+                        item.color
+                      )}
+                    >
+                      <Bot className="size-3.5" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium">{agentNames[index]}</span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {item.model}
+                      </span>
+                    </span>
+                    {selected === index && <Check className="size-4" />}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Separator className="mx-1 h-8" orientation="vertical" />
+          <span
+            className={cn(
+              'flex size-10 shrink-0 items-center justify-center rounded-xl text-white',
+              agent.color
+            )}
+          >
+            <Bot className="size-5" />
+          </span>
+          <div className="min-w-0">
+            {editingName ? (
+              <Input
+                aria-label="Agent name"
+                autoFocus
+                className="h-8 max-w-sm text-base font-semibold"
+                value={agent.name}
+                onBlur={() => setEditingName(false)}
+                onChange={(event) =>
+                  setAgentNames((current) =>
+                    current.map((name, index) => (index === selected ? event.target.value : name))
+                  )
+                }
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') setEditingName(false);
+                }}
+              />
+            ) : (
+              <button
+                className="group flex max-w-sm items-center gap-1.5 text-left"
+                onClick={() => setEditingName(true)}
+                type="button"
+              >
+                <h1 className="truncate text-base font-semibold">{agent.name}</h1>
+                <Pencil className="size-3.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+              </button>
+            )}
+            <p className="truncate text-xs text-muted-foreground">
+              OpenAI-compatible · {agent.model}
+            </p>
           </div>
-          <Tabs defaultValue="general" className="min-h-0 flex-1 px-5 pt-3">
-            <TabsList variant="line" className="w-full justify-start border-b pb-1">
-              {[
-                'General',
-                'System prompt',
-                'Tools',
-                'Runtime',
-                'Skills',
-                'Extensions',
-                'Sessions',
-                'Stats',
-              ].map((tab) => (
+          <Badge className="ml-1" variant="secondary">
+            <span
+              className={cn(
+                'mr-1 size-1.5 rounded-full',
+                agent.status === 'Ready' ? 'bg-emerald-500' : 'bg-amber-500'
+              )}
+            />
+            {agent.status}
+          </Badge>
+          <Button className="ml-auto" variant="ghost" size="icon-sm" aria-label="Agent options">
+            <MoreHorizontal />
+          </Button>
+        </div>
+
+        <Tabs defaultValue="general" className="min-h-0 flex-1 gap-0">
+          <div className="overflow-x-auto border-b px-4 lg:px-5">
+            <TabsList variant="line" className="h-11 w-max justify-start pb-1">
+              {AGENT_TABS.map((tab) => (
                 <TabsTrigger
-                  className="flex-none px-2.5 text-xs"
+                  className="flex-none px-3 text-xs"
                   key={tab}
                   value={tab.toLowerCase().replace(' ', '-')}
                 >
@@ -767,86 +833,316 @@ function AgentsPage({ variant }: { variant: Variant }) {
                 </TabsTrigger>
               ))}
             </TabsList>
-          </Tabs>
-          <ScrollArea className="h-[500px]">
-            <div className="grid gap-6 p-6 lg:grid-cols-[1fr_280px]">
-              <div className="space-y-6">
+          </div>
+
+          <ScrollArea className="h-[calc(100vh-260px)] min-h-[460px]">
+            <TabsContent value="general" className="m-0 p-5 lg:p-7">
+              <div className="mx-auto max-w-5xl space-y-7">
                 <FormSection
                   title="Identity"
-                  description="How this agent appears throughout the workflow builder."
+                  description="Click the agent name above to rename it without leaving your current context."
                 >
-                  <Field label="Name" value={AGENTS[selected].name} />
                   <Field
                     label="Description"
                     value="Analyzes incoming support requests and prepares a grounded response for human review."
                     multiline
                   />
-                  <div className="grid grid-cols-2 gap-3">
-                    <Field label="Provider base URL" value="https://api.openai.com/v1" />
-                    <Field label="Model" value={AGENTS[selected].model} />
-                  </div>
                 </FormSection>
                 <FormSection
-                  title="Workspace"
-                  description="Files and runtime context available to this agent."
+                  title="Provider"
+                  description="Connect the provider, discover its available models, then verify the connection here."
                 >
+                  <Card className="gap-4 bg-muted/20 p-4 shadow-none">
+                    <div className="grid gap-3 lg:grid-cols-[1.3fr_1fr]">
+                      <label className="block space-y-1.5">
+                        <span className="text-xs font-medium">Provider base URL</span>
+                        <Input
+                          aria-label="Provider base URL"
+                          className="text-xs"
+                          value={providerUrl}
+                          onChange={(event) => {
+                            setProviderUrl(event.target.value);
+                            setProviderStatus('idle');
+                          }}
+                        />
+                      </label>
+                      <Field label="API key" value="••••••••••••••••••••" />
+                    </div>
+                    <div className="grid items-end gap-3 lg:grid-cols-[1fr_auto]">
+                      <label className="block space-y-1.5">
+                        <span className="text-xs font-medium">Model</span>
+                        <select
+                          aria-label="Model"
+                          className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-xs outline-none focus:ring-2 focus:ring-ring/30"
+                          value={model}
+                          onChange={(event) => setModel(event.target.value)}
+                        >
+                          {models.map((item) => (
+                            <option key={item} value={item}>
+                              {item}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={fetchModels}
+                        disabled={fetchingModels}
+                      >
+                        {fetchingModels ? (
+                          <LoaderCircle className="animate-spin" />
+                        ) : (
+                          <RefreshCw data-icon="inline-start" />
+                        )}
+                        {fetchingModels ? 'Fetching' : 'Fetch models'}
+                      </Button>
+                    </div>
+                    <Separator />
+                    <div className="flex flex-wrap items-center gap-3">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={testProvider}
+                        disabled={providerStatus === 'testing'}
+                      >
+                        {providerStatus === 'testing' ? (
+                          <LoaderCircle className="animate-spin" />
+                        ) : (
+                          <Play data-icon="inline-start" />
+                        )}
+                        {providerStatus === 'testing' ? 'Testing provider' : 'Test provider'}
+                      </Button>
+                      {providerStatus === 'connected' && (
+                        <span className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
+                          <Check className="size-3.5" /> Provider connected
+                        </span>
+                      )}
+                      <span className="text-xs text-muted-foreground">
+                        {models.length} model{models.length === 1 ? '' : 's'} available from this
+                        URL
+                      </span>
+                    </div>
+                  </Card>
+                </FormSection>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="system-prompt" className="m-0 p-5 lg:p-7">
+              <AgentSection
+                title="System prompt"
+                description="Define the standing instructions used at the start of every session."
+              >
+                <textarea
+                  aria-label="System prompt"
+                  className="min-h-64 w-full resize-y rounded-lg border border-input bg-background p-4 text-sm leading-6 outline-none focus:ring-2 focus:ring-ring/30"
+                  value={systemPrompt}
+                  onChange={(event) => setSystemPrompt(event.target.value)}
+                />
+                <p className="text-right text-xs text-muted-foreground">
+                  {systemPrompt.length} characters
+                </p>
+              </AgentSection>
+            </TabsContent>
+
+            <TabsContent value="tools" className="m-0 p-5 lg:p-7">
+              <AgentSection
+                title="Tools"
+                description="Choose the capabilities this agent may invoke during a run."
+              >
+                {[
+                  ['web_search', 'Search current public information'],
+                  ['shell', 'Run approved local commands'],
+                  ['read_file', 'Read files supplied to the agent'],
+                ].map(([name, description]) => (
+                  <ToggleRow
+                    key={name}
+                    title={name}
+                    description={description}
+                    enabled={enabledTools.includes(name)}
+                    onToggle={() => toggleValue(name, enabledTools, setEnabledTools)}
+                  />
+                ))}
+              </AgentSection>
+            </TabsContent>
+
+            <TabsContent value="runtime" className="m-0 p-5 lg:p-7">
+              <AgentSection
+                title="Runtime"
+                description="Set the execution limits and local context for new sessions."
+              >
+                <div className="grid gap-4 md:grid-cols-2">
                   <Field
                     label="Working directory"
                     value="~/.config/workflow/agents/support-analyst"
                   />
-                  <div className="flex flex-wrap gap-2">
-                    <Badge variant="outline">
-                      <Wrench className="mr-1 size-3" /> web_search
-                    </Badge>
-                    <Badge variant="outline">
-                      <TerminalSquare className="mr-1 size-3" /> shell
-                    </Badge>
-                    <Badge variant="outline">
-                      <FileJson className="mr-1 size-3" /> read_file
-                    </Badge>
-                  </div>
-                </FormSection>
-              </div>
-              <aside className="space-y-3">
-                <Card className="gap-3 bg-muted/30 p-4 shadow-none">
-                  <div className="text-xs font-semibold">Readiness</div>
-                  {['Provider connected', 'API key configured', 'Workspace available'].map(
-                    (item) => (
-                      <div className="flex items-center gap-2 text-xs" key={item}>
-                        <span className="flex size-4 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
-                          <Check className="size-2.5" />
-                        </span>
-                        {item}
-                      </div>
-                    )
-                  )}
-                </Card>
-                <Card className="gap-3 p-4 shadow-none">
+                  <Field label="Timeout" value="300" suffix="seconds" />
+                  <Field label="Maximum turns" value="24" />
+                  <Field label="Context window" value="Automatic" />
+                </div>
+              </AgentSection>
+            </TabsContent>
+
+            <TabsContent value="skills" className="m-0 p-5 lg:p-7">
+              <AgentSection
+                title="Skills"
+                description="Attach reusable instruction packages to this agent."
+              >
+                {['Support triage', 'Source verification', 'Response editor'].map((name) => (
+                  <ToggleRow
+                    key={name}
+                    title={name}
+                    description="Reusable instructions loaded only when this agent needs them."
+                    enabled={enabledSkills.includes(name)}
+                    onToggle={() => toggleValue(name, enabledSkills, setEnabledSkills)}
+                  />
+                ))}
+              </AgentSection>
+            </TabsContent>
+
+            <TabsContent value="extensions" className="m-0 p-5 lg:p-7">
+              <AgentSection
+                title="Extensions"
+                description="Connect optional integrations to this agent."
+              >
+                {['Git context', 'mem0 memory', 'Issue tracker'].map((name) => (
+                  <ToggleRow
+                    key={name}
+                    title={name}
+                    description="Share scoped integration context with new sessions."
+                    enabled={enabledExtensions.includes(name)}
+                    onToggle={() => toggleValue(name, enabledExtensions, setEnabledExtensions)}
+                  />
+                ))}
+              </AgentSection>
+            </TabsContent>
+
+            <TabsContent value="sessions" className="m-0 p-5 lg:p-7">
+              <AgentSection title="Sessions" description="Recent runs started with this agent.">
+                <div className="overflow-hidden rounded-xl border">
+                  {[
+                    ['Support request #1842', 'Completed', '4 min ago'],
+                    ['Refund escalation', 'Completed', 'Yesterday'],
+                    ['Account access review', 'Stopped', '2 days ago'],
+                  ].map(([name, status, time]) => (
+                    <div
+                      className="grid grid-cols-[1fr_auto_auto] items-center gap-6 border-b px-4 py-3 text-sm last:border-b-0"
+                      key={name}
+                    >
+                      <span className="font-medium">{name}</span>
+                      <Badge variant="outline">{status}</Badge>
+                      <span className="text-xs text-muted-foreground">{time}</span>
+                    </div>
+                  ))}
+                </div>
+              </AgentSection>
+            </TabsContent>
+
+            <TabsContent value="stats" className="m-0 p-5 lg:p-7">
+              <AgentSection
+                title="Stats"
+                description="Performance and usage for this agent over the last 7 days."
+              >
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <Metric label="Runs" value="184" />
+                  <Metric label="Success" value="98.1%" />
+                  <Metric label="Median duration" value="12.4s" />
+                  <Metric label="Tokens" value="1.2M" />
+                </div>
+                <Card className="mt-4 gap-3 bg-muted/20 p-4 shadow-none">
                   <div className="flex items-center justify-between text-xs font-semibold">
-                    <span>Last 7 days</span>
-                    <Activity className="size-3.5 text-muted-foreground" />
+                    <span>Daily successful runs</span>
+                    <Activity className="size-4 text-muted-foreground" />
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Metric label="Runs" value="184" />
-                    <Metric label="Success" value="98.1%" />
-                    <Metric label="Median" value="12.4s" />
-                    <Metric label="Tokens" value="1.2M" />
+                  <div className="flex h-36 items-end gap-3">
+                    {[48, 65, 54, 78, 71, 88, 82].map((height, index) => (
+                      <div
+                        className="flex h-full flex-1 flex-col items-center justify-end gap-2"
+                        key={height}
+                      >
+                        <div
+                          className="w-full rounded-t bg-primary/80"
+                          style={{ height: `${height}%` }}
+                        />
+                        <span className="text-[10px] text-muted-foreground">
+                          {['M', 'T', 'W', 'T', 'F', 'S', 'S'][index]}
+                        </span>
+                      </div>
+                    ))}
                   </div>
                 </Card>
-              </aside>
-            </div>
+              </AgentSection>
+            </TabsContent>
           </ScrollArea>
-          <div className="flex items-center justify-end gap-2 border-t bg-muted/20 px-5 py-3">
-            <Button variant="ghost" size="sm">
-              Discard
-            </Button>
-            <Button size="sm">
-              <Save data-icon="inline-start" /> Save agent
-            </Button>
-          </div>
-        </Card>
-      </div>
+        </Tabs>
+
+        <div className="flex items-center justify-end gap-2 border-t bg-muted/20 px-5 py-3">
+          <Button variant="ghost" size="sm">
+            Discard
+          </Button>
+          <Button size="sm">
+            <Save data-icon="inline-start" /> Save agent
+          </Button>
+        </div>
+      </Card>
     </div>
+  );
+}
+
+function AgentSection({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="mx-auto max-w-5xl space-y-5">
+      <div>
+        <h2 className="text-lg font-semibold">{title}</h2>
+        <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+      </div>
+      <div>{children}</div>
+    </div>
+  );
+}
+
+function ToggleRow({
+  title,
+  description,
+  enabled,
+  onToggle,
+}: {
+  title: string;
+  description: string;
+  enabled: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      aria-pressed={enabled}
+      className="mb-2 flex w-full items-center gap-4 rounded-xl border bg-card p-4 text-left transition-colors hover:bg-muted/40"
+      onClick={onToggle}
+      type="button"
+    >
+      <span className="flex size-9 items-center justify-center rounded-lg bg-muted">
+        <Wrench className="size-4" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-medium">{title}</span>
+        <span className="mt-0.5 block text-xs text-muted-foreground">{description}</span>
+      </span>
+      <span
+        className={cn(
+          'flex h-5 w-9 items-center rounded-full p-0.5 transition-colors',
+          enabled ? 'justify-end bg-primary' : 'justify-start bg-muted-foreground/25'
+        )}
+      >
+        <span className="size-4 rounded-full bg-white shadow-sm" />
+      </span>
+    </button>
   );
 }
 
@@ -854,7 +1150,7 @@ function SettingsPage({ variant }: { variant: Variant }) {
   return (
     <div className="mx-auto min-h-full max-w-[980px] p-6 lg:p-8">
       <PageHeading
-        eyebrow="Workspace"
+        eyebrow="Preferences"
         title="Settings"
         description="Defaults for workflow execution, memory and local data."
       />
@@ -873,7 +1169,7 @@ function SettingsPage({ variant }: { variant: Variant }) {
         <SettingsCard
           icon={Database}
           title="Memory"
-          description="Connect the workspace to a compatible mem0 server."
+          description="Connect the application to a compatible mem0 server."
         >
           <Field label="Server URL" value="http://localhost:8080" />
           <Field label="API key" value="••••••••••••••••••••" />
@@ -899,7 +1195,7 @@ function SettingsPage({ variant }: { variant: Variant }) {
         <SettingsCard
           icon={Cloud}
           title="Environment"
-          description="Current runtime information for this workspace."
+          description="Current application runtime information."
         >
           <KeyValue label="Mode" value="Development" />
           <KeyValue label="API origin" value="Same origin" />
@@ -1474,7 +1770,7 @@ function UserFooter() {
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-xs font-medium">Zubing Tan</span>
-        <span className="block text-[10px] text-muted-foreground">Local workspace</span>
+        <span className="block text-[10px] text-muted-foreground">Local account</span>
       </span>
       <MoreHorizontal className="size-3.5 text-muted-foreground" />
     </button>

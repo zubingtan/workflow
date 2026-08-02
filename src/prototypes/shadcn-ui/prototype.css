@@ -56,6 +56,7 @@
   --ring: oklch(0.6 0.12 255);
   --sidebar: oklch(0.972 0.004 260);
   --sidebar-foreground: oklch(0.2 0.014 260);
+  --canvas: oklch(0.965 0.004 255);
 }
 
 .dark {
@@ -79,6 +80,7 @@
   --ring: oklch(0.62 0.14 252);
   --sidebar: oklch(0.185 0.012 260);
   --sidebar-foreground: oklch(0.96 0.004 260);
+  --canvas: oklch(0.13 0.006 255);
 }
 
 @layer base {
@@ -115,7 +117,7 @@
 }
 
 .workflow-canvas {
-  background-color: color-mix(in oklch, var(--background) 72%, var(--muted));
+  background-color: var(--canvas);
   background-image: url("data:image/svg+xml,%3Csvg width='24' height='24' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Ccircle cx='2' cy='2' r='0.7' fill='%2394a3b8' fill-opacity='0.25'/%3E%3C/svg%3E");
 }
 
