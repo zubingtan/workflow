@@ -18,6 +18,9 @@ Validate the preferred Variant A structure after the latest navigation feedback:
 - After: both collection-to-detail paths use the same short fade-and-horizontal-shift transition and preserve an obvious return path.
 - After: the Agent settings surface fills the entire right pane instead of sitting inside a second rounded card.
 - After: the sidebar keeps only navigation and theme switching; the collapse control is visually muted and the unused account block is removed.
+- After: the Agent identity row is compact, omits provider/model metadata and unused overflow actions, and keeps Discard/Save as direct actions instead of a bottom bar.
+- After: Agent configuration uses a vertical settings sidebar instead of horizontal tabs; Quick chat opens a temporary conversation drawer without leaving settings.
+- After: Settings starts directly with editable sections and a standalone Save button, without an explanatory masthead or sticky action bar.
 - After: the dark editor uses neutral near-black layers; node cards and connections stay visually separated without a red background tint.
 
 ## Evidence
@@ -28,5 +31,8 @@ Validate the preferred Variant A structure after the latest navigation feedback:
 - `06-collapsed-sidebar.png`: compact icon rail.
 - `07-workflow-editor-after.png`: Workflow detail/editor.
 - `08-dark-workflow-list.png` and `09-dark-editor.png`: dark-mode checks.
+- `10-agent-sidebar-settings.png`: compact Agent identity and vertical settings navigation.
+- `11-quick-chat.png`: in-context Agent conversation drawer.
+- `12-settings-clean.png`: Settings without the redundant introduction or bottom action bar.
 
 Browser verification covered Workflow list -> editor -> Back, Agent list -> settings -> Back, sidebar collapse/expand, theme switching, and console warnings/errors.

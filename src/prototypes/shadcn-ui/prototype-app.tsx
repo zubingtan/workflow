@@ -40,6 +40,7 @@ import {
   RotateCcw,
   Save,
   Search,
+  Send,
   Settings,
   Sparkles,
   Split,
@@ -63,11 +64,12 @@ import {
   TooltipTrigger,
 } from '@/prototypes/shadcn-ui/components/ui/tooltip';
 import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from '@/prototypes/shadcn-ui/components/ui/tabs';
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/prototypes/shadcn-ui/components/ui/sheet';
 import { Separator } from '@/prototypes/shadcn-ui/components/ui/separator';
 import { ScrollArea } from '@/prototypes/shadcn-ui/components/ui/scroll-area';
 import { Input } from '@/prototypes/shadcn-ui/components/ui/input';
@@ -332,7 +334,7 @@ function WorkbenchRail(props: LayoutProps) {
             />
           ))}
         </nav>
-        <div className="mt-auto flex justify-center p-2">
+        <div className={cn('mt-auto flex p-2', collapsed ? 'justify-center' : 'justify-end pr-3')}>
           <ThemeToggle dark={dark} setDark={setDark} />
         </div>
       </aside>
@@ -683,16 +685,18 @@ function WorkflowsPage({ variant, onOpen }: { variant: Variant; onOpen: (name: s
   );
 }
 
-const AGENT_TABS = [
-  'General',
-  'System prompt',
-  'Tools',
-  'Runtime',
-  'Skills',
-  'Extensions',
-  'Sessions',
-  'Stats',
+const AGENT_SECTIONS = [
+  { id: 'general', label: 'General', icon: Settings },
+  { id: 'system-prompt', label: 'System prompt', icon: MessageSquareText },
+  { id: 'tools', label: 'Tools', icon: Wrench },
+  { id: 'runtime', label: 'Runtime', icon: Code2 },
+  { id: 'skills', label: 'Skills', icon: Sparkles },
+  { id: 'extensions', label: 'Extensions', icon: Box },
+  { id: 'sessions', label: 'Sessions', icon: History },
+  { id: 'stats', label: 'Stats', icon: Activity },
 ] as const;
+
+type AgentSectionId = (typeof AGENT_SECTIONS)[number]['id'];
 
 function AgentsPage({
   variant,
@@ -722,6 +726,12 @@ function AgentsPage({
   const [enabledTools, setEnabledTools] = useState(['web_search', 'read_file']);
   const [enabledSkills, setEnabledSkills] = useState(['Support triage']);
   const [enabledExtensions, setEnabledExtensions] = useState(['Git context']);
+  const [activeSection, setActiveSection] = useState<AgentSectionId>('general');
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatDraft, setChatDraft] = useState('');
+  const [chatMessages, setChatMessages] = useState<
+    Array<{ role: 'assistant' | 'user'; text: string }>
+  >([{ role: 'assistant', text: 'What would you like me to help with?' }]);
 
   const agent = { ...AGENTS[selected], name: agentNames[selected], model };
   const visibleAgents = AGENTS.map((item, index) => ({ item, index })).filter(({ item, index }) =>
@@ -731,6 +741,7 @@ function AgentsPage({
   const selectAgent = (index: number) => {
     const nextAgent = AGENTS[index];
     setEditingName(false);
+    setActiveSection('general');
     setModel(nextAgent.model);
     setModels([nextAgent.model]);
     setProviderUrl(
@@ -758,6 +769,21 @@ function AgentsPage({
   const testProvider = () => {
     setProviderStatus('testing');
     window.setTimeout(() => setProviderStatus('connected'), 650);
+  };
+
+  const sendChat = () => {
+    const message = chatDraft.trim();
+    if (!message) return;
+
+    setChatMessages((current) => [
+      ...current,
+      { role: 'user', text: message },
+      {
+        role: 'assistant',
+        text: 'I’ll answer using this agent’s current prompt, tools, and runtime settings.',
+      },
+    ]);
+    setChatDraft('');
   };
 
   const toggleValue = (value: string, current: string[], update: (next: string[]) => void) =>
@@ -833,24 +859,24 @@ function AgentsPage({
         transition === 'entering' && 'is-entering'
       )}
     >
-      <div className="flex min-h-16 items-center gap-3 border-b px-4 lg:px-5">
+      <div className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
         <IconButton label="Back to agents" onClick={onClose}>
           <ArrowLeft />
         </IconButton>
         <span
           className={cn(
-            'flex size-10 shrink-0 items-center justify-center rounded-xl text-white',
+            'flex size-8 shrink-0 items-center justify-center rounded-lg text-white',
             agent.color
           )}
         >
-          <Bot className="size-5" />
+          <Bot className="size-4" />
         </span>
         <div className="min-w-0">
           {editingName ? (
             <Input
               aria-label="Agent name"
               autoFocus
-              className="h-8 max-w-sm text-base font-semibold"
+              className="h-7 max-w-sm text-sm font-semibold"
               value={agent.name}
               onBlur={() => setEditingName(false)}
               onChange={(event) =>
@@ -868,15 +894,12 @@ function AgentsPage({
               onClick={() => setEditingName(true)}
               type="button"
             >
-              <h1 className="truncate text-base font-semibold">{agent.name}</h1>
+              <h1 className="truncate text-sm font-semibold">{agent.name}</h1>
               <Pencil className="size-3.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
             </button>
           )}
-          <p className="truncate text-xs text-muted-foreground">
-            OpenAI-compatible · {agent.model}
-          </p>
         </div>
-        <Badge className="ml-1" variant="secondary">
+        <Badge variant="secondary">
           <span
             className={cn(
               'mr-1 size-1.5 rounded-full',
@@ -885,267 +908,9 @@ function AgentsPage({
           />
           {agent.status}
         </Badge>
-        <Button className="ml-auto" variant="ghost" size="icon-sm" aria-label="Agent options">
-          <MoreHorizontal />
+        <Button className="ml-auto" variant="outline" size="sm" onClick={() => setChatOpen(true)}>
+          <MessageSquareText data-icon="inline-start" /> Quick chat
         </Button>
-      </div>
-
-      <Tabs defaultValue="general" className="min-h-0 flex-1 gap-0 overflow-hidden">
-        <div className="overflow-x-auto border-b px-4 lg:px-5">
-          <TabsList variant="line" className="h-11 w-max justify-start pb-1">
-            {AGENT_TABS.map((tab) => (
-              <TabsTrigger
-                className="flex-none px-3 text-xs"
-                key={tab}
-                value={tab.toLowerCase().replace(' ', '-')}
-              >
-                {tab}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </div>
-
-        <ScrollArea className="min-h-0 flex-1">
-          <TabsContent value="general" className="m-0 p-5 lg:p-7">
-            <div className="mx-auto max-w-5xl space-y-7">
-              <FormSection
-                title="Identity"
-                description="Click the agent name above to rename it without leaving your current context."
-              >
-                <Field
-                  label="Description"
-                  value="Analyzes incoming support requests and prepares a grounded response for human review."
-                  multiline
-                />
-              </FormSection>
-              <FormSection
-                title="Provider"
-                description="Connect the provider, discover its available models, then verify the connection here."
-              >
-                <Card className="gap-4 bg-muted/20 p-4 shadow-none">
-                  <div className="grid gap-3 lg:grid-cols-[1.3fr_1fr]">
-                    <label className="block space-y-1.5">
-                      <span className="text-xs font-medium">Provider base URL</span>
-                      <Input
-                        aria-label="Provider base URL"
-                        className="text-xs"
-                        value={providerUrl}
-                        onChange={(event) => {
-                          setProviderUrl(event.target.value);
-                          setProviderStatus('idle');
-                        }}
-                      />
-                    </label>
-                    <Field label="API key" value="••••••••••••••••••••" />
-                  </div>
-                  <div className="grid items-end gap-3 lg:grid-cols-[1fr_auto]">
-                    <label className="block space-y-1.5">
-                      <span className="text-xs font-medium">Model</span>
-                      <select
-                        aria-label="Model"
-                        className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-xs outline-none focus:ring-2 focus:ring-ring/30"
-                        value={model}
-                        onChange={(event) => setModel(event.target.value)}
-                      >
-                        {models.map((item) => (
-                          <option key={item} value={item}>
-                            {item}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={fetchModels}
-                      disabled={fetchingModels}
-                    >
-                      {fetchingModels ? (
-                        <LoaderCircle className="animate-spin" />
-                      ) : (
-                        <RefreshCw data-icon="inline-start" />
-                      )}
-                      {fetchingModels ? 'Fetching' : 'Fetch models'}
-                    </Button>
-                  </div>
-                  <Separator />
-                  <div className="flex flex-wrap items-center gap-3">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={testProvider}
-                      disabled={providerStatus === 'testing'}
-                    >
-                      {providerStatus === 'testing' ? (
-                        <LoaderCircle className="animate-spin" />
-                      ) : (
-                        <Play data-icon="inline-start" />
-                      )}
-                      {providerStatus === 'testing' ? 'Testing provider' : 'Test provider'}
-                    </Button>
-                    {providerStatus === 'connected' && (
-                      <span className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
-                        <Check className="size-3.5" /> Provider connected
-                      </span>
-                    )}
-                    <span className="text-xs text-muted-foreground">
-                      {models.length} model{models.length === 1 ? '' : 's'} available from this URL
-                    </span>
-                  </div>
-                </Card>
-              </FormSection>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="system-prompt" className="m-0 p-5 lg:p-7">
-            <AgentSection
-              title="System prompt"
-              description="Define the standing instructions used at the start of every session."
-            >
-              <textarea
-                aria-label="System prompt"
-                className="min-h-64 w-full resize-y rounded-lg border border-input bg-background p-4 text-sm leading-6 outline-none focus:ring-2 focus:ring-ring/30"
-                value={systemPrompt}
-                onChange={(event) => setSystemPrompt(event.target.value)}
-              />
-              <p className="text-right text-xs text-muted-foreground">
-                {systemPrompt.length} characters
-              </p>
-            </AgentSection>
-          </TabsContent>
-
-          <TabsContent value="tools" className="m-0 p-5 lg:p-7">
-            <AgentSection
-              title="Tools"
-              description="Choose the capabilities this agent may invoke during a run."
-            >
-              {[
-                ['web_search', 'Search current public information'],
-                ['shell', 'Run approved local commands'],
-                ['read_file', 'Read files supplied to the agent'],
-              ].map(([name, description]) => (
-                <ToggleRow
-                  key={name}
-                  title={name}
-                  description={description}
-                  enabled={enabledTools.includes(name)}
-                  onToggle={() => toggleValue(name, enabledTools, setEnabledTools)}
-                />
-              ))}
-            </AgentSection>
-          </TabsContent>
-
-          <TabsContent value="runtime" className="m-0 p-5 lg:p-7">
-            <AgentSection
-              title="Runtime"
-              description="Set the execution limits and local context for new sessions."
-            >
-              <div className="grid gap-4 md:grid-cols-2">
-                <Field
-                  label="Working directory"
-                  value="~/.config/workflow/agents/support-analyst"
-                />
-                <Field label="Timeout" value="300" suffix="seconds" />
-                <Field label="Maximum turns" value="24" />
-                <Field label="Context window" value="Automatic" />
-              </div>
-            </AgentSection>
-          </TabsContent>
-
-          <TabsContent value="skills" className="m-0 p-5 lg:p-7">
-            <AgentSection
-              title="Skills"
-              description="Attach reusable instruction packages to this agent."
-            >
-              {['Support triage', 'Source verification', 'Response editor'].map((name) => (
-                <ToggleRow
-                  key={name}
-                  title={name}
-                  description="Reusable instructions loaded only when this agent needs them."
-                  enabled={enabledSkills.includes(name)}
-                  onToggle={() => toggleValue(name, enabledSkills, setEnabledSkills)}
-                />
-              ))}
-            </AgentSection>
-          </TabsContent>
-
-          <TabsContent value="extensions" className="m-0 p-5 lg:p-7">
-            <AgentSection
-              title="Extensions"
-              description="Connect optional integrations to this agent."
-            >
-              {['Git context', 'mem0 memory', 'Issue tracker'].map((name) => (
-                <ToggleRow
-                  key={name}
-                  title={name}
-                  description="Share scoped integration context with new sessions."
-                  enabled={enabledExtensions.includes(name)}
-                  onToggle={() => toggleValue(name, enabledExtensions, setEnabledExtensions)}
-                />
-              ))}
-            </AgentSection>
-          </TabsContent>
-
-          <TabsContent value="sessions" className="m-0 p-5 lg:p-7">
-            <AgentSection title="Sessions" description="Recent runs started with this agent.">
-              <div className="overflow-hidden rounded-xl border">
-                {[
-                  ['Support request #1842', 'Completed', '4 min ago'],
-                  ['Refund escalation', 'Completed', 'Yesterday'],
-                  ['Account access review', 'Stopped', '2 days ago'],
-                ].map(([name, status, time]) => (
-                  <div
-                    className="grid grid-cols-[1fr_auto_auto] items-center gap-6 border-b px-4 py-3 text-sm last:border-b-0"
-                    key={name}
-                  >
-                    <span className="font-medium">{name}</span>
-                    <Badge variant="outline">{status}</Badge>
-                    <span className="text-xs text-muted-foreground">{time}</span>
-                  </div>
-                ))}
-              </div>
-            </AgentSection>
-          </TabsContent>
-
-          <TabsContent value="stats" className="m-0 p-5 lg:p-7">
-            <AgentSection
-              title="Stats"
-              description="Performance and usage for this agent over the last 7 days."
-            >
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <Metric label="Runs" value="184" />
-                <Metric label="Success" value="98.1%" />
-                <Metric label="Median duration" value="12.4s" />
-                <Metric label="Tokens" value="1.2M" />
-              </div>
-              <Card className="mt-4 gap-3 bg-muted/20 p-4 shadow-none">
-                <div className="flex items-center justify-between text-xs font-semibold">
-                  <span>Daily successful runs</span>
-                  <Activity className="size-4 text-muted-foreground" />
-                </div>
-                <div className="flex h-36 items-end gap-3">
-                  {[48, 65, 54, 78, 71, 88, 82].map((height, index) => (
-                    <div
-                      className="flex h-full flex-1 flex-col items-center justify-end gap-2"
-                      key={height}
-                    >
-                      <div
-                        className="w-full rounded-t bg-primary/80"
-                        style={{ height: `${height}%` }}
-                      />
-                      <span className="text-[10px] text-muted-foreground">
-                        {['M', 'T', 'W', 'T', 'F', 'S', 'S'][index]}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-            </AgentSection>
-          </TabsContent>
-        </ScrollArea>
-      </Tabs>
-
-      <div className="flex shrink-0 items-center justify-end gap-2 border-t bg-muted/20 px-5 py-3">
         <Button variant="ghost" size="sm">
           Discard
         </Button>
@@ -1153,6 +918,325 @@ function AgentsPage({
           <Save data-icon="inline-start" /> Save agent
         </Button>
       </div>
+
+      <div className="flex min-h-0 flex-1">
+        <aside className="w-48 shrink-0 border-r bg-muted/15 p-2">
+          <nav aria-label="Agent settings" className="space-y-1">
+            {AGENT_SECTIONS.map((section) => {
+              const SectionIcon = section.icon;
+              return (
+                <button
+                  aria-current={activeSection === section.id ? 'page' : undefined}
+                  className={cn(
+                    'flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
+                    activeSection === section.id && 'bg-muted text-foreground'
+                  )}
+                  key={section.id}
+                  onClick={() => setActiveSection(section.id)}
+                  type="button"
+                >
+                  <SectionIcon className="size-3.5" />
+                  {section.label}
+                </button>
+              );
+            })}
+          </nav>
+        </aside>
+
+        <ScrollArea className="min-w-0 flex-1">
+          <div className="p-5 lg:p-7">
+            {activeSection === 'general' && (
+              <div className="mx-auto max-w-5xl space-y-7">
+                <FormSection
+                  title="Identity"
+                  description="Click the agent name above to rename it without leaving your current context."
+                >
+                  <Field
+                    label="Description"
+                    value="Analyzes incoming support requests and prepares a grounded response for human review."
+                    multiline
+                  />
+                </FormSection>
+                <FormSection
+                  title="Provider"
+                  description="Connect the provider, discover its available models, then verify the connection here."
+                >
+                  <Card className="gap-4 bg-muted/20 p-4 shadow-none">
+                    <div className="grid gap-3 lg:grid-cols-[1.3fr_1fr]">
+                      <label className="block space-y-1.5">
+                        <span className="text-xs font-medium">Provider base URL</span>
+                        <Input
+                          aria-label="Provider base URL"
+                          className="text-xs"
+                          value={providerUrl}
+                          onChange={(event) => {
+                            setProviderUrl(event.target.value);
+                            setProviderStatus('idle');
+                          }}
+                        />
+                      </label>
+                      <Field label="API key" value="••••••••••••••••••••" />
+                    </div>
+                    <div className="grid items-end gap-3 lg:grid-cols-[1fr_auto]">
+                      <label className="block space-y-1.5">
+                        <span className="text-xs font-medium">Model</span>
+                        <select
+                          aria-label="Model"
+                          className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-xs outline-none focus:ring-2 focus:ring-ring/30"
+                          value={model}
+                          onChange={(event) => setModel(event.target.value)}
+                        >
+                          {models.map((item) => (
+                            <option key={item} value={item}>
+                              {item}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={fetchModels}
+                        disabled={fetchingModels}
+                      >
+                        {fetchingModels ? (
+                          <LoaderCircle className="animate-spin" />
+                        ) : (
+                          <RefreshCw data-icon="inline-start" />
+                        )}
+                        {fetchingModels ? 'Fetching' : 'Fetch models'}
+                      </Button>
+                    </div>
+                    <Separator />
+                    <div className="flex flex-wrap items-center gap-3">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={testProvider}
+                        disabled={providerStatus === 'testing'}
+                      >
+                        {providerStatus === 'testing' ? (
+                          <LoaderCircle className="animate-spin" />
+                        ) : (
+                          <Play data-icon="inline-start" />
+                        )}
+                        {providerStatus === 'testing' ? 'Testing provider' : 'Test provider'}
+                      </Button>
+                      {providerStatus === 'connected' && (
+                        <span className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
+                          <Check className="size-3.5" /> Provider connected
+                        </span>
+                      )}
+                      <span className="text-xs text-muted-foreground">
+                        {models.length} model{models.length === 1 ? '' : 's'} available from this
+                        URL
+                      </span>
+                    </div>
+                  </Card>
+                </FormSection>
+              </div>
+            )}
+
+            {activeSection === 'system-prompt' && (
+              <AgentSection
+                title="System prompt"
+                description="Define the standing instructions used at the start of every session."
+              >
+                <textarea
+                  aria-label="System prompt"
+                  className="min-h-64 w-full resize-y rounded-lg border border-input bg-background p-4 text-sm leading-6 outline-none focus:ring-2 focus:ring-ring/30"
+                  value={systemPrompt}
+                  onChange={(event) => setSystemPrompt(event.target.value)}
+                />
+                <p className="text-right text-xs text-muted-foreground">
+                  {systemPrompt.length} characters
+                </p>
+              </AgentSection>
+            )}
+
+            {activeSection === 'tools' && (
+              <AgentSection
+                title="Tools"
+                description="Choose the capabilities this agent may invoke during a run."
+              >
+                {[
+                  ['web_search', 'Search current public information'],
+                  ['shell', 'Run approved local commands'],
+                  ['read_file', 'Read files supplied to the agent'],
+                ].map(([name, description]) => (
+                  <ToggleRow
+                    key={name}
+                    title={name}
+                    description={description}
+                    enabled={enabledTools.includes(name)}
+                    onToggle={() => toggleValue(name, enabledTools, setEnabledTools)}
+                  />
+                ))}
+              </AgentSection>
+            )}
+
+            {activeSection === 'runtime' && (
+              <AgentSection
+                title="Runtime"
+                description="Set the execution limits and local context for new sessions."
+              >
+                <div className="grid gap-4 md:grid-cols-2">
+                  <Field
+                    label="Working directory"
+                    value="~/.config/workflow/agents/support-analyst"
+                  />
+                  <Field label="Timeout" value="300" suffix="seconds" />
+                  <Field label="Maximum turns" value="24" />
+                  <Field label="Context window" value="Automatic" />
+                </div>
+              </AgentSection>
+            )}
+
+            {activeSection === 'skills' && (
+              <AgentSection
+                title="Skills"
+                description="Attach reusable instruction packages to this agent."
+              >
+                {['Support triage', 'Source verification', 'Response editor'].map((name) => (
+                  <ToggleRow
+                    key={name}
+                    title={name}
+                    description="Reusable instructions loaded only when this agent needs them."
+                    enabled={enabledSkills.includes(name)}
+                    onToggle={() => toggleValue(name, enabledSkills, setEnabledSkills)}
+                  />
+                ))}
+              </AgentSection>
+            )}
+
+            {activeSection === 'extensions' && (
+              <AgentSection
+                title="Extensions"
+                description="Connect optional integrations to this agent."
+              >
+                {['Git context', 'mem0 memory', 'Issue tracker'].map((name) => (
+                  <ToggleRow
+                    key={name}
+                    title={name}
+                    description="Share scoped integration context with new sessions."
+                    enabled={enabledExtensions.includes(name)}
+                    onToggle={() => toggleValue(name, enabledExtensions, setEnabledExtensions)}
+                  />
+                ))}
+              </AgentSection>
+            )}
+
+            {activeSection === 'sessions' && (
+              <AgentSection title="Sessions" description="Recent runs started with this agent.">
+                <div className="overflow-hidden rounded-xl border">
+                  {[
+                    ['Support request #1842', 'Completed', '4 min ago'],
+                    ['Refund escalation', 'Completed', 'Yesterday'],
+                    ['Account access review', 'Stopped', '2 days ago'],
+                  ].map(([name, status, time]) => (
+                    <div
+                      className="grid grid-cols-[1fr_auto_auto] items-center gap-6 border-b px-4 py-3 text-sm last:border-b-0"
+                      key={name}
+                    >
+                      <span className="font-medium">{name}</span>
+                      <Badge variant="outline">{status}</Badge>
+                      <span className="text-xs text-muted-foreground">{time}</span>
+                    </div>
+                  ))}
+                </div>
+              </AgentSection>
+            )}
+
+            {activeSection === 'stats' && (
+              <AgentSection
+                title="Stats"
+                description="Performance and usage for this agent over the last 7 days."
+              >
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <Metric label="Runs" value="184" />
+                  <Metric label="Success" value="98.1%" />
+                  <Metric label="Median duration" value="12.4s" />
+                  <Metric label="Tokens" value="1.2M" />
+                </div>
+                <Card className="mt-4 gap-3 bg-muted/20 p-4 shadow-none">
+                  <div className="flex items-center justify-between text-xs font-semibold">
+                    <span>Daily successful runs</span>
+                    <Activity className="size-4 text-muted-foreground" />
+                  </div>
+                  <div className="flex h-36 items-end gap-3">
+                    {[48, 65, 54, 78, 71, 88, 82].map((height, index) => (
+                      <div
+                        className="flex h-full flex-1 flex-col items-center justify-end gap-2"
+                        key={height}
+                      >
+                        <div
+                          className="w-full rounded-t bg-primary/80"
+                          style={{ height: `${height}%` }}
+                        />
+                        <span className="text-[10px] text-muted-foreground">
+                          {['M', 'T', 'W', 'T', 'F', 'S', 'S'][index]}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              </AgentSection>
+            )}
+          </div>
+        </ScrollArea>
+      </div>
+
+      <Sheet open={chatOpen} onOpenChange={setChatOpen}>
+        <SheetContent className="w-full sm:max-w-md" side="right" showCloseButton={false}>
+          <SheetHeader className="relative border-b pr-12">
+            <SheetTitle>Chat with {agent.name}</SheetTitle>
+            <SheetDescription>
+              Quick conversation using the current agent settings.
+            </SheetDescription>
+            <IconButton
+              className="absolute top-3 right-3"
+              label="Close"
+              onClick={() => setChatOpen(false)}
+            >
+              <X />
+            </IconButton>
+          </SheetHeader>
+          <ScrollArea className="min-h-0 flex-1 px-4">
+            <div className="space-y-3 py-3">
+              {chatMessages.map((message, index) => (
+                <div
+                  className={cn(
+                    'w-fit max-w-[85%] rounded-xl px-3 py-2 text-sm leading-5',
+                    message.role === 'user'
+                      ? 'ml-auto bg-primary text-primary-foreground'
+                      : 'bg-muted text-foreground'
+                  )}
+                  key={`${message.role}-${index}`}
+                >
+                  {message.text}
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+          <form
+            className="flex gap-2 border-t p-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              sendChat();
+            }}
+          >
+            <Input
+              aria-label="Message"
+              placeholder={`Message ${agent.name}`}
+              value={chatDraft}
+              onChange={(event) => setChatDraft(event.target.value)}
+            />
+            <Button aria-label="Send message" size="icon" type="submit">
+              <Send />
+            </Button>
+          </form>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
@@ -1217,12 +1301,12 @@ function ToggleRow({
 function SettingsPage({ variant }: { variant: Variant }) {
   return (
     <div className="mx-auto min-h-full max-w-[980px] p-6 lg:p-8">
-      <PageHeading
-        eyebrow="Preferences"
-        title="Settings"
-        description="Defaults for workflow execution, memory and local data."
-      />
-      <div className={cn('mt-7 grid gap-4', variant === 'B' ? 'md:grid-cols-2' : 'grid-cols-1')}>
+      <div className="mb-4 flex justify-end">
+        <Button>
+          <Save data-icon="inline-start" /> Save settings
+        </Button>
+      </div>
+      <div className={cn('grid gap-4', variant === 'B' ? 'md:grid-cols-2' : 'grid-cols-1')}>
         <SettingsCard
           icon={Clock3}
           title="Execution"
@@ -1269,12 +1353,6 @@ function SettingsPage({ variant }: { variant: Variant }) {
           <KeyValue label="API origin" value="Same origin" />
           <KeyValue label="Provider" value="Fake provider :4010" />
         </SettingsCard>
-      </div>
-      <div className="sticky bottom-0 mt-6 flex items-center justify-between rounded-xl border bg-background/95 p-3 shadow-[0_8px_28px_rgb(15_23_42/0.10)]">
-        <span className="text-xs text-muted-foreground">No unsaved changes</span>
-        <Button>
-          <Save data-icon="inline-start" /> Save settings
-        </Button>
       </div>
     </div>
   );
@@ -1630,31 +1708,6 @@ function ExecutionDock({ running }: { running: boolean }) {
   );
 }
 
-function PageHeading({
-  eyebrow,
-  title,
-  description,
-  action,
-}: {
-  eyebrow: string;
-  title: string;
-  description: string;
-  action?: ReactNode;
-}) {
-  return (
-    <div className="flex items-end gap-4">
-      <div>
-        <div className="text-[11px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
-          {eyebrow}
-        </div>
-        <h1 className="mt-1 text-2xl font-semibold tracking-[-0.025em]">{title}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{description}</p>
-      </div>
-      {action && <div className="ml-auto">{action}</div>}
-    </div>
-  );
-}
-
 function FormSection({
   title,
   description,
@@ -1831,7 +1884,11 @@ function IconButton({
 
 function ThemeToggle({ dark, setDark }: { dark: boolean; setDark: (value: boolean) => void }) {
   return (
-    <IconButton label={dark ? 'Use light theme' : 'Use dark theme'} onClick={() => setDark(!dark)}>
+    <IconButton
+      className="text-muted-foreground/45 hover:text-muted-foreground"
+      label={dark ? 'Use light theme' : 'Use dark theme'}
+      onClick={() => setDark(!dark)}
+    >
       {dark ? <Sun /> : <Moon />}
     </IconButton>
   );
