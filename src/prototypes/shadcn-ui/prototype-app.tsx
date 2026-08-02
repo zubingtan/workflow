@@ -1008,16 +1008,11 @@ function AgentsPage({
             <div className="p-5 lg:p-7">
               {activeSection === 'general' && (
                 <div className="mx-auto max-w-5xl space-y-7">
-                  <FormSection
-                    title="Identity"
-                    description="Click the agent name above to rename it without leaving your current context."
-                  >
-                    <Field
-                      label="Description"
-                      value="Analyzes incoming support requests and prepares a grounded response for human review."
-                      multiline
-                    />
-                  </FormSection>
+                  <Field
+                    label="Description"
+                    value="Analyzes incoming support requests and prepares a grounded response for human review."
+                    multiline
+                  />
                   <FormSection
                     title="Provider"
                     description="Connect the provider, discover its available models, then verify the connection here."

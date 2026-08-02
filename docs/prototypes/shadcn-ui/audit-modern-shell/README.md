@@ -25,6 +25,7 @@ Validate the preferred Variant A structure after the latest navigation feedback:
 - After: the dark editor uses neutral near-black layers; node cards and connections stay visually separated without a red background tint.
 - After: the Variant A node inspector uses the same floating rounded-surface rule as the primary rail and canvas controls, with canvas visible on every side.
 - Consistency check: Workflow and Agent collection cards plus Settings sections already use rounded surfaces. Agent detail navigation intentionally remains full-height inside the detail pane because it is page structure, not a temporary tool surface.
+- After: Agent General starts directly with Description; the redundant Identity heading and rename instructions are removed because the name is edited in the detail header.
 
 ## Evidence
 
@@ -44,5 +45,6 @@ Validate the preferred Variant A structure after the latest navigation feedback:
 - `19-editor-inspector-after.png`: rounded floating node inspector with preserved canvas layout.
 - `20-editor-inspector-dark.png`: dark-mode verification of the same surface hierarchy.
 - `21-agent-detail-surface-audit.png`: Agent detail remains a full-pane editing surface rather than an unnecessary nested floating panel.
+- `22-agent-general-without-identity.png`: General settings after removing the redundant Identity introduction.
 
 Browser verification covered Workflow list -> editor -> Back, Agent list -> settings -> Back, Sessions -> New session -> Send -> Back, sidebar collapse/expand, theme switching, node-inspector surface consistency, and console warnings/errors.
