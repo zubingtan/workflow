@@ -1,0 +1,1521 @@
+import { useEffect, useMemo, useState, type ComponentType, type ReactNode } from 'react';
+
+import {
+  Activity,
+  AlignHorizontalSpaceAround,
+  Archive,
+  ArrowDownToLine,
+  ArrowRight,
+  Bot,
+  Box,
+  Braces,
+  Check,
+  ChevronDown,
+  CircleStop,
+  Clock3,
+  Cloud,
+  Code2,
+  Columns3,
+  Database,
+  Ellipsis,
+  ExternalLink,
+  FileClock,
+  FileJson,
+  GitBranch,
+  Globe2,
+  GripVertical,
+  History,
+  ListFilter,
+  LoaderCircle,
+  Maximize2,
+  MessageSquareText,
+  Moon,
+  MoreHorizontal,
+  PanelLeftClose,
+  Play,
+  Plus,
+  Radio,
+  Redo2,
+  RefreshCw,
+  RotateCcw,
+  Save,
+  Search,
+  Settings,
+  Sparkles,
+  Split,
+  Sun,
+  TerminalSquare,
+  TextCursorInput,
+  Undo2,
+  Variable,
+  WandSparkles,
+  Webhook,
+  Workflow,
+  Wrench,
+  X,
+  Zap,
+} from 'lucide-react';
+
+import { cn } from '@/prototypes/shadcn-ui/lib/utils';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/prototypes/shadcn-ui/components/ui/tooltip';
+import { Tabs, TabsList, TabsTrigger } from '@/prototypes/shadcn-ui/components/ui/tabs';
+import { Separator } from '@/prototypes/shadcn-ui/components/ui/separator';
+import { ScrollArea } from '@/prototypes/shadcn-ui/components/ui/scroll-area';
+import { Input } from '@/prototypes/shadcn-ui/components/ui/input';
+import { Card } from '@/prototypes/shadcn-ui/components/ui/card';
+import { Button, buttonVariants } from '@/prototypes/shadcn-ui/components/ui/button';
+import { Badge } from '@/prototypes/shadcn-ui/components/ui/badge';
+
+type View = 'workflows' | 'agents' | 'settings' | 'editor';
+type Variant = 'A' | 'B' | 'C';
+type Icon = ComponentType<{ className?: string }>;
+
+const VIEW_ITEMS: Array<{ id: View; label: string; shortLabel: string; icon: Icon }> = [
+  { id: 'workflows', label: 'Workflows', shortLabel: 'Flows', icon: Workflow },
+  { id: 'agents', label: 'Agents', shortLabel: 'Agents', icon: Bot },
+  { id: 'settings', label: 'Settings', shortLabel: 'Settings', icon: Settings },
+];
+
+const VARIANTS: Array<{ id: Variant; name: string; description: string }> = [
+  { id: 'A', name: 'Workbench Rail', description: 'persistent navigation + contextual inspector' },
+  { id: 'B', name: 'Command Deck', description: 'top navigation + execution dock' },
+  { id: 'C', name: 'Focus Dock', description: 'icon rail + floating context' },
+];
+
+const WORKFLOWS = [
+  {
+    name: 'Support triage',
+    description: 'Classify requests, gather context and prepare a response for review.',
+    status: 'Published',
+    nodes: 8,
+    lastRun: '4 min ago',
+    success: '98.1%',
+    accent: 'bg-blue-500',
+  },
+  {
+    name: 'Research brief',
+    description: 'Collect sources, synthesize evidence and generate a structured brief.',
+    status: 'Draft',
+    nodes: 12,
+    lastRun: 'Yesterday',
+    success: '94.8%',
+    accent: 'bg-violet-500',
+  },
+  {
+    name: 'Release notes',
+    description: 'Transform merged changes into concise customer-facing release notes.',
+    status: 'Published',
+    nodes: 6,
+    lastRun: '3 days ago',
+    success: '100%',
+    accent: 'bg-emerald-500',
+  },
+];
+
+const AGENTS = [
+  { name: 'Support analyst', model: 'gpt-5', status: 'Ready', color: 'bg-blue-600' },
+  { name: 'Research lead', model: 'deepseek-v4-pro', status: 'Ready', color: 'bg-violet-600' },
+  { name: 'Release editor', model: 'gpt-5-mini', status: 'Draft', color: 'bg-amber-600' },
+];
+
+const NODE_TYPES = [
+  ['Start', Radio],
+  ['End', CircleStop],
+  ['LLM', Sparkles],
+  ['HTTP', Globe2],
+  ['Code', Code2],
+  ['Variable', Variable],
+  ['Condition', GitBranch],
+  ['Multi-condition', Split],
+  ['Loop', RefreshCw],
+  ['Group', Box],
+  ['Comment', MessageSquareText],
+  ['Block start', AlignHorizontalSpaceAround],
+  ['Block end', ArrowDownToLine],
+  ['Continue', Redo2],
+  ['Break', CircleStop],
+] as const;
+
+function readQuery(): { variant: Variant; view: View } {
+  const params = new URLSearchParams(window.location.search);
+  const variant = params.get('variant');
+  const view = params.get('view');
+
+  return {
+    variant: variant === 'B' || variant === 'C' ? variant : 'A',
+    view: view === 'workflows' || view === 'agents' || view === 'settings' ? view : 'editor',
+  };
+}
+
+export function PrototypeApp() {
+  const initial = useMemo(readQuery, []);
+  const [variant, setVariant] = useState<Variant>(initial.variant);
+  const [view, setView] = useState<View>(initial.view);
+  const [dark, setDark] = useState(false);
+  const [running, setRunning] = useState(false);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('variant', variant);
+    url.searchParams.set('view', view);
+    window.history.replaceState(null, '', url);
+  }, [variant, view]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
+        return;
+      }
+
+      const current = VARIANTS.findIndex((item) => item.id === variant);
+      const direction = event.key === 'ArrowRight' ? 1 : -1;
+      const next = (current + direction + VARIANTS.length) % VARIANTS.length;
+      setVariant(VARIANTS[next].id);
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [variant]);
+
+  const shared: LayoutProps = {
+    view,
+    setView,
+    dark,
+    setDark,
+    running,
+    onRun: () => {
+      setRunning(true);
+      window.setTimeout(() => setRunning(false), 1400);
+    },
+  };
+
+  return (
+    <TooltipProvider>
+      <div className={cn('prototype-root', dark && 'dark')} data-variant={variant}>
+        {variant === 'A' && <WorkbenchRail {...shared} />}
+        {variant === 'B' && <CommandDeck {...shared} />}
+        {variant === 'C' && <FocusDock {...shared} />}
+        {process.env.NODE_ENV !== 'production' && (
+          <VariantSwitcher variant={variant} onChange={setVariant} />
+        )}
+      </div>
+    </TooltipProvider>
+  );
+}
+
+interface LayoutProps {
+  view: View;
+  setView: (view: View) => void;
+  dark: boolean;
+  setDark: (dark: boolean) => void;
+  running: boolean;
+  onRun: () => void;
+}
+
+function WorkbenchRail(props: LayoutProps) {
+  const { view, setView } = props;
+
+  return (
+    <div className="flex h-screen overflow-hidden bg-background text-foreground">
+      <aside className="flex w-[224px] shrink-0 flex-col border-r border-border/80 bg-sidebar">
+        <Brand compact={false} />
+        <div className="px-3 pb-2">
+          <Button className="w-full justify-start" size="sm" onClick={() => setView('editor')}>
+            <Plus data-icon="inline-start" /> New workflow
+          </Button>
+        </div>
+        <nav className="space-y-1 px-2">
+          {VIEW_ITEMS.map((item) => (
+            <RailNavItem
+              key={item.id}
+              active={view === item.id}
+              icon={item.icon}
+              label={item.label}
+              onClick={() => setView(item.id)}
+            />
+          ))}
+        </nav>
+        <Separator className="my-4" />
+        <div className="px-4 text-[11px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
+          Current workspace
+        </div>
+        <button
+          className="mx-2 mt-2 flex items-center gap-3 rounded-lg border border-border/70 bg-background/60 px-3 py-2 text-left hover:bg-accent"
+          onClick={() => setView('editor')}
+          type="button"
+        >
+          <span className="flex size-8 items-center justify-center rounded-md bg-blue-600 text-white">
+            <Workflow className="size-4" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-medium">Support triage</span>
+            <span className="block text-xs text-muted-foreground">Draft · 8 nodes</span>
+          </span>
+          <ChevronDown className="size-3.5 text-muted-foreground" />
+        </button>
+        <div className="mt-auto p-3">
+          <Card className="gap-2 border-border/70 bg-background/70 p-3 shadow-none">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">Executions</span>
+              <span className="font-medium">742 / 1k</span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+              <div className="h-full w-[74%] rounded-full bg-primary" />
+            </div>
+            <span className="text-[11px] text-muted-foreground">
+              Workspace plan resets in 12 days
+            </span>
+          </Card>
+          <UserFooter />
+        </div>
+      </aside>
+
+      <section className="flex min-w-0 flex-1 flex-col">
+        <WorkbenchHeader {...props} />
+        <div className="flex min-h-0 flex-1">
+          <main className="min-w-0 flex-1 overflow-auto">
+            <ViewContent variant="A" {...props} />
+          </main>
+          {view === 'editor' && <Inspector variant="A" />}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function WorkbenchHeader(props: LayoutProps) {
+  const { view, setView, dark, setDark, running, onRun } = props;
+  const isEditor = view === 'editor';
+
+  return (
+    <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border/80 bg-background px-4">
+      {isEditor ? (
+        <>
+          <button
+            className="text-sm text-muted-foreground hover:text-foreground"
+            onClick={() => setView('workflows')}
+            type="button"
+          >
+            Workflows
+          </button>
+          <span className="text-muted-foreground/50">/</span>
+          <span className="text-sm font-semibold">Support triage</span>
+          <Badge className="ml-1" variant="outline">
+            Draft
+          </Badge>
+          <span className="text-xs text-muted-foreground">Saved just now</span>
+        </>
+      ) : (
+        <span className="text-sm font-semibold">{view[0].toUpperCase() + view.slice(1)}</span>
+      )}
+      <div className="ml-auto flex items-center gap-1.5">
+        {isEditor && (
+          <>
+            <IconButton label="Undo">
+              <Undo2 />
+            </IconButton>
+            <IconButton label="Redo">
+              <Redo2 />
+            </IconButton>
+            <Separator className="mx-1 h-5" orientation="vertical" />
+            <Button variant="outline" size="sm">
+              <Save data-icon="inline-start" /> Save
+            </Button>
+            <Button size="sm" onClick={onRun} disabled={running}>
+              {running ? (
+                <LoaderCircle className="animate-spin" />
+              ) : (
+                <Play data-icon="inline-start" />
+              )}
+              {running ? 'Running' : 'Test run'}
+            </Button>
+          </>
+        )}
+        <ThemeToggle dark={dark} setDark={setDark} />
+        <IconButton label="More options">
+          <Ellipsis />
+        </IconButton>
+      </div>
+    </header>
+  );
+}
+
+function CommandDeck(props: LayoutProps) {
+  const { view, setView, dark, setDark, running, onRun } = props;
+
+  return (
+    <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
+      <header className="flex h-14 shrink-0 items-center border-b border-border bg-background px-5">
+        <Brand compact />
+        <nav className="ml-8 flex items-center gap-1 rounded-lg bg-muted/70 p-1">
+          {VIEW_ITEMS.map((item) => (
+            <Button
+              key={item.id}
+              variant={view === item.id ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => setView(item.id)}
+            >
+              <item.icon data-icon="inline-start" /> {item.label}
+            </Button>
+          ))}
+        </nav>
+        <button
+          className="ml-5 flex w-[320px] items-center gap-2 rounded-lg border border-border bg-muted/25 px-3 py-1.5 text-left text-sm text-muted-foreground hover:bg-muted/60"
+          type="button"
+        >
+          <Search className="size-4" />
+          <span className="flex-1">Search workflows, agents, runs…</span>
+          <kbd className="rounded border bg-background px-1.5 py-0.5 text-[10px]">⌘ K</kbd>
+        </button>
+        <div className="ml-auto flex items-center gap-1.5">
+          <ThemeToggle dark={dark} setDark={setDark} />
+          <Button size="sm" onClick={() => setView('editor')}>
+            <Plus data-icon="inline-start" /> Create
+          </Button>
+          <div className="ml-1 flex size-8 items-center justify-center rounded-full bg-foreground text-xs font-semibold text-background">
+            ZT
+          </div>
+        </div>
+      </header>
+
+      {view === 'editor' && (
+        <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border/80 bg-muted/25 px-5">
+          <Button variant="ghost" size="sm" onClick={() => setView('workflows')}>
+            <PanelLeftClose data-icon="inline-start" /> All workflows
+          </Button>
+          <Separator className="mx-1 h-5" orientation="vertical" />
+          <span className="text-sm font-semibold">Support triage</span>
+          <Badge variant="secondary">Draft</Badge>
+          <div className="ml-auto flex items-center gap-1">
+            <IconButton label="History">
+              <History />
+            </IconButton>
+            <Button variant="outline" size="sm">
+              <Save data-icon="inline-start" /> Save
+            </Button>
+            <Button size="sm" onClick={onRun} disabled={running}>
+              {running ? (
+                <LoaderCircle className="animate-spin" />
+              ) : (
+                <Play data-icon="inline-start" />
+              )}
+              {running ? 'Running' : 'Run'}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <main className="min-h-0 flex-1 overflow-auto">
+        <ViewContent variant="B" {...props} />
+      </main>
+      {view === 'editor' && <ExecutionDock running={running} />}
+    </div>
+  );
+}
+
+function FocusDock(props: LayoutProps) {
+  const { view, setView, dark, setDark, running, onRun } = props;
+
+  return (
+    <div className="grid h-screen grid-cols-[64px_minmax(0,1fr)] overflow-hidden bg-muted/30 text-foreground">
+      <aside className="flex flex-col items-center border-r border-border bg-background py-3">
+        <button
+          className="mb-5 flex size-9 items-center justify-center rounded-xl bg-foreground text-background"
+          onClick={() => setView('editor')}
+          type="button"
+        >
+          <Zap className="size-4" />
+        </button>
+        <nav className="space-y-2">
+          {VIEW_ITEMS.map((item) => (
+            <Tooltip key={item.id}>
+              <TooltipTrigger
+                className={cn(
+                  'flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
+                  view === item.id &&
+                    'bg-foreground text-background hover:bg-foreground hover:text-background'
+                )}
+                onClick={() => setView(item.id)}
+              >
+                <item.icon className="size-4" />
+              </TooltipTrigger>
+              <TooltipContent side="right">{item.label}</TooltipContent>
+            </Tooltip>
+          ))}
+        </nav>
+        <div className="mt-auto space-y-2">
+          <ThemeToggle dark={dark} setDark={setDark} />
+          <div className="flex size-9 items-center justify-center rounded-full bg-blue-600 text-[11px] font-semibold text-white">
+            ZT
+          </div>
+        </div>
+      </aside>
+
+      <div className="relative m-2 ml-0 flex min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-background shadow-[0_1px_3px_rgb(15_23_42/0.08)]">
+        <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-4">
+          <div>
+            <div className="text-[11px] font-medium tracking-[0.08em] text-muted-foreground uppercase">
+              {view === 'editor' ? 'Workflow editor' : 'Workspace'}
+            </div>
+            <div className="text-sm font-semibold">
+              {view === 'editor' ? 'Support triage' : view[0].toUpperCase() + view.slice(1)}
+            </div>
+          </div>
+          {view === 'editor' && <Badge variant="outline">Draft</Badge>}
+          <div className="ml-auto flex items-center gap-1.5">
+            <button
+              className="mr-2 flex items-center gap-2 text-xs text-muted-foreground"
+              type="button"
+            >
+              <span className="size-1.5 rounded-full bg-emerald-500" /> Saved
+            </button>
+            <IconButton label="Workflow history">
+              <FileClock />
+            </IconButton>
+            {view === 'editor' && (
+              <>
+                <Button variant="outline" size="sm">
+                  <Save data-icon="inline-start" /> Save
+                </Button>
+                <Button size="sm" onClick={onRun} disabled={running}>
+                  {running ? (
+                    <LoaderCircle className="animate-spin" />
+                  ) : (
+                    <Play data-icon="inline-start" />
+                  )}
+                  {running ? 'Running' : 'Test run'}
+                </Button>
+              </>
+            )}
+          </div>
+        </header>
+        <main className="min-h-0 flex-1 overflow-auto">
+          <ViewContent variant="C" {...props} />
+        </main>
+        {view === 'editor' && <Inspector variant="C" />}
+      </div>
+    </div>
+  );
+}
+
+function ViewContent(props: LayoutProps & { variant: Variant }) {
+  switch (props.view) {
+    case 'workflows':
+      return <WorkflowsPage variant={props.variant} onOpen={() => props.setView('editor')} />;
+    case 'agents':
+      return <AgentsPage variant={props.variant} />;
+    case 'settings':
+      return <SettingsPage variant={props.variant} />;
+    default:
+      return <EditorCanvas variant={props.variant} running={props.running} />;
+  }
+}
+
+function WorkflowsPage({ variant, onOpen }: { variant: Variant; onOpen: () => void }) {
+  return (
+    <div
+      className={cn(
+        'mx-auto min-h-full max-w-[1240px] p-6 lg:p-8',
+        variant === 'C' && 'max-w-[1120px]'
+      )}
+    >
+      <PageHeading
+        eyebrow="Workspace"
+        title="Workflows"
+        description="Build, test and monitor reusable agent workflows."
+        action={
+          <Button onClick={onOpen}>
+            <Plus data-icon="inline-start" /> New workflow
+          </Button>
+        }
+      />
+      <div className="mt-6 grid gap-3 md:grid-cols-3">
+        {WORKFLOWS.map((workflow) => (
+          <Card
+            key={workflow.name}
+            className="group gap-4 border-border/80 p-4 shadow-[0_1px_2px_rgb(15_23_42/0.04)] transition hover:border-foreground/20 hover:shadow-[0_6px_18px_rgb(15_23_42/0.06)]"
+          >
+            <div className="flex items-start gap-3">
+              <span className={cn('mt-1 size-2 rounded-full', workflow.accent)} />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="truncate text-sm font-semibold">{workflow.name}</h3>
+                  <Button
+                    className="opacity-0 group-hover:opacity-100"
+                    variant="ghost"
+                    size="icon-xs"
+                  >
+                    <MoreHorizontal />
+                  </Button>
+                </div>
+                <p className="mt-1 min-h-10 text-xs leading-5 text-muted-foreground">
+                  {workflow.description}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              <Badge variant={workflow.status === 'Published' ? 'secondary' : 'outline'}>
+                {workflow.status}
+              </Badge>
+              <span className="text-muted-foreground">{workflow.nodes} nodes</span>
+              <span className="ml-auto font-medium text-emerald-600 dark:text-emerald-400">
+                {workflow.success}
+              </span>
+            </div>
+            <Separator />
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <Clock3 className="size-3.5" /> {workflow.lastRun}
+              </span>
+              <button
+                className="flex items-center gap-1 font-medium text-foreground"
+                onClick={onOpen}
+                type="button"
+              >
+                Open <ArrowRight className="size-3.5" />
+              </button>
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      <section className="mt-8">
+        <div className="mb-3 flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-semibold">Recent executions</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Latest workflow runs across this workspace.
+            </p>
+          </div>
+          <Button variant="outline" size="sm">
+            <ListFilter data-icon="inline-start" /> Filter
+          </Button>
+        </div>
+        <div className="overflow-hidden rounded-xl border border-border bg-card">
+          <div className="grid grid-cols-[1.4fr_.7fr_.65fr_.7fr_36px] border-b bg-muted/35 px-4 py-2 text-[11px] font-semibold text-muted-foreground uppercase">
+            <span>Workflow</span>
+            <span>Status</span>
+            <span>Duration</span>
+            <span>Started</span>
+            <span />
+          </div>
+          {WORKFLOWS.map((workflow, index) => (
+            <div
+              className="grid grid-cols-[1.4fr_.7fr_.65fr_.7fr_36px] items-center border-b border-border/60 px-4 py-3 text-sm last:border-b-0"
+              key={workflow.name}
+            >
+              <span className="font-medium">{workflow.name}</span>
+              <span className="flex items-center gap-2 text-xs">
+                <span
+                  className={cn(
+                    'size-1.5 rounded-full',
+                    index === 1 ? 'bg-amber-500' : 'bg-emerald-500'
+                  )}
+                />
+                {index === 1 ? 'Needs review' : 'Completed'}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {index === 0 ? '18.4s' : index === 1 ? '1m 12s' : '8.2s'}
+              </span>
+              <span className="text-xs text-muted-foreground">{workflow.lastRun}</span>
+              <Button variant="ghost" size="icon-xs">
+                <ArrowRight />
+              </Button>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function AgentsPage({ variant }: { variant: Variant }) {
+  const [selected, setSelected] = useState(0);
+
+  return (
+    <div className="mx-auto min-h-full max-w-[1240px] p-6 lg:p-8">
+      <PageHeading
+        eyebrow="Agent catalog"
+        title="Agents"
+        description="Configure the reusable agent identities your LLM nodes execute."
+        action={
+          <div className="flex gap-2">
+            <Button variant="outline">
+              <ArrowDownToLine data-icon="inline-start" /> Import
+            </Button>
+            <Button>
+              <Plus data-icon="inline-start" /> New agent
+            </Button>
+          </div>
+        }
+      />
+
+      <div
+        className={cn(
+          'mt-6 grid min-h-[620px] gap-3',
+          variant === 'B' ? 'grid-cols-[280px_1fr]' : 'grid-cols-[300px_1fr]'
+        )}
+      >
+        <Card className="gap-3 p-3 shadow-none">
+          <div className="relative">
+            <Search className="absolute top-2 left-2.5 size-4 text-muted-foreground" />
+            <Input className="pl-8" placeholder="Search agents" />
+          </div>
+          <div className="flex gap-1.5">
+            <Badge variant="secondary">All 3</Badge>
+            <Badge variant="outline">Ready 2</Badge>
+            <Badge variant="outline">Draft 1</Badge>
+          </div>
+          <Separator />
+          <div className="space-y-1">
+            {AGENTS.map((agent, index) => (
+              <button
+                className={cn(
+                  'flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left hover:bg-muted',
+                  selected === index && 'bg-muted'
+                )}
+                key={agent.name}
+                onClick={() => setSelected(index)}
+                type="button"
+              >
+                <span
+                  className={cn(
+                    'flex size-8 items-center justify-center rounded-lg text-white',
+                    agent.color
+                  )}
+                >
+                  <Bot className="size-4" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium">{agent.name}</span>
+                  <span className="block truncate text-xs text-muted-foreground">
+                    {agent.model}
+                  </span>
+                </span>
+                <span
+                  className={cn(
+                    'size-1.5 rounded-full',
+                    agent.status === 'Ready' ? 'bg-emerald-500' : 'bg-amber-500'
+                  )}
+                />
+              </button>
+            ))}
+          </div>
+          <div className="mt-auto rounded-lg border border-dashed p-3 text-xs text-muted-foreground">
+            <div className="mb-1 flex items-center gap-2 font-medium text-foreground">
+              <FileJson className="size-3.5" /> Portable catalog
+            </div>
+            Export agents as JSON without exposing provider keys.
+          </div>
+        </Card>
+
+        <Card className="overflow-hidden p-0 shadow-none">
+          <div className="flex items-center gap-3 border-b p-4">
+            <span
+              className={cn(
+                'flex size-10 items-center justify-center rounded-xl text-white',
+                AGENTS[selected].color
+              )}
+            >
+              <Bot className="size-5" />
+            </span>
+            <div>
+              <h2 className="text-sm font-semibold">{AGENTS[selected].name}</h2>
+              <p className="text-xs text-muted-foreground">
+                OpenAI-compatible · {AGENTS[selected].model}
+              </p>
+            </div>
+            <Badge className="ml-1" variant="secondary">
+              <span className="mr-1 size-1.5 rounded-full bg-emerald-500" /> Ready
+            </Badge>
+            <div className="ml-auto flex gap-1">
+              <Button variant="outline" size="sm">
+                <Play data-icon="inline-start" /> Test
+              </Button>
+              <Button variant="ghost" size="icon-sm">
+                <MoreHorizontal />
+              </Button>
+            </div>
+          </div>
+          <Tabs defaultValue="general" className="min-h-0 flex-1 px-5 pt-3">
+            <TabsList variant="line" className="w-full justify-start border-b pb-1">
+              {[
+                'General',
+                'System prompt',
+                'Tools',
+                'Runtime',
+                'Skills',
+                'Extensions',
+                'Sessions',
+                'Stats',
+              ].map((tab) => (
+                <TabsTrigger
+                  className="flex-none px-2.5 text-xs"
+                  key={tab}
+                  value={tab.toLowerCase().replace(' ', '-')}
+                >
+                  {tab}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+          <ScrollArea className="h-[500px]">
+            <div className="grid gap-6 p-6 lg:grid-cols-[1fr_280px]">
+              <div className="space-y-6">
+                <FormSection
+                  title="Identity"
+                  description="How this agent appears throughout the workflow builder."
+                >
+                  <Field label="Name" value={AGENTS[selected].name} />
+                  <Field
+                    label="Description"
+                    value="Analyzes incoming support requests and prepares a grounded response for human review."
+                    multiline
+                  />
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Provider base URL" value="https://api.openai.com/v1" />
+                    <Field label="Model" value={AGENTS[selected].model} />
+                  </div>
+                </FormSection>
+                <FormSection
+                  title="Workspace"
+                  description="Files and runtime context available to this agent."
+                >
+                  <Field
+                    label="Working directory"
+                    value="~/.config/workflow/agents/support-analyst"
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    <Badge variant="outline">
+                      <Wrench className="mr-1 size-3" /> web_search
+                    </Badge>
+                    <Badge variant="outline">
+                      <TerminalSquare className="mr-1 size-3" /> shell
+                    </Badge>
+                    <Badge variant="outline">
+                      <FileJson className="mr-1 size-3" /> read_file
+                    </Badge>
+                  </div>
+                </FormSection>
+              </div>
+              <aside className="space-y-3">
+                <Card className="gap-3 bg-muted/30 p-4 shadow-none">
+                  <div className="text-xs font-semibold">Readiness</div>
+                  {['Provider connected', 'API key configured', 'Workspace available'].map(
+                    (item) => (
+                      <div className="flex items-center gap-2 text-xs" key={item}>
+                        <span className="flex size-4 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                          <Check className="size-2.5" />
+                        </span>
+                        {item}
+                      </div>
+                    )
+                  )}
+                </Card>
+                <Card className="gap-3 p-4 shadow-none">
+                  <div className="flex items-center justify-between text-xs font-semibold">
+                    <span>Last 7 days</span>
+                    <Activity className="size-3.5 text-muted-foreground" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Metric label="Runs" value="184" />
+                    <Metric label="Success" value="98.1%" />
+                    <Metric label="Median" value="12.4s" />
+                    <Metric label="Tokens" value="1.2M" />
+                  </div>
+                </Card>
+              </aside>
+            </div>
+          </ScrollArea>
+          <div className="flex items-center justify-end gap-2 border-t bg-muted/20 px-5 py-3">
+            <Button variant="ghost" size="sm">
+              Discard
+            </Button>
+            <Button size="sm">
+              <Save data-icon="inline-start" /> Save agent
+            </Button>
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function SettingsPage({ variant }: { variant: Variant }) {
+  return (
+    <div className="mx-auto min-h-full max-w-[980px] p-6 lg:p-8">
+      <PageHeading
+        eyebrow="Workspace"
+        title="Settings"
+        description="Defaults for workflow execution, memory and local data."
+      />
+      <div className={cn('mt-7 grid gap-4', variant === 'B' ? 'md:grid-cols-2' : 'grid-cols-1')}>
+        <SettingsCard
+          icon={Clock3}
+          title="Execution"
+          description="Control the default limits applied to every workflow run."
+        >
+          <Field label="Node timeout" value="300" suffix="seconds" />
+          <div className="rounded-lg border border-border/70 bg-muted/30 p-3 text-xs text-muted-foreground">
+            A running node is cancelled after this limit. Individual node behavior and workflow
+            execution semantics remain unchanged.
+          </div>
+        </SettingsCard>
+        <SettingsCard
+          icon={Database}
+          title="Memory"
+          description="Connect the workspace to a compatible mem0 server."
+        >
+          <Field label="Server URL" value="http://localhost:8080" />
+          <Field label="API key" value="••••••••••••••••••••" />
+          <button
+            className="flex items-center gap-1.5 text-xs font-medium text-primary"
+            type="button"
+          >
+            <Radio className="size-3.5" /> Test connection
+          </button>
+        </SettingsCard>
+        <SettingsCard
+          icon={Archive}
+          title="Local data"
+          description="Understand where workflows, agents and run history are stored."
+        >
+          <div className="rounded-lg border bg-muted/30 p-3 font-mono text-xs">
+            ~/.config/workflow/workflow.db
+          </div>
+          <Button className="w-fit" variant="outline" size="sm">
+            <ExternalLink data-icon="inline-start" /> Open data directory
+          </Button>
+        </SettingsCard>
+        <SettingsCard
+          icon={Cloud}
+          title="Environment"
+          description="Current runtime information for this workspace."
+        >
+          <KeyValue label="Mode" value="Development" />
+          <KeyValue label="API origin" value="Same origin" />
+          <KeyValue label="Provider" value="Fake provider :4010" />
+        </SettingsCard>
+      </div>
+      <div className="sticky bottom-0 mt-6 flex items-center justify-between rounded-xl border bg-background/95 p-3 shadow-[0_8px_28px_rgb(15_23_42/0.10)]">
+        <span className="text-xs text-muted-foreground">No unsaved changes</span>
+        <Button>
+          <Save data-icon="inline-start" /> Save settings
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function EditorCanvas({ variant, running }: { variant: Variant; running: boolean }) {
+  return (
+    <div
+      className={cn(
+        'workflow-canvas relative h-full min-h-[680px] overflow-hidden',
+        variant === 'B' && 'min-h-[560px]'
+      )}
+    >
+      {variant === 'C' && <NodeLibrary />}
+      <CanvasToolbar variant={variant} />
+      <svg
+        className="pointer-events-none absolute inset-0 h-full w-full"
+        preserveAspectRatio="none"
+        viewBox="0 0 1000 650"
+      >
+        <path className="flow-line" d="M 155 316 C 220 316, 200 213, 275 213" />
+        <path className="flow-line active" d="M 455 213 C 520 213, 510 325, 570 325" />
+        <path className="flow-line" d="M 765 325 C 825 325, 805 218, 870 218" />
+        <path className="flow-line" d="M 668 390 C 668 462, 818 464, 872 464" />
+      </svg>
+      <div className={cn('absolute inset-0', variant === 'C' && 'left-[252px]')}>
+        <NodeCard
+          kind="start"
+          title="Start"
+          subtitle="When workflow is run"
+          x="7%"
+          y="43%"
+          status="Ready"
+        />
+        <NodeCard
+          kind="llm"
+          title="Analyze request"
+          subtitle="Support analyst"
+          x="26%"
+          y="21%"
+          status={running ? 'Running' : 'Ready'}
+          active={running}
+        >
+          <p className="line-clamp-2 text-[11px] leading-4 text-muted-foreground">
+            Classify the request, extract urgency and prepare a concise response outline.
+          </p>
+        </NodeCard>
+        <NodeCard
+          kind="condition"
+          title="Route by urgency"
+          subtitle="3 branches"
+          x="53%"
+          y="39%"
+          status="Configured"
+        >
+          <div className="space-y-1.5 text-[11px]">
+            <div className="flex items-center justify-between">
+              <span>Urgent</span>
+              <Badge variant="outline">P0/P1</Badge>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>Standard</span>
+              <Badge variant="outline">P2/P3</Badge>
+            </div>
+          </div>
+        </NodeCard>
+        <NodeCard
+          kind="http"
+          title="Create ticket"
+          subtitle="POST /tickets"
+          x="79%"
+          y="22%"
+          status="Ready"
+        >
+          <div className="rounded-md bg-muted px-2 py-1.5 font-mono text-[10px] text-muted-foreground">
+            api.internal.dev
+          </div>
+        </NodeCard>
+        <NodeCard
+          kind="end"
+          title="Human review"
+          subtitle="Return final output"
+          x="80%"
+          y="66%"
+          status="Ready"
+        />
+      </div>
+      {variant === 'A' && (
+        <div className="absolute bottom-4 left-4 flex items-center gap-1 rounded-lg border bg-background p-1 shadow-sm">
+          <Button variant="ghost" size="icon-sm">
+            <Plus />
+          </Button>
+          <span className="min-w-12 text-center text-xs text-muted-foreground">100%</span>
+          <Button variant="ghost" size="icon-sm">
+            <RotateCcw />
+          </Button>
+          <Button variant="ghost" size="icon-sm">
+            <Maximize2 />
+          </Button>
+        </div>
+      )}
+      {running && (
+        <div className="absolute right-4 bottom-4 flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-medium text-blue-700 shadow-sm dark:border-blue-900 dark:bg-blue-950 dark:text-blue-200">
+          <LoaderCircle className="size-3.5 animate-spin" /> Executing “Analyze request”
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CanvasToolbar({ variant }: { variant: Variant }) {
+  return (
+    <div
+      className={cn(
+        'absolute top-4 z-20 flex items-center gap-1 rounded-lg border bg-background p-1 shadow-sm',
+        variant === 'C' ? 'left-[268px]' : 'left-4'
+      )}
+    >
+      {variant !== 'C' && (
+        <Button variant="ghost" size="sm">
+          <Plus data-icon="inline-start" /> Add node
+        </Button>
+      )}
+      <IconButton label="Select tool">
+        <TextCursorInput />
+      </IconButton>
+      <IconButton label="Auto layout">
+        <WandSparkles />
+      </IconButton>
+      <Separator className="mx-0.5 h-5" orientation="vertical" />
+      <IconButton label="Horizontal layout">
+        <Columns3 />
+      </IconButton>
+      <IconButton label="Fit view">
+        <Maximize2 />
+      </IconButton>
+    </div>
+  );
+}
+
+function NodeCard({
+  kind,
+  title,
+  subtitle,
+  status,
+  x,
+  y,
+  active,
+  children,
+}: {
+  kind: 'start' | 'llm' | 'condition' | 'http' | 'end';
+  title: string;
+  subtitle: string;
+  status: string;
+  x: string;
+  y: string;
+  active?: boolean;
+  children?: ReactNode;
+}) {
+  const config = {
+    start: { icon: Radio, tone: 'bg-slate-700 text-white dark:bg-slate-200 dark:text-slate-950' },
+    llm: { icon: Sparkles, tone: 'bg-blue-600 text-white' },
+    condition: { icon: GitBranch, tone: 'bg-amber-500 text-white' },
+    http: { icon: Webhook, tone: 'bg-violet-600 text-white' },
+    end: { icon: Check, tone: 'bg-emerald-600 text-white' },
+  }[kind];
+  const NodeIcon = config.icon;
+
+  return (
+    <Card
+      className={cn(
+        'node-card absolute w-[210px] gap-3 border-border/90 bg-card p-3 shadow-[0_4px_16px_rgb(15_23_42/0.08)]',
+        active && 'border-blue-400 ring-2 ring-blue-500/15'
+      )}
+      style={{ left: x, top: y }}
+    >
+      <span className="node-port -left-1.5" />
+      <span className="node-port -right-1.5" />
+      <div className="flex items-start gap-2.5">
+        <span
+          className={cn('flex size-8 shrink-0 items-center justify-center rounded-lg', config.tone)}
+        >
+          <NodeIcon className="size-4" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <h3 className="truncate text-xs font-semibold">{title}</h3>
+            <GripVertical className="ml-auto size-3.5 text-muted-foreground/60" />
+          </div>
+          <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{subtitle}</p>
+        </div>
+      </div>
+      {children}
+      <div className="flex items-center justify-between border-t border-border/60 pt-2 text-[10px] text-muted-foreground">
+        <span className="flex items-center gap-1.5">
+          <span
+            className={cn(
+              'size-1.5 rounded-full',
+              active ? 'animate-pulse bg-blue-500' : 'bg-emerald-500'
+            )}
+          />
+          {status}
+        </span>
+        <MoreHorizontal className="size-3.5" />
+      </div>
+    </Card>
+  );
+}
+
+function Inspector({ variant }: { variant: 'A' | 'C' }) {
+  const content = (
+    <>
+      <div className="flex h-14 items-center gap-2 border-b px-4">
+        <div>
+          <div className="text-xs font-semibold">Analyze request</div>
+          <div className="text-[11px] text-muted-foreground">LLM node</div>
+        </div>
+        <Badge className="ml-auto" variant="secondary">
+          Ready
+        </Badge>
+        {variant === 'C' && (
+          <Button variant="ghost" size="icon-xs">
+            <X />
+          </Button>
+        )}
+      </div>
+      <ScrollArea className="h-[calc(100%-56px)]">
+        <div className="space-y-5 p-4">
+          <FormSection title="Agent" description="Execution identity for this node.">
+            <label className="space-y-1.5">
+              <span className="text-xs font-medium">Selected agent</span>
+              <button
+                className="flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left"
+                type="button"
+              >
+                <span className="flex size-7 items-center justify-center rounded-md bg-blue-600 text-white">
+                  <Bot className="size-3.5" />
+                </span>
+                <span className="flex-1 text-xs font-medium">Support analyst</span>
+                <ChevronDown className="size-3.5 text-muted-foreground" />
+              </button>
+            </label>
+          </FormSection>
+          <FormSection title="Prompt" description="Variables remain compatible with Workflow JSON.">
+            <textarea
+              className="min-h-40 w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-xs leading-5 outline-none focus:ring-2 focus:ring-ring/30"
+              defaultValue={
+                'Classify {{input.request}} by urgency.\n\nReturn a summary, risk level and response outline.'
+              }
+            />
+            <button
+              className="flex items-center gap-1.5 text-xs font-medium text-primary"
+              type="button"
+            >
+              <Braces className="size-3.5" /> Insert variable
+            </button>
+          </FormSection>
+          <FormSection title="Output" description="Available to downstream nodes.">
+            <div className="rounded-lg border bg-muted/30 px-3 py-2 font-mono text-[11px]">
+              analyze_request.output
+            </div>
+          </FormSection>
+        </div>
+      </ScrollArea>
+    </>
+  );
+
+  if (variant === 'C') {
+    return (
+      <Card className="absolute top-[72px] right-4 z-30 h-[calc(100%-104px)] w-[304px] gap-0 overflow-hidden p-0 shadow-[0_18px_48px_rgb(15_23_42/0.16)]">
+        {content}
+      </Card>
+    );
+  }
+
+  return <aside className="w-[316px] shrink-0 border-l bg-background">{content}</aside>;
+}
+
+function NodeLibrary() {
+  return (
+    <aside className="absolute inset-y-0 left-0 z-10 w-[252px] border-r bg-background">
+      <div className="flex h-12 items-center justify-between border-b px-3">
+        <span className="text-xs font-semibold">Node library</span>
+        <Button variant="ghost" size="icon-xs">
+          <PanelLeftClose />
+        </Button>
+      </div>
+      <div className="p-3">
+        <div className="relative mb-3">
+          <Search className="absolute top-2 left-2.5 size-3.5 text-muted-foreground" />
+          <Input className="h-8 pl-8 text-xs" placeholder="Find a node" />
+        </div>
+        <div className="grid grid-cols-2 gap-1.5">
+          {NODE_TYPES.map(([name, IconComponent]) => (
+            <button
+              className="flex min-h-16 flex-col items-start justify-between rounded-lg border border-border/70 bg-card p-2 text-left hover:border-foreground/20 hover:bg-muted/40"
+              key={name}
+              type="button"
+            >
+              <IconComponent className="size-3.5 text-muted-foreground" />
+              <span className="text-[11px] font-medium">{name}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+function ExecutionDock({ running }: { running: boolean }) {
+  return (
+    <div className="grid h-[132px] shrink-0 grid-cols-[220px_1fr_260px] border-t bg-background">
+      <div className="border-r p-3">
+        <div className="flex items-center gap-2 text-xs font-semibold">
+          <Activity className="size-3.5" /> Execution
+          <Badge className="ml-auto" variant={running ? 'secondary' : 'outline'}>
+            {running ? 'Running' : 'Idle'}
+          </Badge>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <Metric label="Nodes" value={running ? '2 / 5' : '—'} />
+          <Metric label="Duration" value={running ? '1.4s' : '—'} />
+        </div>
+      </div>
+      <div className="border-r p-3 font-mono text-[11px] leading-5 text-muted-foreground">
+        <div>
+          <span className="text-foreground">10:42:08</span> Workflow ready
+        </div>
+        {running && (
+          <>
+            <div>
+              <span className="text-foreground">10:42:09</span> Start completed
+            </div>
+            <div className="text-blue-600 dark:text-blue-300">
+              <span>10:42:09</span> Analyze request · streaming content…
+            </div>
+          </>
+        )}
+        {!running && <div>Select “Run” to stream node events here.</div>}
+      </div>
+      <div className="p-3">
+        <div className="text-xs font-semibold">Run controls</div>
+        <div className="mt-3 flex gap-2">
+          <Button className="flex-1" variant="outline" size="sm">
+            <CircleStop data-icon="inline-start" /> Stop
+          </Button>
+          <Button className="flex-1" variant="outline" size="sm">
+            <RotateCcw data-icon="inline-start" /> Clear
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PageHeading({
+  eyebrow,
+  title,
+  description,
+  action,
+}: {
+  eyebrow: string;
+  title: string;
+  description: string;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="flex items-end gap-4">
+      <div>
+        <div className="text-[11px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
+          {eyebrow}
+        </div>
+        <h1 className="mt-1 text-2xl font-semibold tracking-[-0.025em]">{title}</h1>
+        <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+      </div>
+      {action && <div className="ml-auto">{action}</div>}
+    </div>
+  );
+}
+
+function FormSection({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="space-y-3">
+      <div>
+        <h3 className="text-xs font-semibold">{title}</h3>
+        <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{description}</p>
+      </div>
+      <div className="space-y-3">{children}</div>
+    </section>
+  );
+}
+
+function Field({
+  label,
+  value,
+  multiline,
+  suffix,
+}: {
+  label: string;
+  value: string;
+  multiline?: boolean;
+  suffix?: string;
+}) {
+  return (
+    <label className="block space-y-1.5">
+      <span className="text-xs font-medium">{label}</span>
+      <div className="relative">
+        {multiline ? (
+          <textarea
+            className="min-h-20 w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-ring/30"
+            defaultValue={value}
+          />
+        ) : (
+          <Input className={cn('text-xs', suffix && 'pr-20')} defaultValue={value} />
+        )}
+        {suffix && (
+          <span className="absolute top-2 right-3 text-xs text-muted-foreground">{suffix}</span>
+        )}
+      </div>
+    </label>
+  );
+}
+
+function SettingsCard({
+  icon: IconComponent,
+  title,
+  description,
+  children,
+}: {
+  icon: Icon;
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <Card className="gap-5 p-5 shadow-none">
+      <div className="flex items-start gap-3">
+        <span className="flex size-9 items-center justify-center rounded-lg border bg-muted/50">
+          <IconComponent className="size-4" />
+        </span>
+        <div>
+          <h2 className="text-sm font-semibold">{title}</h2>
+          <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{description}</p>
+        </div>
+      </div>
+      <Separator />
+      <div className="space-y-4">{children}</div>
+    </Card>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg bg-muted/50 p-2">
+      <div className="text-[10px] text-muted-foreground">{label}</div>
+      <div className="mt-0.5 text-xs font-semibold">{value}</div>
+    </div>
+  );
+}
+
+function KeyValue({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between text-xs">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="font-medium">{value}</span>
+    </div>
+  );
+}
+
+function Brand({ compact }: { compact: boolean }) {
+  return (
+    <button
+      className={cn('flex h-14 shrink-0 items-center gap-2.5 px-4 text-left', compact && 'px-0')}
+      type="button"
+    >
+      <span className="flex size-8 items-center justify-center rounded-lg bg-foreground text-background">
+        <Zap className="size-4" />
+      </span>
+      <span className="leading-tight">
+        <span className="block text-sm font-semibold tracking-[-0.02em]">Workflow</span>
+        {!compact && (
+          <span className="block text-[10px] text-muted-foreground">Agent orchestration</span>
+        )}
+      </span>
+    </button>
+  );
+}
+
+function RailNavItem({
+  active,
+  icon: IconComponent,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  icon: Icon;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className={cn(
+        'flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground',
+        active && 'bg-accent font-medium text-foreground'
+      )}
+      onClick={onClick}
+      type="button"
+    >
+      <IconComponent className="size-4" /> {label}
+    </button>
+  );
+}
+
+function IconButton({
+  label,
+  children,
+  onClick,
+}: {
+  label: string;
+  children: ReactNode;
+  onClick?: () => void;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        aria-label={label}
+        className={buttonVariants({ variant: 'ghost', size: 'icon-sm' })}
+        onClick={onClick}
+      >
+        {children}
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function ThemeToggle({ dark, setDark }: { dark: boolean; setDark: (value: boolean) => void }) {
+  return (
+    <IconButton label={dark ? 'Use light theme' : 'Use dark theme'} onClick={() => setDark(!dark)}>
+      {dark ? <Sun /> : <Moon />}
+    </IconButton>
+  );
+}
+
+function UserFooter() {
+  return (
+    <button
+      className="mt-3 flex w-full items-center gap-2 rounded-lg px-1 py-2 text-left hover:bg-muted"
+      type="button"
+    >
+      <span className="flex size-7 items-center justify-center rounded-full bg-foreground text-[10px] font-semibold text-background">
+        ZT
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-xs font-medium">Zubing Tan</span>
+        <span className="block text-[10px] text-muted-foreground">Local workspace</span>
+      </span>
+      <MoreHorizontal className="size-3.5 text-muted-foreground" />
+    </button>
+  );
+}
+
+function VariantSwitcher({
+  variant,
+  onChange,
+}: {
+  variant: Variant;
+  onChange: (variant: Variant) => void;
+}) {
+  return (
+    <div className="fixed bottom-4 left-1/2 z-[100] flex -translate-x-1/2 items-center gap-1 rounded-xl border border-border bg-background p-1.5 shadow-[0_16px_44px_rgb(15_23_42/0.18)]">
+      <Badge className="mr-1" variant="outline">
+        Prototype
+      </Badge>
+      {VARIANTS.map((item) => (
+        <Tooltip key={item.id}>
+          <TooltipTrigger
+            className={cn(
+              'flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground',
+              variant === item.id &&
+                'bg-foreground text-background hover:bg-foreground hover:text-background'
+            )}
+            onClick={() => onChange(item.id)}
+          >
+            <kbd
+              className={cn(
+                'flex size-5 items-center justify-center rounded border text-[10px]',
+                variant === item.id ? 'border-background/25' : 'border-border bg-muted'
+              )}
+            >
+              {item.id}
+            </kbd>
+            <span className="hidden sm:inline">{item.name}</span>
+          </TooltipTrigger>
+          <TooltipContent>{item.description} · use ← →</TooltipContent>
+        </Tooltip>
+      ))}
+    </div>
+  );
+}
