@@ -908,12 +908,6 @@ function AgentsPage({
           />
           {agent.status}
         </Badge>
-        <Button className="ml-auto" variant="ghost" size="sm">
-          Discard
-        </Button>
-        <Button size="sm">
-          <Save data-icon="inline-start" /> Save agent
-        </Button>
       </div>
 
       <div className="flex min-h-0 flex-1">
@@ -1090,6 +1084,9 @@ function AgentsPage({
                       </div>
                     </Card>
                   </FormSection>
+                  <div className="flex justify-end">
+                    <SaveSectionButton />
+                  </div>
                 </div>
               )}
 
@@ -1097,6 +1094,7 @@ function AgentsPage({
                 <AgentSection
                   title="System prompt"
                   description="Define the standing instructions used at the start of every session."
+                  action={<SaveSectionButton />}
                 >
                   <textarea
                     aria-label="System prompt"
@@ -1114,6 +1112,7 @@ function AgentsPage({
                 <AgentSection
                   title="Tools"
                   description="Choose the capabilities this agent may invoke during a run."
+                  action={<SaveSectionButton />}
                 >
                   {[
                     ['web_search', 'Search current public information'],
@@ -1135,6 +1134,7 @@ function AgentsPage({
                 <AgentSection
                   title="Runtime"
                   description="Set the execution limits and local context for new sessions."
+                  action={<SaveSectionButton />}
                 >
                   <div className="grid gap-4 md:grid-cols-2">
                     <Field
@@ -1152,6 +1152,7 @@ function AgentsPage({
                 <AgentSection
                   title="Skills"
                   description="Attach reusable instruction packages to this agent."
+                  action={<SaveSectionButton />}
                 >
                   {['Support triage', 'Source verification', 'Response editor'].map((name) => (
                     <ToggleRow
@@ -1169,6 +1170,7 @@ function AgentsPage({
                 <AgentSection
                   title="Extensions"
                   description="Connect optional integrations to this agent."
+                  action={<SaveSectionButton />}
                 >
                   {['Git context', 'mem0 memory', 'Issue tracker'].map((name) => (
                     <ToggleRow
@@ -1276,6 +1278,14 @@ function AgentSection({
       </div>
       <div>{children}</div>
     </div>
+  );
+}
+
+function SaveSectionButton() {
+  return (
+    <Button size="sm">
+      <Save data-icon="inline-start" /> Save changes
+    </Button>
   );
 }
 
