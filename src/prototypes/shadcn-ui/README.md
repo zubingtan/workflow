@@ -27,6 +27,7 @@ Variant A now tests the preferred product structure:
 - Workflows and Agents open as collection pages with one primary `New` action.
 - Selecting a row fades and shifts the collection away before replacing it with the full editor or settings surface.
 - The detail header provides a single Back action that restores the collection page.
-- Agent details use a vertical settings sidebar, retain inline title editing and provider model discovery/testing, and provide an in-context Quick chat drawer.
+- Agent details use a vertical settings sidebar and retain inline title editing plus provider model discovery/testing.
+- Sessions owns conversation entry: `New session` replaces the settings content with a full inline Agent conversation, and Back restores the recent-session list.
 
 The prototype uses local mock state only. It does not call backend APIs, persist workflow data, or change Workflow JSON and execution behavior.

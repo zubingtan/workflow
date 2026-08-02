@@ -63,13 +63,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/prototypes/shadcn-ui/components/ui/tooltip';
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@/prototypes/shadcn-ui/components/ui/sheet';
 import { Separator } from '@/prototypes/shadcn-ui/components/ui/separator';
 import { ScrollArea } from '@/prototypes/shadcn-ui/components/ui/scroll-area';
 import { Input } from '@/prototypes/shadcn-ui/components/ui/input';
@@ -727,11 +720,11 @@ function AgentsPage({
   const [enabledSkills, setEnabledSkills] = useState(['Support triage']);
   const [enabledExtensions, setEnabledExtensions] = useState(['Git context']);
   const [activeSection, setActiveSection] = useState<AgentSectionId>('general');
-  const [chatOpen, setChatOpen] = useState(false);
-  const [chatDraft, setChatDraft] = useState('');
-  const [chatMessages, setChatMessages] = useState<
+  const [sessionOpen, setSessionOpen] = useState(false);
+  const [sessionDraft, setSessionDraft] = useState('');
+  const [sessionMessages, setSessionMessages] = useState<
     Array<{ role: 'assistant' | 'user'; text: string }>
-  >([{ role: 'assistant', text: 'What would you like me to help with?' }]);
+  >([{ role: 'assistant', text: 'Hi — what would you like to work on?' }]);
 
   const agent = { ...AGENTS[selected], name: agentNames[selected], model };
   const visibleAgents = AGENTS.map((item, index) => ({ item, index })).filter(({ item, index }) =>
@@ -742,6 +735,7 @@ function AgentsPage({
     const nextAgent = AGENTS[index];
     setEditingName(false);
     setActiveSection('general');
+    setSessionOpen(false);
     setModel(nextAgent.model);
     setModels([nextAgent.model]);
     setProviderUrl(
@@ -771,11 +765,11 @@ function AgentsPage({
     window.setTimeout(() => setProviderStatus('connected'), 650);
   };
 
-  const sendChat = () => {
-    const message = chatDraft.trim();
+  const sendSessionMessage = () => {
+    const message = sessionDraft.trim();
     if (!message) return;
 
-    setChatMessages((current) => [
+    setSessionMessages((current) => [
       ...current,
       { role: 'user', text: message },
       {
@@ -783,7 +777,13 @@ function AgentsPage({
         text: 'I’ll answer using this agent’s current prompt, tools, and runtime settings.',
       },
     ]);
-    setChatDraft('');
+    setSessionDraft('');
+  };
+
+  const startNewSession = () => {
+    setSessionMessages([{ role: 'assistant', text: 'Hi — what would you like to work on?' }]);
+    setSessionDraft('');
+    setSessionOpen(true);
   };
 
   const toggleValue = (value: string, current: string[], update: (next: string[]) => void) =>
@@ -908,10 +908,7 @@ function AgentsPage({
           />
           {agent.status}
         </Badge>
-        <Button className="ml-auto" variant="outline" size="sm" onClick={() => setChatOpen(true)}>
-          <MessageSquareText data-icon="inline-start" /> Quick chat
-        </Button>
-        <Button variant="ghost" size="sm">
+        <Button className="ml-auto" variant="ghost" size="sm">
           Discard
         </Button>
         <Button size="sm">
@@ -932,7 +929,10 @@ function AgentsPage({
                     activeSection === section.id && 'bg-muted text-foreground'
                   )}
                   key={section.id}
-                  onClick={() => setActiveSection(section.id)}
+                  onClick={() => {
+                    setActiveSection(section.id);
+                    setSessionOpen(false);
+                  }}
                   type="button"
                 >
                   <SectionIcon className="size-3.5" />
@@ -943,300 +943,318 @@ function AgentsPage({
           </nav>
         </aside>
 
-        <ScrollArea className="min-w-0 flex-1">
-          <div className="p-5 lg:p-7">
-            {activeSection === 'general' && (
-              <div className="mx-auto max-w-5xl space-y-7">
-                <FormSection
-                  title="Identity"
-                  description="Click the agent name above to rename it without leaving your current context."
-                >
-                  <Field
-                    label="Description"
-                    value="Analyzes incoming support requests and prepares a grounded response for human review."
-                    multiline
-                  />
-                </FormSection>
-                <FormSection
-                  title="Provider"
-                  description="Connect the provider, discover its available models, then verify the connection here."
-                >
-                  <Card className="gap-4 bg-muted/20 p-4 shadow-none">
-                    <div className="grid gap-3 lg:grid-cols-[1.3fr_1fr]">
-                      <label className="block space-y-1.5">
-                        <span className="text-xs font-medium">Provider base URL</span>
-                        <Input
-                          aria-label="Provider base URL"
-                          className="text-xs"
-                          value={providerUrl}
-                          onChange={(event) => {
-                            setProviderUrl(event.target.value);
-                            setProviderStatus('idle');
-                          }}
-                        />
-                      </label>
-                      <Field label="API key" value="••••••••••••••••••••" />
-                    </div>
-                    <div className="grid items-end gap-3 lg:grid-cols-[1fr_auto]">
-                      <label className="block space-y-1.5">
-                        <span className="text-xs font-medium">Model</span>
-                        <select
-                          aria-label="Model"
-                          className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-xs outline-none focus:ring-2 focus:ring-ring/30"
-                          value={model}
-                          onChange={(event) => setModel(event.target.value)}
-                        >
-                          {models.map((item) => (
-                            <option key={item} value={item}>
-                              {item}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={fetchModels}
-                        disabled={fetchingModels}
-                      >
-                        {fetchingModels ? (
-                          <LoaderCircle className="animate-spin" />
-                        ) : (
-                          <RefreshCw data-icon="inline-start" />
-                        )}
-                        {fetchingModels ? 'Fetching' : 'Fetch models'}
-                      </Button>
-                    </div>
-                    <Separator />
-                    <div className="flex flex-wrap items-center gap-3">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={testProvider}
-                        disabled={providerStatus === 'testing'}
-                      >
-                        {providerStatus === 'testing' ? (
-                          <LoaderCircle className="animate-spin" />
-                        ) : (
-                          <Play data-icon="inline-start" />
-                        )}
-                        {providerStatus === 'testing' ? 'Testing provider' : 'Test provider'}
-                      </Button>
-                      {providerStatus === 'connected' && (
-                        <span className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
-                          <Check className="size-3.5" /> Provider connected
-                        </span>
-                      )}
-                      <span className="text-xs text-muted-foreground">
-                        {models.length} model{models.length === 1 ? '' : 's'} available from this
-                        URL
-                      </span>
-                    </div>
-                  </Card>
-                </FormSection>
-              </div>
-            )}
-
-            {activeSection === 'system-prompt' && (
-              <AgentSection
-                title="System prompt"
-                description="Define the standing instructions used at the start of every session."
-              >
-                <textarea
-                  aria-label="System prompt"
-                  className="min-h-64 w-full resize-y rounded-lg border border-input bg-background p-4 text-sm leading-6 outline-none focus:ring-2 focus:ring-ring/30"
-                  value={systemPrompt}
-                  onChange={(event) => setSystemPrompt(event.target.value)}
-                />
-                <p className="text-right text-xs text-muted-foreground">
-                  {systemPrompt.length} characters
-                </p>
-              </AgentSection>
-            )}
-
-            {activeSection === 'tools' && (
-              <AgentSection
-                title="Tools"
-                description="Choose the capabilities this agent may invoke during a run."
-              >
-                {[
-                  ['web_search', 'Search current public information'],
-                  ['shell', 'Run approved local commands'],
-                  ['read_file', 'Read files supplied to the agent'],
-                ].map(([name, description]) => (
-                  <ToggleRow
-                    key={name}
-                    title={name}
-                    description={description}
-                    enabled={enabledTools.includes(name)}
-                    onToggle={() => toggleValue(name, enabledTools, setEnabledTools)}
-                  />
-                ))}
-              </AgentSection>
-            )}
-
-            {activeSection === 'runtime' && (
-              <AgentSection
-                title="Runtime"
-                description="Set the execution limits and local context for new sessions."
-              >
-                <div className="grid gap-4 md:grid-cols-2">
-                  <Field
-                    label="Working directory"
-                    value="~/.config/workflow/agents/support-analyst"
-                  />
-                  <Field label="Timeout" value="300" suffix="seconds" />
-                  <Field label="Maximum turns" value="24" />
-                  <Field label="Context window" value="Automatic" />
+        {activeSection === 'sessions' && sessionOpen ? (
+          <div className="flex min-w-0 flex-1 flex-col bg-background">
+            <div className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
+              <Button variant="ghost" size="sm" onClick={() => setSessionOpen(false)}>
+                <ArrowLeft data-icon="inline-start" /> Sessions
+              </Button>
+              <Separator className="mx-1 h-5" orientation="vertical" />
+              <span className="text-sm font-semibold">New session</span>
+            </div>
+            <ScrollArea className="min-h-0 flex-1">
+              <div className="mx-auto max-w-3xl space-y-4 px-6 py-8">
+                <div className="mb-8 flex flex-col items-center text-center">
+                  <span
+                    className={cn(
+                      'flex size-11 items-center justify-center rounded-xl text-white',
+                      agent.color
+                    )}
+                  >
+                    <Bot className="size-5" />
+                  </span>
+                  <h2 className="mt-3 text-base font-semibold">{agent.name}</h2>
+                  <p className="mt-1 text-xs text-muted-foreground">New agent session</p>
                 </div>
-              </AgentSection>
-            )}
-
-            {activeSection === 'skills' && (
-              <AgentSection
-                title="Skills"
-                description="Attach reusable instruction packages to this agent."
-              >
-                {['Support triage', 'Source verification', 'Response editor'].map((name) => (
-                  <ToggleRow
-                    key={name}
-                    title={name}
-                    description="Reusable instructions loaded only when this agent needs them."
-                    enabled={enabledSkills.includes(name)}
-                    onToggle={() => toggleValue(name, enabledSkills, setEnabledSkills)}
-                  />
-                ))}
-              </AgentSection>
-            )}
-
-            {activeSection === 'extensions' && (
-              <AgentSection
-                title="Extensions"
-                description="Connect optional integrations to this agent."
-              >
-                {['Git context', 'mem0 memory', 'Issue tracker'].map((name) => (
-                  <ToggleRow
-                    key={name}
-                    title={name}
-                    description="Share scoped integration context with new sessions."
-                    enabled={enabledExtensions.includes(name)}
-                    onToggle={() => toggleValue(name, enabledExtensions, setEnabledExtensions)}
-                  />
-                ))}
-              </AgentSection>
-            )}
-
-            {activeSection === 'sessions' && (
-              <AgentSection title="Sessions" description="Recent runs started with this agent.">
-                <div className="overflow-hidden rounded-xl border">
-                  {[
-                    ['Support request #1842', 'Completed', '4 min ago'],
-                    ['Refund escalation', 'Completed', 'Yesterday'],
-                    ['Account access review', 'Stopped', '2 days ago'],
-                  ].map(([name, status, time]) => (
-                    <div
-                      className="grid grid-cols-[1fr_auto_auto] items-center gap-6 border-b px-4 py-3 text-sm last:border-b-0"
-                      key={name}
-                    >
-                      <span className="font-medium">{name}</span>
-                      <Badge variant="outline">{status}</Badge>
-                      <span className="text-xs text-muted-foreground">{time}</span>
-                    </div>
-                  ))}
-                </div>
-              </AgentSection>
-            )}
-
-            {activeSection === 'stats' && (
-              <AgentSection
-                title="Stats"
-                description="Performance and usage for this agent over the last 7 days."
-              >
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  <Metric label="Runs" value="184" />
-                  <Metric label="Success" value="98.1%" />
-                  <Metric label="Median duration" value="12.4s" />
-                  <Metric label="Tokens" value="1.2M" />
-                </div>
-                <Card className="mt-4 gap-3 bg-muted/20 p-4 shadow-none">
-                  <div className="flex items-center justify-between text-xs font-semibold">
-                    <span>Daily successful runs</span>
-                    <Activity className="size-4 text-muted-foreground" />
+                {sessionMessages.map((message, index) => (
+                  <div
+                    className={cn(
+                      'w-fit max-w-[80%] rounded-xl px-3 py-2 text-sm leading-5',
+                      message.role === 'user'
+                        ? 'ml-auto bg-primary text-primary-foreground'
+                        : 'bg-muted text-foreground'
+                    )}
+                    key={`${message.role}-${index}`}
+                  >
+                    {message.text}
                   </div>
-                  <div className="flex h-36 items-end gap-3">
-                    {[48, 65, 54, 78, 71, 88, 82].map((height, index) => (
-                      <div
-                        className="flex h-full flex-1 flex-col items-center justify-end gap-2"
-                        key={height}
-                      >
-                        <div
-                          className="w-full rounded-t bg-primary/80"
-                          style={{ height: `${height}%` }}
-                        />
-                        <span className="text-[10px] text-muted-foreground">
-                          {['M', 'T', 'W', 'T', 'F', 'S', 'S'][index]}
+                ))}
+              </div>
+            </ScrollArea>
+            <form
+              className="shrink-0 border-t bg-background p-4"
+              onSubmit={(event) => {
+                event.preventDefault();
+                sendSessionMessage();
+              }}
+            >
+              <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-xl border bg-background p-2 shadow-sm">
+                <textarea
+                  aria-label="Message"
+                  className="min-h-12 flex-1 resize-none bg-transparent px-2 py-1.5 text-sm outline-none placeholder:text-muted-foreground"
+                  placeholder={`Message ${agent.name}`}
+                  rows={2}
+                  value={sessionDraft}
+                  onChange={(event) => setSessionDraft(event.target.value)}
+                />
+                <Button aria-label="Send message" size="icon" type="submit">
+                  <Send />
+                </Button>
+              </div>
+            </form>
+          </div>
+        ) : (
+          <ScrollArea className="min-w-0 flex-1">
+            <div className="p-5 lg:p-7">
+              {activeSection === 'general' && (
+                <div className="mx-auto max-w-5xl space-y-7">
+                  <FormSection
+                    title="Identity"
+                    description="Click the agent name above to rename it without leaving your current context."
+                  >
+                    <Field
+                      label="Description"
+                      value="Analyzes incoming support requests and prepares a grounded response for human review."
+                      multiline
+                    />
+                  </FormSection>
+                  <FormSection
+                    title="Provider"
+                    description="Connect the provider, discover its available models, then verify the connection here."
+                  >
+                    <Card className="gap-4 bg-muted/20 p-4 shadow-none">
+                      <div className="grid gap-3 lg:grid-cols-[1.3fr_1fr]">
+                        <label className="block space-y-1.5">
+                          <span className="text-xs font-medium">Provider base URL</span>
+                          <Input
+                            aria-label="Provider base URL"
+                            className="text-xs"
+                            value={providerUrl}
+                            onChange={(event) => {
+                              setProviderUrl(event.target.value);
+                              setProviderStatus('idle');
+                            }}
+                          />
+                        </label>
+                        <Field label="API key" value="••••••••••••••••••••" />
+                      </div>
+                      <div className="grid items-end gap-3 lg:grid-cols-[1fr_auto]">
+                        <label className="block space-y-1.5">
+                          <span className="text-xs font-medium">Model</span>
+                          <select
+                            aria-label="Model"
+                            className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-xs outline-none focus:ring-2 focus:ring-ring/30"
+                            value={model}
+                            onChange={(event) => setModel(event.target.value)}
+                          >
+                            {models.map((item) => (
+                              <option key={item} value={item}>
+                                {item}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={fetchModels}
+                          disabled={fetchingModels}
+                        >
+                          {fetchingModels ? (
+                            <LoaderCircle className="animate-spin" />
+                          ) : (
+                            <RefreshCw data-icon="inline-start" />
+                          )}
+                          {fetchingModels ? 'Fetching' : 'Fetch models'}
+                        </Button>
+                      </div>
+                      <Separator />
+                      <div className="flex flex-wrap items-center gap-3">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={testProvider}
+                          disabled={providerStatus === 'testing'}
+                        >
+                          {providerStatus === 'testing' ? (
+                            <LoaderCircle className="animate-spin" />
+                          ) : (
+                            <Play data-icon="inline-start" />
+                          )}
+                          {providerStatus === 'testing' ? 'Testing provider' : 'Test provider'}
+                        </Button>
+                        {providerStatus === 'connected' && (
+                          <span className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
+                            <Check className="size-3.5" /> Provider connected
+                          </span>
+                        )}
+                        <span className="text-xs text-muted-foreground">
+                          {models.length} model{models.length === 1 ? '' : 's'} available from this
+                          URL
                         </span>
+                      </div>
+                    </Card>
+                  </FormSection>
+                </div>
+              )}
+
+              {activeSection === 'system-prompt' && (
+                <AgentSection
+                  title="System prompt"
+                  description="Define the standing instructions used at the start of every session."
+                >
+                  <textarea
+                    aria-label="System prompt"
+                    className="min-h-64 w-full resize-y rounded-lg border border-input bg-background p-4 text-sm leading-6 outline-none focus:ring-2 focus:ring-ring/30"
+                    value={systemPrompt}
+                    onChange={(event) => setSystemPrompt(event.target.value)}
+                  />
+                  <p className="text-right text-xs text-muted-foreground">
+                    {systemPrompt.length} characters
+                  </p>
+                </AgentSection>
+              )}
+
+              {activeSection === 'tools' && (
+                <AgentSection
+                  title="Tools"
+                  description="Choose the capabilities this agent may invoke during a run."
+                >
+                  {[
+                    ['web_search', 'Search current public information'],
+                    ['shell', 'Run approved local commands'],
+                    ['read_file', 'Read files supplied to the agent'],
+                  ].map(([name, description]) => (
+                    <ToggleRow
+                      key={name}
+                      title={name}
+                      description={description}
+                      enabled={enabledTools.includes(name)}
+                      onToggle={() => toggleValue(name, enabledTools, setEnabledTools)}
+                    />
+                  ))}
+                </AgentSection>
+              )}
+
+              {activeSection === 'runtime' && (
+                <AgentSection
+                  title="Runtime"
+                  description="Set the execution limits and local context for new sessions."
+                >
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <Field
+                      label="Working directory"
+                      value="~/.config/workflow/agents/support-analyst"
+                    />
+                    <Field label="Timeout" value="300" suffix="seconds" />
+                    <Field label="Maximum turns" value="24" />
+                    <Field label="Context window" value="Automatic" />
+                  </div>
+                </AgentSection>
+              )}
+
+              {activeSection === 'skills' && (
+                <AgentSection
+                  title="Skills"
+                  description="Attach reusable instruction packages to this agent."
+                >
+                  {['Support triage', 'Source verification', 'Response editor'].map((name) => (
+                    <ToggleRow
+                      key={name}
+                      title={name}
+                      description="Reusable instructions loaded only when this agent needs them."
+                      enabled={enabledSkills.includes(name)}
+                      onToggle={() => toggleValue(name, enabledSkills, setEnabledSkills)}
+                    />
+                  ))}
+                </AgentSection>
+              )}
+
+              {activeSection === 'extensions' && (
+                <AgentSection
+                  title="Extensions"
+                  description="Connect optional integrations to this agent."
+                >
+                  {['Git context', 'mem0 memory', 'Issue tracker'].map((name) => (
+                    <ToggleRow
+                      key={name}
+                      title={name}
+                      description="Share scoped integration context with new sessions."
+                      enabled={enabledExtensions.includes(name)}
+                      onToggle={() => toggleValue(name, enabledExtensions, setEnabledExtensions)}
+                    />
+                  ))}
+                </AgentSection>
+              )}
+
+              {activeSection === 'sessions' && (
+                <AgentSection
+                  title="Sessions"
+                  description="Recent runs started with this agent."
+                  action={
+                    <Button size="sm" onClick={startNewSession}>
+                      <Plus data-icon="inline-start" /> New session
+                    </Button>
+                  }
+                >
+                  <div className="overflow-hidden rounded-xl border">
+                    {[
+                      ['Support request #1842', 'Completed', '4 min ago'],
+                      ['Refund escalation', 'Completed', 'Yesterday'],
+                      ['Account access review', 'Stopped', '2 days ago'],
+                    ].map(([name, status, time]) => (
+                      <div
+                        className="grid grid-cols-[1fr_auto_auto] items-center gap-6 border-b px-4 py-3 text-sm last:border-b-0"
+                        key={name}
+                      >
+                        <span className="font-medium">{name}</span>
+                        <Badge variant="outline">{status}</Badge>
+                        <span className="text-xs text-muted-foreground">{time}</span>
                       </div>
                     ))}
                   </div>
-                </Card>
-              </AgentSection>
-            )}
-          </div>
-        </ScrollArea>
-      </div>
+                </AgentSection>
+              )}
 
-      <Sheet open={chatOpen} onOpenChange={setChatOpen}>
-        <SheetContent className="w-full sm:max-w-md" side="right" showCloseButton={false}>
-          <SheetHeader className="relative border-b pr-12">
-            <SheetTitle>Chat with {agent.name}</SheetTitle>
-            <SheetDescription>
-              Quick conversation using the current agent settings.
-            </SheetDescription>
-            <IconButton
-              className="absolute top-3 right-3"
-              label="Close"
-              onClick={() => setChatOpen(false)}
-            >
-              <X />
-            </IconButton>
-          </SheetHeader>
-          <ScrollArea className="min-h-0 flex-1 px-4">
-            <div className="space-y-3 py-3">
-              {chatMessages.map((message, index) => (
-                <div
-                  className={cn(
-                    'w-fit max-w-[85%] rounded-xl px-3 py-2 text-sm leading-5',
-                    message.role === 'user'
-                      ? 'ml-auto bg-primary text-primary-foreground'
-                      : 'bg-muted text-foreground'
-                  )}
-                  key={`${message.role}-${index}`}
+              {activeSection === 'stats' && (
+                <AgentSection
+                  title="Stats"
+                  description="Performance and usage for this agent over the last 7 days."
                 >
-                  {message.text}
-                </div>
-              ))}
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <Metric label="Runs" value="184" />
+                    <Metric label="Success" value="98.1%" />
+                    <Metric label="Median duration" value="12.4s" />
+                    <Metric label="Tokens" value="1.2M" />
+                  </div>
+                  <Card className="mt-4 gap-3 bg-muted/20 p-4 shadow-none">
+                    <div className="flex items-center justify-between text-xs font-semibold">
+                      <span>Daily successful runs</span>
+                      <Activity className="size-4 text-muted-foreground" />
+                    </div>
+                    <div className="flex h-36 items-end gap-3">
+                      {[48, 65, 54, 78, 71, 88, 82].map((height, index) => (
+                        <div
+                          className="flex h-full flex-1 flex-col items-center justify-end gap-2"
+                          key={height}
+                        >
+                          <div
+                            className="w-full rounded-t bg-primary/80"
+                            style={{ height: `${height}%` }}
+                          />
+                          <span className="text-[10px] text-muted-foreground">
+                            {['M', 'T', 'W', 'T', 'F', 'S', 'S'][index]}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+                </AgentSection>
+              )}
             </div>
           </ScrollArea>
-          <form
-            className="flex gap-2 border-t p-4"
-            onSubmit={(event) => {
-              event.preventDefault();
-              sendChat();
-            }}
-          >
-            <Input
-              aria-label="Message"
-              placeholder={`Message ${agent.name}`}
-              value={chatDraft}
-              onChange={(event) => setChatDraft(event.target.value)}
-            />
-            <Button aria-label="Send message" size="icon" type="submit">
-              <Send />
-            </Button>
-          </form>
-        </SheetContent>
-      </Sheet>
+        )}
+      </div>
     </div>
   );
 }
@@ -1245,16 +1263,21 @@ function AgentSection({
   title,
   description,
   children,
+  action,
 }: {
   title: string;
   description: string;
   children: ReactNode;
+  action?: ReactNode;
 }) {
   return (
     <div className="mx-auto max-w-5xl space-y-5">
-      <div>
-        <h2 className="text-lg font-semibold">{title}</h2>
-        <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+      <div className="flex items-start gap-4">
+        <div>
+          <h2 className="text-lg font-semibold">{title}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+        </div>
+        {action && <div className="ml-auto">{action}</div>}
       </div>
       <div>{children}</div>
     </div>
