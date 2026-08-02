@@ -334,7 +334,7 @@ function WorkbenchRail(props: LayoutProps) {
 
       <section className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border bg-background shadow-sm">
         <WorkbenchHeader {...props} />
-        <div className="flex min-h-0 flex-1">
+        <div className={cn('flex min-h-0 flex-1', view === 'editor' && 'workflow-canvas')}>
           <main className="min-w-0 flex-1 overflow-auto">
             <ViewContent variant="A" {...props} />
           </main>
@@ -1651,7 +1651,11 @@ function Inspector({ variant }: { variant: 'A' | 'C' }) {
     );
   }
 
-  return <aside className="w-[316px] shrink-0 border-l bg-background">{content}</aside>;
+  return (
+    <aside className="w-[340px] shrink-0 p-3">
+      <Card className="h-full gap-0 overflow-hidden rounded-2xl p-0 shadow-lg">{content}</Card>
+    </aside>
+  );
 }
 
 function NodeLibrary() {

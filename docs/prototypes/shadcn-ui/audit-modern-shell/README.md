@@ -23,6 +23,8 @@ Validate the preferred Variant A structure after the latest navigation feedback:
 - After: conversation entry lives inside Sessions; `New session` replaces the right content pane with a standard Agent conversation and Back restores the session list. The superseded top-level Quick chat action is gone.
 - After: Settings starts directly with editable sections and a standalone Save button, without an explanatory masthead or sticky action bar.
 - After: the dark editor uses neutral near-black layers; node cards and connections stay visually separated without a red background tint.
+- After: the Variant A node inspector uses the same floating rounded-surface rule as the primary rail and canvas controls, with canvas visible on every side.
+- Consistency check: Workflow and Agent collection cards plus Settings sections already use rounded surfaces. Agent detail navigation intentionally remains full-height inside the detail pane because it is page structure, not a temporary tool surface.
 
 ## Evidence
 
@@ -37,5 +39,10 @@ Validate the preferred Variant A structure after the latest navigation feedback:
 - `12-settings-clean.png`: Settings without the redundant introduction or bottom action bar.
 - `13-sessions-new-session.png`: Sessions list with its local `New session` action.
 - `14-session-chat.png`: full inline Agent conversation in dark mode, including message composer and sent-message state.
+- `15-editor-inspector-before.png`: flush, square-edged node inspector baseline.
+- `16-workflows-surface-before.png`, `17-agents-surface-before.png`, and `18-settings-surface-before.png`: cross-surface consistency audit.
+- `19-editor-inspector-after.png`: rounded floating node inspector with preserved canvas layout.
+- `20-editor-inspector-dark.png`: dark-mode verification of the same surface hierarchy.
+- `21-agent-detail-surface-audit.png`: Agent detail remains a full-pane editing surface rather than an unnecessary nested floating panel.
 
-Browser verification covered Workflow list -> editor -> Back, Agent list -> settings -> Back, Sessions -> New session -> Send -> Back, sidebar collapse/expand, theme switching, and console warnings/errors.
+Browser verification covered Workflow list -> editor -> Back, Agent list -> settings -> Back, Sessions -> New session -> Send -> Back, sidebar collapse/expand, theme switching, node-inspector surface consistency, and console warnings/errors.
