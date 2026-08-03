@@ -155,6 +155,11 @@
 
 .node-card {
   transform: translateY(-50%);
+  cursor: grab;
+}
+
+.node-card:active {
+  cursor: grabbing;
 }
 
 .node-port {
@@ -163,6 +168,18 @@
   width: 0.75rem;
   height: 0.75rem;
   transform: translateY(-50%);
+  border: 2px solid var(--card);
+  border-radius: 999px;
+  background: var(--muted-foreground);
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+.node-port-y {
+  position: absolute;
+  left: 50%;
+  width: 0.75rem;
+  height: 0.75rem;
+  transform: translateX(-50%);
   border: 2px solid var(--card);
   border-radius: 999px;
   background: var(--muted-foreground);

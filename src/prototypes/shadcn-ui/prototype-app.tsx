@@ -1,4 +1,13 @@
-import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentType,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from 'react';
 
 import {
   Activity,
@@ -21,7 +30,9 @@ import {
   Code2,
   Columns3,
   Database,
+  Download,
   ExternalLink,
+  FileJson2,
   FolderUp,
   FileClock,
   GitBranch,
@@ -31,6 +42,7 @@ import {
   Italic,
   LoaderCircle,
   List,
+  ListPlus,
   Maximize2,
   MessageSquareText,
   Moon,
@@ -51,7 +63,9 @@ import {
   Split,
   Sun,
   TextCursorInput,
+  Trash2,
   Undo2,
+  Upload,
   Variable,
   WandSparkles,
   Webhook,
@@ -68,6 +82,12 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/prototypes/shadcn-ui/components/ui/tooltip';
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from '@/prototypes/shadcn-ui/components/ui/tabs';
 import { Separator } from '@/prototypes/shadcn-ui/components/ui/separator';
 import { ScrollArea } from '@/prototypes/shadcn-ui/components/ui/scroll-area';
 import { Input } from '@/prototypes/shadcn-ui/components/ui/input';
@@ -79,6 +99,25 @@ type View = 'workflows' | 'agents' | 'settings' | 'editor';
 type Variant = 'A' | 'B' | 'C';
 type StackTransition = 'idle' | 'leaving' | 'entering';
 type Icon = ComponentType<{ className?: string }>;
+type CanvasNodeId = 'start' | 'llm' | 'condition' | 'http' | 'end';
+type CanvasPosition = { x: number; y: number };
+type OutputMode = 'fields' | 'json';
+type OutputField = { id: number; key: string; type: 'string' | 'number' | 'boolean' };
+
+const INITIAL_NODE_POSITIONS: Record<CanvasNodeId, CanvasPosition> = {
+  start: { x: 1.5, y: 48 },
+  llm: { x: 34, y: 34 },
+  condition: { x: 67, y: 48 },
+  http: { x: 67, y: 20 },
+  end: { x: 67, y: 76 },
+};
+
+const CANVAS_EDGES: Array<{ source: CanvasNodeId; target: CanvasNodeId; active?: boolean }> = [
+  { source: 'start', target: 'llm' },
+  { source: 'llm', target: 'condition', active: true },
+  { source: 'condition', target: 'http' },
+  { source: 'condition', target: 'end' },
+];
 
 const VIEW_ITEMS: Array<{ id: View; label: string; shortLabel: string; icon: Icon }> = [
   { id: 'workflows', label: 'Workflows', shortLabel: 'Flows', icon: Workflow },
@@ -167,6 +206,7 @@ export function PrototypeApp() {
   const [selectedWorkflow, setSelectedWorkflow] = useState('Support triage');
   const [selectedAgent, setSelectedAgent] = useState<number | null>(null);
   const [agentTransition, setAgentTransition] = useState<StackTransition>('idle');
+  const [selectedNode, setSelectedNode] = useState<CanvasNodeId | null>(null);
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -200,6 +240,9 @@ export function PrototypeApp() {
   }, [initial.compare, variant]);
 
   const changeView = (nextView: View) => {
+    if (nextView !== 'editor') {
+      setSelectedNode(null);
+    }
     if (nextView !== 'agents') {
       setSelectedAgent(null);
       setAgentTransition('idle');
@@ -238,10 +281,12 @@ export function PrototypeApp() {
     running,
     selectedWorkflow,
     selectedAgent,
+    selectedNode,
     agentTransition,
     onOpenAgent: openAgent,
     onCloseAgent: closeAgent,
     onOpenWorkflow: openWorkflow,
+    onSelectNode: setSelectedNode,
     onRun: () => {
       setRunning(true);
       window.setTimeout(() => setRunning(false), 1400);
@@ -271,10 +316,12 @@ interface LayoutProps {
   onRun: () => void;
   selectedWorkflow: string;
   selectedAgent: number | null;
+  selectedNode: CanvasNodeId | null;
   agentTransition: StackTransition;
   onOpenAgent: (index: number) => void;
   onCloseAgent: () => void;
   onOpenWorkflow: (name: string) => void;
+  onSelectNode: (nodeId: CanvasNodeId | null) => void;
 }
 
 function WorkbenchRail(props: LayoutProps) {
@@ -343,7 +390,9 @@ function WorkbenchRail(props: LayoutProps) {
           <main className="min-w-0 flex-1 overflow-auto">
             <ViewContent variant="A" {...props} />
           </main>
-          {view === 'editor' && <Inspector variant="A" />}
+          {view === 'editor' && props.selectedNode === 'llm' && (
+            <Inspector variant="A" onClose={() => props.onSelectNode(null)} />
+          )}
         </div>
       </section>
     </div>
@@ -577,7 +626,9 @@ function FocusDock(props: LayoutProps) {
         <main className="min-h-0 flex-1 overflow-auto">
           <ViewContent variant="C" {...props} />
         </main>
-        {view === 'editor' && <Inspector variant="C" />}
+        {view === 'editor' && props.selectedNode === 'llm' && (
+          <Inspector variant="C" onClose={() => props.onSelectNode(null)} />
+        )}
       </div>
     </div>
   );
@@ -600,7 +651,14 @@ function ViewContent(props: LayoutProps & { variant: Variant }) {
     case 'settings':
       return <SettingsPage variant={props.variant} />;
     default:
-      return <EditorCanvas variant={props.variant} running={props.running} />;
+      return (
+        <EditorCanvas
+          variant={props.variant}
+          running={props.running}
+          selectedNode={props.selectedNode}
+          onSelectNode={props.onSelectNode}
+        />
+      );
   }
 }
 
@@ -687,6 +745,7 @@ const AGENT_SECTIONS = [
   { id: 'runtime', label: 'Runtime', icon: Code2 },
   { id: 'skills', label: 'Skills', icon: Sparkles },
   { id: 'extensions', label: 'Extensions', icon: Box },
+  { id: 'memories', label: 'Memories', icon: Database },
   { id: 'sessions', label: 'Sessions', icon: History },
   { id: 'stats', label: 'Statistics', icon: Activity },
 ] as const;
@@ -855,9 +914,17 @@ function AgentsPage({
           </div>
           <Badge variant="secondary">{visibleAgents.length} agents</Badge>
           {variant === 'A' && (
-            <Button className="ml-auto" size="sm">
-              <Plus data-icon="inline-start" /> New agent
-            </Button>
+            <div className="ml-auto flex items-center gap-1.5">
+              <IconButton label="Export agents">
+                <Download />
+              </IconButton>
+              <Button variant="outline" size="sm">
+                <Upload data-icon="inline-start" /> Import
+              </Button>
+              <Button size="sm">
+                <Plus data-icon="inline-start" /> New agent
+              </Button>
+            </div>
           )}
         </div>
         <Card className="gap-0 overflow-hidden p-0 shadow-none">
@@ -1200,7 +1267,7 @@ function AgentsPage({
                   title="Extensions"
                   description="Connect optional integrations to this agent."
                 >
-                  {['Git context', 'mem0 memory', 'Issue tracker'].map((name) => (
+                  {['Git context', 'Issue tracker'].map((name) => (
                     <ToggleRow
                       key={name}
                       title={name}
@@ -1209,6 +1276,31 @@ function AgentsPage({
                       onToggle={() => toggleValue(name, enabledExtensions, setEnabledExtensions)}
                     />
                   ))}
+                </AgentSection>
+              )}
+
+              {activeSection === 'memories' && (
+                <AgentSection
+                  title="Memories"
+                  description="Facts retained from this agent’s sessions through the configured mem0 server."
+                  action={
+                    <Button variant="outline" size="sm">
+                      <RefreshCw data-icon="inline-start" /> Refresh
+                    </Button>
+                  }
+                >
+                  <div className="flex flex-col gap-2">
+                    {[
+                      ['Customer prefers concise status updates.', 'Updated 4 min ago'],
+                      ['Escalate refund requests above $500 for human review.', 'Yesterday'],
+                      ['Use the support knowledge base before web search.', '3 days ago'],
+                    ].map(([memory, time]) => (
+                      <Card className="gap-2 bg-muted/20 p-4 shadow-none" key={memory}>
+                        <p className="text-sm leading-5">{memory}</p>
+                        <span className="text-xs text-muted-foreground">{time}</span>
+                      </Card>
+                    ))}
+                  </div>
                 </AgentSection>
               )}
 
@@ -1480,17 +1572,26 @@ function SettingsPage({ variant }: { variant: Variant }) {
         </SettingsCard>
         <SettingsCard
           icon={Database}
-          title="Memory"
-          description="Connect the application to a compatible mem0 server."
+          title="Memory (mem0)"
+          description="Configure persistent Agent memory and the models used to extract and search it."
         >
-          <Field label="Server URL" value="http://localhost:8080" />
-          <Field label="API key" value="••••••••••••••••••••" />
-          <button
-            className="flex items-center gap-1.5 text-xs font-medium text-primary"
-            type="button"
-          >
-            <Radio className="size-3.5" /> Test connection
-          </button>
+          <div className="grid gap-3 md:grid-cols-2">
+            <Field label="Server URL" value="http://localhost:8890" />
+            <Field label="API key" value="••••••••••••••••••••" />
+            <Field label="Admin key" value="••••••••••••" />
+            <Field label="LLM base URL" value="https://api.example.com" />
+            <Field label="LLM model" value="deepseek-v4-flash" />
+            <Field label="Embedding model" value="text-embedding-v4" />
+            <Field label="Embedding dimensions" value="1024" />
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm">
+              <Radio data-icon="inline-start" /> Test connection
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              Saved credentials stay on the backend proxy.
+            </span>
+          </div>
         </SettingsCard>
         <SettingsCard
           icon={Archive}
@@ -1518,57 +1619,209 @@ function SettingsPage({ variant }: { variant: Variant }) {
   );
 }
 
-function EditorCanvas({ variant, running }: { variant: Variant; running: boolean }) {
+function EditorCanvas({
+  variant,
+  running,
+  selectedNode,
+  onSelectNode,
+}: {
+  variant: Variant;
+  running: boolean;
+  selectedNode: CanvasNodeId | null;
+  onSelectNode: (nodeId: CanvasNodeId | null) => void;
+}) {
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{
+    nodeId: CanvasNodeId;
+    pointerId: number;
+    startX: number;
+    startY: number;
+    origin: CanvasPosition;
+    moved: boolean;
+  } | null>(null);
+  const [positions, setPositions] = useState(INITIAL_NODE_POSITIONS);
+  const [edgePaths, setEdgePaths] = useState<Array<{ key: string; d: string; active?: boolean }>>(
+    []
+  );
+
+  useLayoutEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const updatePaths = () => {
+      const canvasRect = canvas.getBoundingClientRect();
+      setEdgePaths(
+        CANVAS_EDGES.flatMap((edge) => {
+          const source = canvas.querySelector<HTMLElement>(`[data-node-id="${edge.source}"]`);
+          const target = canvas.querySelector<HTMLElement>(`[data-node-id="${edge.target}"]`);
+          if (!source || !target) return [];
+
+          const sourceRect = source.getBoundingClientRect();
+          const targetRect = target.getBoundingClientRect();
+          const sourceCenterX = sourceRect.left - canvasRect.left + sourceRect.width / 2;
+          const sourceCenterY = sourceRect.top - canvasRect.top + sourceRect.height / 2;
+          const targetCenterX = targetRect.left - canvasRect.left + targetRect.width / 2;
+          const targetCenterY = targetRect.top - canvasRect.top + targetRect.height / 2;
+          const verticallyAligned =
+            Math.abs(targetCenterX - sourceCenterX) < sourceRect.width * 0.55;
+
+          let d: string;
+          if (verticallyAligned) {
+            const targetIsBelow = targetCenterY > sourceCenterY;
+            const x1 = sourceCenterX;
+            const y1 = targetIsBelow
+              ? sourceRect.bottom - canvasRect.top
+              : sourceRect.top - canvasRect.top;
+            const x2 = targetCenterX;
+            const y2 = targetIsBelow
+              ? targetRect.top - canvasRect.top
+              : targetRect.bottom - canvasRect.top;
+            const bend = Math.max(42, Math.abs(y2 - y1) * 0.42);
+            d = `M ${x1} ${y1} C ${x1} ${y1 + (targetIsBelow ? bend : -bend)}, ${x2} ${
+              y2 + (targetIsBelow ? -bend : bend)
+            }, ${x2} ${y2}`;
+          } else {
+            const x1 = sourceRect.right - canvasRect.left;
+            const y1 = sourceCenterY;
+            const x2 = targetRect.left - canvasRect.left;
+            const y2 = targetCenterY;
+            const bend = Math.max(42, Math.abs(x2 - x1) * 0.42);
+            d = `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}`;
+          }
+
+          return [
+            {
+              key: `${edge.source}-${edge.target}`,
+              d,
+              active: edge.active,
+            },
+          ];
+        })
+      );
+    };
+
+    const frame = window.requestAnimationFrame(updatePaths);
+    const observer = new ResizeObserver(updatePaths);
+    observer.observe(canvas);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [positions, selectedNode, variant]);
+
+  const beginDrag = (nodeId: CanvasNodeId, event: ReactPointerEvent<HTMLElement>) => {
+    if (event.button !== 0) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragRef.current = {
+      nodeId,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      origin: positions[nodeId],
+      moved: false,
+    };
+  };
+
+  const moveNode = (event: ReactPointerEvent<HTMLElement>) => {
+    const drag = dragRef.current;
+    const canvas = canvasRef.current;
+    if (!drag || !canvas || drag.pointerId !== event.pointerId) return;
+
+    const canvasRect = canvas.getBoundingClientRect();
+    const cardRect = event.currentTarget.getBoundingClientRect();
+    const deltaX = event.clientX - drag.startX;
+    const deltaY = event.clientY - drag.startY;
+    if (Math.abs(deltaX) + Math.abs(deltaY) > 4) drag.moved = true;
+
+    const maxX = Math.max(1, 99 - (cardRect.width / canvasRect.width) * 100);
+    const halfHeight = (cardRect.height / canvasRect.height) * 50;
+    const nextX = Math.min(maxX, Math.max(1, drag.origin.x + (deltaX / canvasRect.width) * 100));
+    const nextY = Math.min(
+      99 - halfHeight,
+      Math.max(halfHeight + 1, drag.origin.y + (deltaY / canvasRect.height) * 100)
+    );
+
+    setPositions((current) => ({ ...current, [drag.nodeId]: { x: nextX, y: nextY } }));
+  };
+
+  const finishDrag = (event: ReactPointerEvent<HTMLElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    dragRef.current = null;
+    if (!drag.moved) onSelectNode(drag.nodeId === 'llm' ? 'llm' : null);
+  };
+
   return (
     <div
+      ref={canvasRef}
       className={cn(
         'workflow-canvas relative h-full min-h-[680px] overflow-hidden',
         variant === 'B' && 'min-h-[560px]'
       )}
+      onPointerDown={(event) => {
+        if (event.target === event.currentTarget) onSelectNode(null);
+      }}
     >
       {variant === 'C' && <NodeLibrary />}
       <CanvasToolbar variant={variant} />
-      <svg
-        className="pointer-events-none absolute inset-0 h-full w-full"
-        preserveAspectRatio="none"
-        viewBox="0 0 1000 650"
-      >
-        <path className="flow-line" d="M 155 316 C 220 316, 200 213, 275 213" />
-        <path className="flow-line active" d="M 455 213 C 520 213, 510 325, 570 325" />
-        <path className="flow-line" d="M 765 325 C 825 325, 805 218, 870 218" />
-        <path className="flow-line" d="M 668 390 C 668 462, 818 464, 872 464" />
+      <svg className="pointer-events-none absolute inset-0 size-full">
+        {edgePaths.map((edge) => (
+          <path
+            className={cn('flow-line', edge.active && running && 'active')}
+            d={edge.d}
+            key={edge.key}
+          />
+        ))}
       </svg>
       <div className={cn('absolute inset-0', variant === 'C' && 'left-[252px]')}>
         <NodeCard
+          id="start"
           kind="start"
           title="Start"
           subtitle="When workflow is run"
-          x="7%"
-          y="43%"
+          position={positions.start}
           status="Ready"
-        />
+          onPointerDown={beginDrag}
+          onPointerMove={moveNode}
+          onPointerUp={finishDrag}
+        >
+          <VariableBinding label="Output" value="request" />
+        </NodeCard>
         <NodeCard
+          id="llm"
           kind="llm"
           title="Analyze request"
           subtitle="Support analyst"
-          x="26%"
-          y="21%"
+          position={positions.llm}
           status={running ? 'Running' : 'Ready'}
           active={running}
+          selected={selectedNode === 'llm'}
+          onPointerDown={beginDrag}
+          onPointerMove={moveNode}
+          onPointerUp={finishDrag}
+          onOpen={() => onSelectNode('llm')}
         >
           <p className="line-clamp-2 text-[11px] leading-4 text-muted-foreground">
             Classify the request, extract urgency and prepare a concise response outline.
           </p>
+          <VariableBinding label="Input" value="start.request" />
         </NodeCard>
         <NodeCard
+          id="condition"
           kind="condition"
           title="Route by urgency"
           subtitle="3 branches"
-          x="53%"
-          y="39%"
+          position={positions.condition}
           status="Configured"
+          onPointerDown={beginDrag}
+          onPointerMove={moveNode}
+          onPointerUp={finishDrag}
         >
-          <div className="space-y-1.5 text-[11px]">
+          <VariableBinding label="Input" value="analyze_request.priority" />
+          <div className="flex flex-col gap-1.5 text-[11px]">
             <div className="flex items-center justify-between">
               <span>Urgent</span>
               <Badge variant="outline">P0/P1</Badge>
@@ -1580,25 +1833,31 @@ function EditorCanvas({ variant, running }: { variant: Variant; running: boolean
           </div>
         </NodeCard>
         <NodeCard
+          id="http"
           kind="http"
           title="Create ticket"
           subtitle="POST /tickets"
-          x="79%"
-          y="22%"
+          position={positions.http}
           status="Ready"
+          onPointerDown={beginDrag}
+          onPointerMove={moveNode}
+          onPointerUp={finishDrag}
         >
-          <div className="rounded-md bg-muted px-2 py-1.5 font-mono text-[10px] text-muted-foreground">
-            api.internal.dev
-          </div>
+          <VariableBinding label="payload" value="route_by_urgency.ticket" />
         </NodeCard>
         <NodeCard
+          id="end"
           kind="end"
           title="Human review"
           subtitle="Return final output"
-          x="80%"
-          y="66%"
+          position={positions.end}
           status="Ready"
-        />
+          onPointerDown={beginDrag}
+          onPointerMove={moveNode}
+          onPointerUp={finishDrag}
+        >
+          <VariableBinding label="result" value="route_by_urgency.review" />
+        </NodeCard>
       </div>
       {variant === 'A' && (
         <div className="absolute bottom-4 left-4 flex items-center gap-1 rounded-lg border bg-background p-1 shadow-sm">
@@ -1654,23 +1913,33 @@ function CanvasToolbar({ variant }: { variant: Variant }) {
 }
 
 function NodeCard({
+  id,
   kind,
   title,
   subtitle,
   status,
-  x,
-  y,
+  position,
   active,
+  selected,
   children,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onOpen,
 }: {
+  id: CanvasNodeId;
   kind: 'start' | 'llm' | 'condition' | 'http' | 'end';
   title: string;
   subtitle: string;
   status: string;
-  x: string;
-  y: string;
+  position: CanvasPosition;
   active?: boolean;
+  selected?: boolean;
   children?: ReactNode;
+  onPointerDown: (nodeId: CanvasNodeId, event: ReactPointerEvent<HTMLElement>) => void;
+  onPointerMove: (event: ReactPointerEvent<HTMLElement>) => void;
+  onPointerUp: (event: ReactPointerEvent<HTMLElement>) => void;
+  onOpen?: () => void;
 }) {
   const config = {
     start: { icon: Radio, tone: 'bg-slate-700 text-white dark:bg-slate-200 dark:text-slate-950' },
@@ -1683,14 +1952,31 @@ function NodeCard({
 
   return (
     <Card
+      aria-label={`${title} node${kind === 'llm' ? '. Click to configure' : ''}`}
       className={cn(
-        'node-card absolute w-[210px] gap-3 border-border/90 bg-card p-3 shadow-[0_4px_16px_rgb(15_23_42/0.08)]',
-        active && 'border-blue-400 ring-2 ring-blue-500/15'
+        'node-card absolute w-[180px] touch-none gap-3 border-border/90 bg-card p-3 shadow-[0_4px_16px_rgb(15_23_42/0.08)] select-none',
+        active && 'border-blue-400 ring-2 ring-blue-500/15',
+        selected && 'border-primary ring-2 ring-primary/15'
       )}
-      style={{ left: x, top: y }}
+      data-node-id={id}
+      role="button"
+      style={{ left: `${position.x}%`, top: `${position.y}%` }}
+      tabIndex={0}
+      onKeyDown={(event) => {
+        if (kind === 'llm' && (event.key === 'Enter' || event.key === ' ')) {
+          event.preventDefault();
+          onOpen?.();
+        }
+      }}
+      onPointerDown={(event) => onPointerDown(id, event)}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
     >
       <span className="node-port -left-1.5" />
       <span className="node-port -right-1.5" />
+      <span className="node-port-y -top-1.5" />
+      <span className="node-port-y -bottom-1.5" />
       <div className="flex items-start gap-2.5">
         <span
           className={cn('flex size-8 shrink-0 items-center justify-center rounded-lg', config.tone)}
@@ -1722,7 +2008,62 @@ function NodeCard({
   );
 }
 
-function Inspector({ variant }: { variant: 'A' | 'C' }) {
+function VariableBinding({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex min-w-0 items-center gap-1.5 rounded-md bg-muted px-2 py-1.5 text-[10px] text-muted-foreground">
+      <Variable className="size-3 shrink-0" />
+      <span className="shrink-0">{label}</span>
+      <span className="truncate font-mono text-foreground">{value}</span>
+    </div>
+  );
+}
+
+function Inspector({ variant, onClose }: { variant: 'A' | 'C'; onClose: () => void }) {
+  const [prompt, setPrompt] = useState(
+    'Classify {{start.request}} by urgency.\n\nReturn a summary, priority and review decision.'
+  );
+  const [variablePickerOpen, setVariablePickerOpen] = useState(false);
+  const [outputMode, setOutputMode] = useState<OutputMode>('fields');
+  const [outputFields, setOutputFields] = useState<OutputField[]>([
+    { id: 1, key: 'summary', type: 'string' },
+    { id: 2, key: 'priority', type: 'string' },
+    { id: 3, key: 'requires_review', type: 'boolean' },
+  ]);
+  const [jsonSchema, setJsonSchema] = useState(`{
+  "type": "object",
+  "properties": {
+    "summary": { "type": "string" },
+    "priority": { "type": "string", "enum": ["low", "medium", "high"] },
+    "requires_review": { "type": "boolean" }
+  },
+  "required": ["summary", "priority", "requires_review"]
+}`);
+
+  const jsonSchemaKeys = useMemo(() => {
+    try {
+      const schema = JSON.parse(jsonSchema) as { properties?: Record<string, unknown> };
+      return Object.keys(schema.properties ?? {});
+    } catch {
+      return [];
+    }
+  }, [jsonSchema]);
+
+  const outputPaths =
+    outputMode === 'fields'
+      ? outputFields.map((field) => field.key.trim()).filter(Boolean)
+      : jsonSchemaKeys;
+
+  const updateOutputField = (id: number, patch: Partial<OutputField>) => {
+    setOutputFields((current) =>
+      current.map((field) => (field.id === id ? { ...field, ...patch } : field))
+    );
+  };
+
+  const insertVariable = (variable: string) => {
+    setPrompt((current) => `${current}${current.endsWith(' ') ? '' : ' '}{{${variable}}}`);
+    setVariablePickerOpen(false);
+  };
+
   const content = (
     <>
       <div className="flex h-14 items-center gap-2 border-b px-4">
@@ -1733,18 +2074,20 @@ function Inspector({ variant }: { variant: 'A' | 'C' }) {
         <Badge className="ml-auto" variant="secondary">
           Ready
         </Badge>
-        {variant === 'C' && (
-          <Button variant="ghost" size="icon-xs">
-            <X />
-          </Button>
-        )}
+        <Button aria-label="Close node settings" variant="ghost" size="icon-xs" onClick={onClose}>
+          <X />
+        </Button>
       </div>
       <ScrollArea className="h-[calc(100%-56px)]">
-        <div className="space-y-5 p-4">
-          <FormSection title="Agent" description="Execution identity for this node.">
-            <label className="space-y-1.5">
-              <span className="text-xs font-medium">Selected agent</span>
+        <div className="flex flex-col gap-5 p-4">
+          <FormSection
+            title="Run with agent"
+            description="Choose the reusable Agent profile that will execute this node."
+          >
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs font-medium">Agent</span>
               <button
+                aria-label="Selected agent: Support analyst"
                 className="flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left"
                 type="button"
               >
@@ -1754,25 +2097,152 @@ function Inspector({ variant }: { variant: 'A' | 'C' }) {
                 <span className="flex-1 text-xs font-medium">Support analyst</span>
                 <ChevronDown className="size-3.5 text-muted-foreground" />
               </button>
-            </label>
+              <p className="text-[11px] leading-4 text-muted-foreground">
+                Inherits this Agent’s model, system prompt, tools, skills and runtime settings.
+              </p>
+            </div>
           </FormSection>
-          <FormSection title="Prompt" description="Variables remain compatible with Workflow JSON.">
+          <FormSection
+            title="Prompt"
+            description="Reference values from upstream nodes or global workflow variables."
+          >
             <textarea
+              aria-label="Node prompt"
               className="min-h-40 w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-xs leading-5 outline-none focus:ring-2 focus:ring-ring/30"
-              defaultValue={
-                'Classify {{input.request}} by urgency.\n\nReturn a summary, risk level and response outline.'
-              }
+              value={prompt}
+              onChange={(event) => setPrompt(event.target.value)}
             />
             <button
               className="flex items-center gap-1.5 text-xs font-medium text-primary"
+              onClick={() => setVariablePickerOpen((current) => !current)}
               type="button"
             >
               <Braces className="size-3.5" /> Insert variable
             </button>
+            {variablePickerOpen && (
+              <Card className="gap-3 bg-muted/20 p-3 shadow-none">
+                {[
+                  ['Upstream nodes', ['start.request']],
+                  ['Global variables', ['global.current_user', 'global.environment']],
+                ].map(([group, variables]) => (
+                  <div className="flex flex-col gap-1.5" key={group as string}>
+                    <span className="text-[10px] font-medium text-muted-foreground">{group}</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(variables as string[]).map((variable) => (
+                        <Button
+                          key={variable}
+                          variant="outline"
+                          size="xs"
+                          onClick={() => insertVariable(variable)}
+                        >
+                          <Variable data-icon="inline-start" /> {variable}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </Card>
+            )}
           </FormSection>
-          <FormSection title="Output" description="Available to downstream nodes.">
-            <div className="rounded-lg border bg-muted/30 px-3 py-2 font-mono text-[11px]">
-              analyze_request.output
+          <FormSection
+            title="Structured output"
+            description="Define the JSON object this Agent must return for downstream nodes."
+          >
+            <Tabs value={outputMode} onValueChange={(value) => setOutputMode(value as OutputMode)}>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="fields">
+                  <ListPlus data-icon="inline-start" /> Simple
+                </TabsTrigger>
+                <TabsTrigger value="json">
+                  <FileJson2 data-icon="inline-start" /> JSON Schema
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent className="flex flex-col gap-2" value="fields">
+                <p className="text-[11px] leading-4 text-muted-foreground">
+                  Name each key; the Agent fills its value at runtime.
+                </p>
+                {outputFields.map((field, index) => (
+                  <div
+                    className="grid grid-cols-[1fr_92px_28px] items-center gap-1.5"
+                    key={field.id}
+                  >
+                    <Input
+                      aria-label={`Output key ${index + 1}`}
+                      className="font-mono text-xs"
+                      placeholder="field_name"
+                      value={field.key}
+                      onChange={(event) => updateOutputField(field.id, { key: event.target.value })}
+                    />
+                    <select
+                      aria-label={`Output type ${index + 1}`}
+                      className="h-8 rounded-lg border border-input bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring/30"
+                      value={field.type}
+                      onChange={(event) =>
+                        updateOutputField(field.id, {
+                          type: event.target.value as OutputField['type'],
+                        })
+                      }
+                    >
+                      <option value="string">String</option>
+                      <option value="number">Number</option>
+                      <option value="boolean">Boolean</option>
+                    </select>
+                    <Button
+                      aria-label={`Remove output ${field.key || index + 1}`}
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() =>
+                        setOutputFields((current) => current.filter((item) => item.id !== field.id))
+                      }
+                    >
+                      <Trash2 />
+                    </Button>
+                  </div>
+                ))}
+                <Button
+                  className="w-fit"
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setOutputFields((current) => [
+                      ...current,
+                      {
+                        id: Math.max(0, ...current.map((field) => field.id)) + 1,
+                        key: '',
+                        type: 'string',
+                      },
+                    ])
+                  }
+                >
+                  <Plus data-icon="inline-start" /> Add key
+                </Button>
+              </TabsContent>
+              <TabsContent className="flex flex-col gap-2" value="json">
+                <p className="text-[11px] leading-4 text-muted-foreground">
+                  Provide a JSON Schema when nested objects, arrays or strict enums are required.
+                </p>
+                <textarea
+                  aria-label="JSON output schema"
+                  className="min-h-64 w-full resize-y rounded-lg border border-input bg-background p-3 font-mono text-[11px] leading-5 outline-none focus:ring-2 focus:ring-ring/30"
+                  spellCheck={false}
+                  value={jsonSchema}
+                  onChange={(event) => setJsonSchema(event.target.value)}
+                />
+              </TabsContent>
+            </Tabs>
+            <div className="flex flex-col gap-1.5 rounded-lg border bg-muted/20 p-3">
+              <span className="text-[10px] font-medium text-muted-foreground uppercase">
+                Downstream paths
+              </span>
+              {outputPaths.length === 0 ? (
+                <span className="text-[11px] text-muted-foreground">No valid output keys yet.</span>
+              ) : (
+                outputPaths.map((key) => (
+                  <code className="text-[11px]" key={key}>
+                    analyze_request.{key}
+                  </code>
+                ))
+              )}
             </div>
           </FormSection>
         </div>
@@ -1782,14 +2252,14 @@ function Inspector({ variant }: { variant: 'A' | 'C' }) {
 
   if (variant === 'C') {
     return (
-      <Card className="absolute top-[72px] right-4 z-30 h-[calc(100%-104px)] w-[304px] gap-0 overflow-hidden p-0 shadow-[0_18px_48px_rgb(15_23_42/0.16)]">
+      <Card className="absolute top-[72px] right-4 z-30 h-[calc(100%-104px)] w-[360px] gap-0 overflow-hidden p-0 shadow-[0_18px_48px_rgb(15_23_42/0.16)]">
         {content}
       </Card>
     );
   }
 
   return (
-    <aside className="w-[340px] shrink-0 p-3">
+    <aside className="w-[380px] shrink-0 p-3">
       <Card className="h-full gap-0 overflow-hidden rounded-2xl p-0 shadow-lg">{content}</Card>
     </aside>
   );

@@ -11,6 +11,9 @@ Validate the preferred Variant A structure after the latest navigation feedback:
 - make the floating sidebar collapsible and place theme switching inside it;
 - retain the dark workflow canvas without the former red cast.
 
+The current audit is rebased on `origin/main@a551f8a20`, including the new
+mem0 administration and Agent memory surfaces.
+
 ## Findings
 
 - Before: Agents repeated the selected name in the switcher and detail header; Workflows repeated its identity across the product label, navigation, header, and page heading.
@@ -31,6 +34,11 @@ Validate the preferred Variant A structure after the latest navigation feedback:
 - After: Description has dependency-free Markdown shortcuts for bold, italic, inline code, and lists. Skills can import a local folder, and the imported package is enabled immediately in prototype state.
 - After: Session history rows open their saved conversation in place; `New session` opens the same chat shell without a redundant centered Agent introduction.
 - After: `Stats` is renamed `Statistics`, and the unused Workflow editor overflow action is removed.
+- After: the node inspector is closed by default and opens only when the LLM card is clicked. Its Agent section now explains that the selected reusable Agent supplies the model, system prompt, tools, skills, and runtime.
+- After: LLM output configuration uses the repository's existing structured-output concept in two views: Simple fields for key/type pairs and JSON Schema for advanced object definitions. Both expose stable `analyze_request.<key>` paths to downstream nodes.
+- After: prompt variables are selected from explicit Upstream nodes and Global variables groups. Sample node chips likewise reference upstream outputs instead of hard-coded endpoint values.
+- After: prototype node cards can be dragged, while connection paths are recalculated from measured card ports after every move or layout change.
+- Main reconciliation: Agent collections expose Import/Export/New actions; Agent detail includes Memories; Settings includes the full mem0 server, credentials, LLM, and embedding configuration introduced on main.
 
 ## Evidence
 
@@ -58,5 +66,11 @@ Validate the preferred Variant A structure after the latest navigation feedback:
 - `27-agent-skills-import.png`: immediate Skill toggles with local folder import and no save action.
 - `28-agent-session-history.png`: an existing session opened as a resumable conversation.
 - `29-editor-clean-header.png`: Workflow editor header without an unused overflow menu.
+- `30-editor-click-to-configure.png`: editor initial state with no inspector until an LLM card is selected.
+- `31-llm-structured-output-simple.png`: Simple structured-output fields and downstream paths.
+- `32-llm-structured-output-json.png`: advanced JSON Schema output mode.
+- `33-editor-draggable-connected.png`: dragged LLM card with measured connections following its new position.
+- `34-agent-memories-main-sync.png`: Agent Memories surface reconciled with latest main.
+- `35-settings-mem0-main-sync.png`: full mem0 configuration reconciled with latest main.
 
-Browser verification covered Workflow list -> editor -> Back, Agent list -> settings -> Back, Markdown selection formatting, immediate Skill toggles, Sessions -> existing history/New session -> chat, sidebar collapse/expand, theme switching, node-inspector surface consistency, and console warnings/errors.
+Browser verification covered Workflow list -> editor -> Back, Agent list -> settings -> Back, Markdown selection formatting, immediate Skill toggles, Sessions -> existing history/New session -> chat, sidebar collapse/expand, theme switching, click-to-open node inspection, Simple/JSON structured outputs, upstream/global variable insertion, node dragging with live connection recalculation, latest-main Agent memories and mem0 settings, and console warnings/errors.
