@@ -107,6 +107,7 @@
     "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,json,less,css,md}\"",
     "prepare": "husky",
     "prototype:ui": "rsbuild dev -c rsbuild.prototype.config.ts",
+    "prototype:ui:audit": "node scripts/audit-shadcn-prototype.mjs",
     "prototype:ui:build": "rsbuild build -c rsbuild.prototype.config.ts"
   },
   "packageManager": "pnpm@11.13.0",

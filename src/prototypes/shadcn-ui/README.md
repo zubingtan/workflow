@@ -32,3 +32,15 @@ Variant A now tests the preferred product structure:
 - Sessions owns conversation entry: `New session` replaces the settings content with a full inline Agent conversation, and Back restores the recent-session list.
 
 The prototype uses local mock state only. It does not call backend APIs, persist workflow data, or change Workflow JSON and execution behavior.
+
+## Shadcn control audit
+
+All interactive controls in `prototype-app.tsx` are composed from the local shadcn registry: Button and ButtonGroup, Field and InputGroup, Input, Textarea, Select, Switch, Item, Alert, Avatar, Tabs, ToggleGroup, Tooltip, ScrollArea, and Card subcomponents. The canvas keeps only domain-specific geometry and positioning in custom CSS: node coordinates, ports, connection paths, drag cursors, and stack transitions.
+
+Run the regression guard before review:
+
+```bash
+pnpm prototype:ui:audit
+```
+
+It rejects native interactive HTML, manual button roles, direct dark-mode overrides, non-semantic palette utilities, sibling `space-*` utilities, and direct variant-class composition in the prototype surface.

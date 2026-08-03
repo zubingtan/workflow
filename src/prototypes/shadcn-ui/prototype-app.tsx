@@ -21,7 +21,6 @@ import {
   Box,
   Braces,
   Check,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   CircleStop,
@@ -40,13 +39,11 @@ import {
   GripVertical,
   History,
   Italic,
-  LoaderCircle,
   List,
   ListPlus,
   Maximize2,
   MessageSquareText,
   Moon,
-  MoreHorizontal,
   Pencil,
   PanelLeftClose,
   Play,
@@ -82,18 +79,71 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/prototypes/shadcn-ui/components/ui/tooltip';
+import { ToggleGroup, ToggleGroupItem } from '@/prototypes/shadcn-ui/components/ui/toggle-group';
+import { Textarea } from '@/prototypes/shadcn-ui/components/ui/textarea';
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
 } from '@/prototypes/shadcn-ui/components/ui/tabs';
+import { Switch } from '@/prototypes/shadcn-ui/components/ui/switch';
+import { Spinner } from '@/prototypes/shadcn-ui/components/ui/spinner';
 import { Separator } from '@/prototypes/shadcn-ui/components/ui/separator';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/prototypes/shadcn-ui/components/ui/select';
 import { ScrollArea } from '@/prototypes/shadcn-ui/components/ui/scroll-area';
+import { Kbd } from '@/prototypes/shadcn-ui/components/ui/kbd';
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemFooter,
+  ItemGroup,
+  ItemHeader,
+  ItemMedia,
+  ItemTitle,
+} from '@/prototypes/shadcn-ui/components/ui/item';
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+  InputGroupTextarea,
+} from '@/prototypes/shadcn-ui/components/ui/input-group';
 import { Input } from '@/prototypes/shadcn-ui/components/ui/input';
-import { Card } from '@/prototypes/shadcn-ui/components/ui/card';
-import { Button, buttonVariants } from '@/prototypes/shadcn-ui/components/ui/button';
+import {
+  Field as FormField,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from '@/prototypes/shadcn-ui/components/ui/field';
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/prototypes/shadcn-ui/components/ui/card';
+import {
+  ButtonGroup,
+  ButtonGroupSeparator,
+} from '@/prototypes/shadcn-ui/components/ui/button-group';
+import { Button } from '@/prototypes/shadcn-ui/components/ui/button';
 import { Badge } from '@/prototypes/shadcn-ui/components/ui/badge';
+import { Avatar, AvatarFallback } from '@/prototypes/shadcn-ui/components/ui/avatar';
+import { Alert, AlertDescription, AlertTitle } from '@/prototypes/shadcn-ui/components/ui/alert';
 
 type View = 'workflows' | 'agents' | 'settings' | 'editor';
 type Variant = 'A' | 'B' | 'C';
@@ -139,7 +189,6 @@ const WORKFLOWS = [
     nodes: 8,
     lastRun: '4 min ago',
     success: '98.1%',
-    accent: 'bg-blue-500',
   },
   {
     name: 'Research brief',
@@ -148,7 +197,6 @@ const WORKFLOWS = [
     nodes: 12,
     lastRun: 'Yesterday',
     success: '94.8%',
-    accent: 'bg-violet-500',
   },
   {
     name: 'Release notes',
@@ -157,14 +205,13 @@ const WORKFLOWS = [
     nodes: 6,
     lastRun: '3 days ago',
     success: '100%',
-    accent: 'bg-emerald-500',
   },
 ];
 
 const AGENTS = [
-  { name: 'Support analyst', model: 'gpt-5', status: 'Ready', color: 'bg-blue-600' },
-  { name: 'Research lead', model: 'deepseek-v4-pro', status: 'Ready', color: 'bg-violet-600' },
-  { name: 'Release editor', model: 'gpt-5-mini', status: 'Draft', color: 'bg-amber-600' },
+  { name: 'Support analyst', model: 'gpt-5', status: 'Ready' },
+  { name: 'Research lead', model: 'deepseek-v4-pro', status: 'Ready' },
+  { name: 'Release editor', model: 'gpt-5-mini', status: 'Draft' },
 ];
 
 const NODE_TYPES = [
@@ -347,14 +394,14 @@ function WorkbenchRail(props: LayoutProps) {
             </IconButton>
           ) : (
             <>
-              <button
+              <Button
                 aria-label="Open workflow editor"
-                className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-foreground text-background"
+                className="shrink-0"
                 onClick={() => setView('editor')}
-                type="button"
+                size="icon-lg"
               >
-                <Zap className="size-4" />
-              </button>
+                <Zap />
+              </Button>
               <span className="ml-2 text-sm font-semibold">Studio</span>
               <div className="flex-1" />
               <IconButton
@@ -429,7 +476,7 @@ function WorkbenchHeader(props: LayoutProps) {
           <Save data-icon="inline-start" /> Save
         </Button>
         <Button size="sm" onClick={onRun} disabled={running}>
-          {running ? <LoaderCircle className="animate-spin" /> : <Play data-icon="inline-start" />}
+          {running ? <Spinner data-icon="inline-start" /> : <Play data-icon="inline-start" />}
           {running ? 'Running' : 'Test run'}
         </Button>
       </div>
@@ -466,14 +513,11 @@ function CommandDeck(props: LayoutProps) {
             </Button>
           ))}
         </nav>
-        <button
-          className="ml-5 flex w-[320px] items-center gap-2 rounded-lg border border-border bg-muted/25 px-3 py-1.5 text-left text-sm text-muted-foreground hover:bg-muted/60"
-          type="button"
-        >
-          <Search className="size-4" />
+        <Button className="ml-5 w-[320px] justify-start" variant="outline">
+          <Search data-icon="inline-start" />
           <span className="flex-1">Search workflows, agents, runs…</span>
-          <kbd className="rounded border bg-background px-1.5 py-0.5 text-[10px]">⌘ K</kbd>
-        </button>
+          <Kbd>⌘ K</Kbd>
+        </Button>
         <div className="ml-auto flex items-center gap-1.5">
           <ThemeToggle dark={dark} setDark={setDark} />
           {view === 'workflows' && (
@@ -486,9 +530,9 @@ function CommandDeck(props: LayoutProps) {
               <Plus data-icon="inline-start" /> New agent
             </Button>
           )}
-          <div className="ml-1 flex size-8 items-center justify-center rounded-full bg-foreground text-xs font-semibold text-background">
-            ZT
-          </div>
+          <Avatar className="ml-1">
+            <AvatarFallback>ZT</AvatarFallback>
+          </Avatar>
         </div>
       </header>
 
@@ -508,11 +552,7 @@ function CommandDeck(props: LayoutProps) {
               <Save data-icon="inline-start" /> Save
             </Button>
             <Button size="sm" onClick={onRun} disabled={running}>
-              {running ? (
-                <LoaderCircle className="animate-spin" />
-              ) : (
-                <Play data-icon="inline-start" />
-              )}
+              {running ? <Spinner data-icon="inline-start" /> : <Play data-icon="inline-start" />}
               {running ? 'Running' : 'Run'}
             </Button>
           </div>
@@ -543,35 +583,33 @@ function FocusDock(props: LayoutProps) {
   return (
     <div className="grid h-screen grid-cols-[64px_minmax(0,1fr)] overflow-hidden bg-muted/30 text-foreground">
       <aside className="flex flex-col items-center border-r border-border bg-background py-3">
-        <button
-          className="mb-5 flex size-9 items-center justify-center rounded-xl bg-foreground text-background"
-          onClick={() => setView('editor')}
-          type="button"
-        >
-          <Zap className="size-4" />
-        </button>
-        <nav className="space-y-2">
+        <Button className="mb-5" onClick={() => setView('editor')} size="icon-lg">
+          <Zap />
+        </Button>
+        <nav className="flex flex-col gap-2">
           {VIEW_ITEMS.map((item) => (
             <Tooltip key={item.id}>
               <TooltipTrigger
-                className={cn(
-                  'flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
-                  view === item.id &&
-                    'bg-foreground text-background hover:bg-foreground hover:text-background'
-                )}
-                onClick={() => setView(item.id)}
-              >
-                <item.icon className="size-4" />
-              </TooltipTrigger>
+                render={
+                  <Button
+                    aria-label={item.label}
+                    variant={view === item.id ? 'secondary' : 'ghost'}
+                    size="icon-lg"
+                    onClick={() => setView(item.id)}
+                  >
+                    <item.icon />
+                  </Button>
+                }
+              />
               <TooltipContent side="right">{item.label}</TooltipContent>
             </Tooltip>
           ))}
         </nav>
-        <div className="mt-auto space-y-2">
+        <div className="mt-auto flex flex-col gap-2">
           <ThemeToggle dark={dark} setDark={setDark} />
-          <div className="flex size-9 items-center justify-center rounded-full bg-blue-600 text-[11px] font-semibold text-white">
-            ZT
-          </div>
+          <Avatar size="lg">
+            <AvatarFallback>ZT</AvatarFallback>
+          </Avatar>
         </div>
       </aside>
 
@@ -587,12 +625,9 @@ function FocusDock(props: LayoutProps) {
           </div>
           {view === 'editor' && <Badge variant="outline">Draft</Badge>}
           <div className="ml-auto flex items-center gap-1.5">
-            <button
-              className="mr-2 flex items-center gap-2 text-xs text-muted-foreground"
-              type="button"
-            >
-              <span className="size-1.5 rounded-full bg-emerald-500" /> Saved
-            </button>
+            <Badge className="mr-2" variant="outline">
+              Saved
+            </Badge>
             <IconButton label="Workflow history">
               <FileClock />
             </IconButton>
@@ -613,7 +648,7 @@ function FocusDock(props: LayoutProps) {
                 </Button>
                 <Button size="sm" onClick={onRun} disabled={running}>
                   {running ? (
-                    <LoaderCircle className="animate-spin" />
+                    <Spinner data-icon="inline-start" />
                   ) : (
                     <Play data-icon="inline-start" />
                   )}
@@ -684,16 +719,17 @@ function WorkflowsPage({ variant, onOpen }: { variant: Variant; onOpen: (name: s
       )}
     >
       <div className="mb-5 flex items-center gap-3">
-        <div className="relative w-full max-w-sm">
-          <Search className="absolute top-2 left-2.5 size-4 text-muted-foreground" />
-          <Input
+        <InputGroup className="max-w-sm">
+          <InputGroupAddon>
+            <Search />
+          </InputGroupAddon>
+          <InputGroupInput
             aria-label="Search workflows"
-            className="pl-8"
             placeholder="Search workflows"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
-        </div>
+        </InputGroup>
         <Badge variant="secondary">{visibleWorkflows.length} workflows</Badge>
         {variant === 'A' && (
           <Button className="ml-auto" size="sm" onClick={() => openWorkflow('Untitled workflow')}>
@@ -703,35 +739,38 @@ function WorkflowsPage({ variant, onOpen }: { variant: Variant; onOpen: (name: s
       </div>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {visibleWorkflows.map((workflow) => (
-          <button key={workflow.name} onClick={() => openWorkflow(workflow.name)} type="button">
-            <Card className="group h-full gap-4 border-border/80 p-4 text-left shadow-none transition hover:-translate-y-0.5 hover:border-foreground/20 hover:shadow-sm">
-              <div className="flex items-start gap-3">
-                <span className={cn('mt-1 size-2 rounded-full', workflow.accent)} />
-                <div className="min-w-0 flex-1">
-                  <h2 className="truncate text-sm font-semibold">{workflow.name}</h2>
-                  <p className="mt-1 min-h-10 text-xs leading-5 text-muted-foreground">
-                    {workflow.description}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 text-xs">
-                <Badge variant={workflow.status === 'Published' ? 'secondary' : 'outline'}>
-                  {workflow.status}
-                </Badge>
-                <span className="text-muted-foreground">{workflow.nodes} nodes</span>
-                <span className="ml-auto font-medium">{workflow.success}</span>
-              </div>
-              <Separator />
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span className="flex items-center gap-1.5">
-                  <Clock3 className="size-3.5" /> {workflow.lastRun}
-                </span>
-                <span className="flex items-center gap-1 font-medium text-foreground">
-                  Open <ArrowRight className="size-3.5" />
-                </span>
-              </div>
-            </Card>
-          </button>
+          <Item
+            className="h-full flex-col items-stretch"
+            key={workflow.name}
+            onClick={() => openWorkflow(workflow.name)}
+            render={<Button type="button" variant="ghost" />}
+            variant="outline"
+          >
+            <ItemHeader>
+              <ItemContent>
+                <ItemTitle>{workflow.name}</ItemTitle>
+                <ItemDescription>{workflow.description}</ItemDescription>
+              </ItemContent>
+              <ItemMedia variant="icon">
+                <Workflow />
+              </ItemMedia>
+            </ItemHeader>
+            <ItemContent className="flex-row items-center gap-2">
+              <Badge variant={workflow.status === 'Published' ? 'secondary' : 'outline'}>
+                {workflow.status}
+              </Badge>
+              <span className="text-muted-foreground">{workflow.nodes} nodes</span>
+              <span className="ml-auto font-medium">{workflow.success}</span>
+            </ItemContent>
+            <ItemFooter className="text-xs text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <Clock3 /> {workflow.lastRun}
+              </span>
+              <span className="flex items-center gap-1 font-medium text-foreground">
+                Open <ArrowRight />
+              </span>
+            </ItemFooter>
+          </Item>
         ))}
       </div>
     </div>
@@ -902,16 +941,17 @@ function AgentsPage({
         )}
       >
         <div className="mb-4 flex items-center gap-3">
-          <div className="relative w-full max-w-sm">
-            <Search className="absolute top-2 left-2.5 size-4 text-muted-foreground" />
-            <Input
+          <InputGroup className="max-w-sm">
+            <InputGroupAddon>
+              <Search />
+            </InputGroupAddon>
+            <InputGroupInput
               aria-label="Search agents"
-              className="pl-8"
               placeholder="Search agents"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
             />
-          </div>
+          </InputGroup>
           <Badge variant="secondary">{visibleAgents.length} agents</Badge>
           {variant === 'A' && (
             <div className="ml-auto flex items-center gap-1.5">
@@ -927,38 +967,32 @@ function AgentsPage({
             </div>
           )}
         </div>
-        <Card className="gap-0 overflow-hidden p-0 shadow-none">
+        <ItemGroup className="gap-0 overflow-hidden rounded-xl border">
           {visibleAgents.map(({ item, index }) => (
-            <button
-              className="group flex w-full items-center gap-4 border-b px-4 py-4 text-left transition-colors last:border-b-0 hover:bg-muted/50"
+            <Item
+              className="rounded-none border-0 border-b last:border-b-0"
               key={item.name}
               onClick={() => selectAgent(index)}
-              type="button"
+              render={<Button type="button" variant="ghost" />}
             >
-              <span
-                className={cn(
-                  'flex size-10 shrink-0 items-center justify-center rounded-xl text-white',
-                  item.color
-                )}
-              >
-                <Bot className="size-5" />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-semibold">{agentNames[index]}</span>
-                <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-                  OpenAI-compatible · {item.model}
-                </span>
-              </span>
-              <Badge
-                className="w-14 justify-center"
-                variant={item.status === 'Ready' ? 'secondary' : 'outline'}
-              >
-                {item.status}
-              </Badge>
-              <ArrowRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-            </button>
+              <Avatar size="lg">
+                <AvatarFallback>
+                  <Bot />
+                </AvatarFallback>
+              </Avatar>
+              <ItemContent>
+                <ItemTitle>{agentNames[index]}</ItemTitle>
+                <ItemDescription>OpenAI-compatible · {item.model}</ItemDescription>
+              </ItemContent>
+              <ItemActions>
+                <Badge variant={item.status === 'Ready' ? 'secondary' : 'outline'}>
+                  {item.status}
+                </Badge>
+                <ArrowRight />
+              </ItemActions>
+            </Item>
           ))}
-        </Card>
+        </ItemGroup>
       </div>
     );
   }
@@ -975,14 +1009,11 @@ function AgentsPage({
         <IconButton label="Back to agents" onClick={onClose}>
           <ArrowLeft />
         </IconButton>
-        <span
-          className={cn(
-            'flex size-7 shrink-0 items-center justify-center rounded-md text-white',
-            agent.color
-          )}
-        >
-          <Bot className="size-3.5" />
-        </span>
+        <Avatar size="sm">
+          <AvatarFallback>
+            <Bot />
+          </AvatarFallback>
+        </Avatar>
         <div className="min-w-0">
           {editingName ? (
             <Input
@@ -1001,25 +1032,18 @@ function AgentsPage({
               }}
             />
           ) : (
-            <button
-              className="group flex max-w-sm items-center gap-1.5 text-left"
+            <Button
+              className="max-w-sm justify-start"
               onClick={() => setEditingName(true)}
-              type="button"
+              variant="ghost"
+              size="sm"
             >
-              <h1 className="truncate text-sm font-semibold">{agent.name}</h1>
-              <Pencil className="size-3.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-            </button>
+              <span className="truncate">{agent.name}</span>
+              <Pencil data-icon="inline-end" />
+            </Button>
           )}
         </div>
-        <Badge variant="secondary">
-          <span
-            className={cn(
-              'mr-1 size-1.5 rounded-full',
-              agent.status === 'Ready' ? 'bg-emerald-500' : 'bg-amber-500'
-            )}
-          />
-          {agent.status}
-        </Badge>
+        <Badge variant={agent.status === 'Ready' ? 'secondary' : 'outline'}>{agent.status}</Badge>
       </div>
 
       <div className="flex min-h-0 flex-1">
@@ -1028,22 +1052,20 @@ function AgentsPage({
             {AGENT_SECTIONS.map((section) => {
               const SectionIcon = section.icon;
               return (
-                <button
+                <Button
                   aria-current={activeSection === section.id ? 'page' : undefined}
-                  className={cn(
-                    'flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
-                    activeSection === section.id && 'bg-muted text-foreground'
-                  )}
+                  className="w-full justify-start"
                   key={section.id}
                   onClick={() => {
                     setActiveSection(section.id);
                     setSessionOpen(false);
                   }}
-                  type="button"
+                  size="sm"
+                  variant={activeSection === section.id ? 'secondary' : 'ghost'}
                 >
-                  <SectionIcon className="size-3.5" />
+                  <SectionIcon data-icon="inline-start" />
                   {section.label}
-                </button>
+                </Button>
               );
             })}
           </nav>
@@ -1082,79 +1104,86 @@ function AgentsPage({
                 sendSessionMessage();
               }}
             >
-              <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-xl border bg-background p-2 shadow-sm">
-                <textarea
+              <InputGroup className="mx-auto h-auto max-w-3xl">
+                <InputGroupTextarea
                   aria-label="Message"
-                  className="min-h-12 flex-1 resize-none bg-transparent px-2 py-1.5 text-sm outline-none placeholder:text-muted-foreground"
                   placeholder={`Message ${agent.name}`}
                   rows={2}
                   value={sessionDraft}
                   onChange={(event) => setSessionDraft(event.target.value)}
                 />
-                <Button aria-label="Send message" size="icon" type="submit">
-                  <Send />
-                </Button>
-              </div>
+                <InputGroupAddon align="inline-end">
+                  <InputGroupButton aria-label="Send message" size="icon-sm" type="submit">
+                    <Send />
+                  </InputGroupButton>
+                </InputGroupAddon>
+              </InputGroup>
             </form>
           </div>
         ) : (
           <ScrollArea className="min-w-0 flex-1">
             <div className="p-5 lg:p-7">
               {activeSection === 'general' && (
-                <div className="mx-auto max-w-5xl space-y-7">
+                <div className="mx-auto flex max-w-5xl flex-col gap-7">
                   <MarkdownEditor value={description} onChange={setDescription} />
                   <FormSection
                     title="Provider"
                     description="Connect the provider, discover its available models, then verify the connection here."
                   >
-                    <Card className="gap-4 bg-muted/20 p-4 shadow-none">
-                      <div className="grid gap-3 lg:grid-cols-[1.3fr_1fr]">
-                        <label className="block space-y-1.5">
-                          <span className="text-xs font-medium">Provider base URL</span>
-                          <Input
-                            aria-label="Provider base URL"
-                            className="text-xs"
-                            value={providerUrl}
-                            onChange={(event) => {
-                              setProviderUrl(event.target.value);
-                              setProviderStatus('idle');
-                            }}
-                          />
-                        </label>
-                        <Field label="API key" value="••••••••••••••••••••" />
-                      </div>
-                      <div className="grid items-end gap-3 lg:grid-cols-[1fr_auto]">
-                        <label className="block space-y-1.5">
-                          <span className="text-xs font-medium">Model</span>
-                          <select
-                            aria-label="Model"
-                            className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-xs outline-none focus:ring-2 focus:ring-ring/30"
-                            value={model}
-                            onChange={(event) => setModel(event.target.value)}
+                    <Card size="sm">
+                      <CardContent>
+                        <FieldGroup className="grid gap-3 lg:grid-cols-[1.3fr_1fr]">
+                          <FormField>
+                            <FieldLabel htmlFor="provider-base-url">Provider base URL</FieldLabel>
+                            <Input
+                              id="provider-base-url"
+                              value={providerUrl}
+                              onChange={(event) => {
+                                setProviderUrl(event.target.value);
+                                setProviderStatus('idle');
+                              }}
+                            />
+                          </FormField>
+                          <Field label="API key" value="••••••••••••••••••••" />
+                        </FieldGroup>
+                        <FieldGroup className="mt-3 grid items-end gap-3 lg:grid-cols-[1fr_auto]">
+                          <FormField>
+                            <FieldLabel htmlFor="provider-model">Model</FieldLabel>
+                            <Select
+                              items={models.map((item) => ({ label: item, value: item }))}
+                              value={model}
+                              onValueChange={(value) => value && setModel(value)}
+                            >
+                              <SelectTrigger className="w-full" id="provider-model">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectGroup>
+                                  {models.map((item) => (
+                                    <SelectItem key={item} value={item}>
+                                      {item}
+                                    </SelectItem>
+                                  ))}
+                                </SelectGroup>
+                              </SelectContent>
+                            </Select>
+                          </FormField>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={fetchModels}
+                            disabled={fetchingModels}
                           >
-                            {models.map((item) => (
-                              <option key={item} value={item}>
-                                {item}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={fetchModels}
-                          disabled={fetchingModels}
-                        >
-                          {fetchingModels ? (
-                            <LoaderCircle className="animate-spin" />
-                          ) : (
-                            <RefreshCw data-icon="inline-start" />
-                          )}
-                          {fetchingModels ? 'Fetching' : 'Fetch models'}
-                        </Button>
-                      </div>
-                      <Separator />
-                      <div className="flex flex-wrap items-center gap-3">
+                            {fetchingModels ? (
+                              <Spinner data-icon="inline-start" />
+                            ) : (
+                              <RefreshCw data-icon="inline-start" />
+                            )}
+                            {fetchingModels ? 'Fetching' : 'Fetch models'}
+                          </Button>
+                        </FieldGroup>
+                      </CardContent>
+                      <CardFooter className="flex-wrap gap-3">
                         <Button
                           variant="outline"
                           size="sm"
@@ -1162,22 +1191,22 @@ function AgentsPage({
                           disabled={providerStatus === 'testing'}
                         >
                           {providerStatus === 'testing' ? (
-                            <LoaderCircle className="animate-spin" />
+                            <Spinner data-icon="inline-start" />
                           ) : (
                             <Play data-icon="inline-start" />
                           )}
                           {providerStatus === 'testing' ? 'Testing provider' : 'Test provider'}
                         </Button>
                         {providerStatus === 'connected' && (
-                          <span className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
-                            <Check className="size-3.5" /> Provider connected
-                          </span>
+                          <Badge variant="secondary">
+                            <Check data-icon="inline-start" /> Provider connected
+                          </Badge>
                         )}
                         <span className="text-xs text-muted-foreground">
                           {models.length} model{models.length === 1 ? '' : 's'} available from this
                           URL
                         </span>
-                      </div>
+                      </CardFooter>
                     </Card>
                   </FormSection>
                   <div className="flex justify-end">
@@ -1192,9 +1221,9 @@ function AgentsPage({
                   description="Define the standing instructions used at the start of every session."
                   action={<SaveSectionButton />}
                 >
-                  <textarea
+                  <Textarea
                     aria-label="System prompt"
-                    className="min-h-64 w-full resize-y rounded-lg border border-input bg-background p-4 text-sm leading-6 outline-none focus:ring-2 focus:ring-ring/30"
+                    className="min-h-64 resize-y"
                     value={systemPrompt}
                     onChange={(event) => setSystemPrompt(event.target.value)}
                   />
@@ -1210,19 +1239,21 @@ function AgentsPage({
                   description="Choose the capabilities this agent may invoke during a run."
                   action={<SaveSectionButton />}
                 >
-                  {[
-                    ['web_search', 'Search current public information'],
-                    ['shell', 'Run approved local commands'],
-                    ['read_file', 'Read files supplied to the agent'],
-                  ].map(([name, description]) => (
-                    <ToggleRow
-                      key={name}
-                      title={name}
-                      description={description}
-                      enabled={enabledTools.includes(name)}
-                      onToggle={() => toggleValue(name, enabledTools, setEnabledTools)}
-                    />
-                  ))}
+                  <ItemGroup className="gap-2">
+                    {[
+                      ['web_search', 'Search current public information'],
+                      ['shell', 'Run approved local commands'],
+                      ['read_file', 'Read files supplied to the agent'],
+                    ].map(([name, description]) => (
+                      <ToggleRow
+                        key={name}
+                        title={name}
+                        description={description}
+                        enabled={enabledTools.includes(name)}
+                        onToggle={() => toggleValue(name, enabledTools, setEnabledTools)}
+                      />
+                    ))}
+                  </ItemGroup>
                 </AgentSection>
               )}
 
@@ -1250,15 +1281,17 @@ function AgentsPage({
                   description="Attach reusable instruction packages to this agent."
                   action={<ImportSkillFolderButton onImport={importSkillFolder} />}
                 >
-                  {skillNames.map((name) => (
-                    <ToggleRow
-                      key={name}
-                      title={name}
-                      description="Reusable instructions loaded only when this agent needs them."
-                      enabled={enabledSkills.includes(name)}
-                      onToggle={() => toggleValue(name, enabledSkills, setEnabledSkills)}
-                    />
-                  ))}
+                  <ItemGroup className="gap-2">
+                    {skillNames.map((name) => (
+                      <ToggleRow
+                        key={name}
+                        title={name}
+                        description="Reusable instructions loaded only when this agent needs them."
+                        enabled={enabledSkills.includes(name)}
+                        onToggle={() => toggleValue(name, enabledSkills, setEnabledSkills)}
+                      />
+                    ))}
+                  </ItemGroup>
                 </AgentSection>
               )}
 
@@ -1267,15 +1300,17 @@ function AgentsPage({
                   title="Extensions"
                   description="Connect optional integrations to this agent."
                 >
-                  {['Git context', 'Issue tracker'].map((name) => (
-                    <ToggleRow
-                      key={name}
-                      title={name}
-                      description="Share scoped integration context with new sessions."
-                      enabled={enabledExtensions.includes(name)}
-                      onToggle={() => toggleValue(name, enabledExtensions, setEnabledExtensions)}
-                    />
-                  ))}
+                  <ItemGroup className="gap-2">
+                    {['Git context', 'Issue tracker'].map((name) => (
+                      <ToggleRow
+                        key={name}
+                        title={name}
+                        description="Share scoped integration context with new sessions."
+                        enabled={enabledExtensions.includes(name)}
+                        onToggle={() => toggleValue(name, enabledExtensions, setEnabledExtensions)}
+                      />
+                    ))}
+                  </ItemGroup>
                 </AgentSection>
               )}
 
@@ -1289,18 +1324,20 @@ function AgentsPage({
                     </Button>
                   }
                 >
-                  <div className="flex flex-col gap-2">
+                  <ItemGroup className="gap-2">
                     {[
                       ['Customer prefers concise status updates.', 'Updated 4 min ago'],
                       ['Escalate refund requests above $500 for human review.', 'Yesterday'],
                       ['Use the support knowledge base before web search.', '3 days ago'],
                     ].map(([memory, time]) => (
-                      <Card className="gap-2 bg-muted/20 p-4 shadow-none" key={memory}>
-                        <p className="text-sm leading-5">{memory}</p>
-                        <span className="text-xs text-muted-foreground">{time}</span>
-                      </Card>
+                      <Item key={memory} variant="muted">
+                        <ItemContent>
+                          <ItemTitle>{memory}</ItemTitle>
+                          <ItemDescription>{time}</ItemDescription>
+                        </ItemContent>
+                      </Item>
                     ))}
-                  </div>
+                  </ItemGroup>
                 </AgentSection>
               )}
 
@@ -1314,25 +1351,29 @@ function AgentsPage({
                     </Button>
                   }
                 >
-                  <div className="overflow-hidden rounded-xl border">
+                  <ItemGroup className="gap-0 overflow-hidden rounded-xl border">
                     {[
                       ['Support request #1842', 'Completed', '4 min ago'],
                       ['Refund escalation', 'Completed', 'Yesterday'],
                       ['Account access review', 'Stopped', '2 days ago'],
                     ].map(([name, status, time]) => (
-                      <button
-                        className="group grid w-full grid-cols-[1fr_auto_auto_auto] items-center gap-6 border-b px-4 py-3 text-left text-sm transition-colors last:border-b-0 hover:bg-muted/40"
+                      <Item
+                        className="rounded-none border-0 border-b last:border-b-0"
                         key={name}
                         onClick={() => openSession(name)}
-                        type="button"
+                        render={<Button type="button" variant="ghost" />}
                       >
-                        <span className="font-medium">{name}</span>
-                        <Badge variant="outline">{status}</Badge>
-                        <span className="text-xs text-muted-foreground">{time}</span>
-                        <ArrowRight className="size-3.5 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-                      </button>
+                        <ItemContent>
+                          <ItemTitle>{name}</ItemTitle>
+                          <ItemDescription>{time}</ItemDescription>
+                        </ItemContent>
+                        <ItemActions>
+                          <Badge variant="outline">{status}</Badge>
+                          <ArrowRight />
+                        </ItemActions>
+                      </Item>
                     ))}
-                  </div>
+                  </ItemGroup>
                 </AgentSection>
               )}
 
@@ -1347,12 +1388,14 @@ function AgentsPage({
                     <Metric label="Median duration" value="12.4s" />
                     <Metric label="Tokens" value="1.2M" />
                   </div>
-                  <Card className="mt-4 gap-3 bg-muted/20 p-4 shadow-none">
-                    <div className="flex items-center justify-between text-xs font-semibold">
-                      <span>Daily successful runs</span>
-                      <Activity className="size-4 text-muted-foreground" />
-                    </div>
-                    <div className="flex h-36 items-end gap-3">
+                  <Card className="mt-4" size="sm">
+                    <CardHeader>
+                      <CardTitle>Daily successful runs</CardTitle>
+                      <CardAction>
+                        <Activity />
+                      </CardAction>
+                    </CardHeader>
+                    <CardContent className="flex h-36 items-end gap-3">
                       {[48, 65, 54, 78, 71, 88, 82].map((height, index) => (
                         <div
                           className="flex h-full flex-1 flex-col items-center justify-end gap-2"
@@ -1367,7 +1410,7 @@ function AgentsPage({
                           </span>
                         </div>
                       ))}
-                    </div>
+                    </CardContent>
                   </Card>
                 </AgentSection>
               )}
@@ -1391,7 +1434,7 @@ function AgentSection({
   action?: ReactNode;
 }) {
   return (
-    <div className="mx-auto max-w-5xl space-y-5">
+    <div className="mx-auto flex max-w-5xl flex-col gap-5">
       <div className="flex items-start gap-4">
         <div>
           <h2 className="text-lg font-semibold">{title}</h2>
@@ -1453,36 +1496,42 @@ function MarkdownEditor({ value, onChange }: { value: string; onChange: (value: 
   };
 
   return (
-    <div className="flex flex-col gap-1.5">
-      <label className="text-xs font-medium" htmlFor="agent-description">
-        Description
-      </label>
-      <div className="overflow-hidden rounded-lg border border-input bg-background focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/30">
-        <div className="flex items-center gap-0.5 border-b bg-muted/25 p-1">
-          <IconButton label="Bold" onClick={() => wrapSelection('**')}>
-            <Bold />
-          </IconButton>
-          <IconButton label="Italic" onClick={() => wrapSelection('_')}>
-            <Italic />
-          </IconButton>
-          <IconButton label="Inline code" onClick={() => wrapSelection('`')}>
-            <Code2 />
-          </IconButton>
-          <IconButton label="Bulleted list" onClick={makeList}>
-            <List />
-          </IconButton>
-          <span className="ml-auto pr-2 text-[10px] text-muted-foreground">Markdown</span>
-        </div>
-        <textarea
+    <FormField>
+      <FieldLabel htmlFor="agent-description">Description</FieldLabel>
+      <InputGroup>
+        <InputGroupAddon align="block-start">
+          <ButtonGroup>
+            <InputGroupButton aria-label="Bold" size="icon-xs" onClick={() => wrapSelection('**')}>
+              <Bold />
+            </InputGroupButton>
+            <InputGroupButton aria-label="Italic" size="icon-xs" onClick={() => wrapSelection('_')}>
+              <Italic />
+            </InputGroupButton>
+            <InputGroupButton
+              aria-label="Inline code"
+              size="icon-xs"
+              onClick={() => wrapSelection('`')}
+            >
+              <Code2 />
+            </InputGroupButton>
+            <InputGroupButton aria-label="Bulleted list" size="icon-xs" onClick={makeList}>
+              <List />
+            </InputGroupButton>
+          </ButtonGroup>
+          <Badge className="ml-auto" variant="outline">
+            Markdown
+          </Badge>
+        </InputGroupAddon>
+        <InputGroupTextarea
           ref={textareaRef}
           id="agent-description"
           aria-label="Description"
-          className="min-h-24 w-full resize-y bg-transparent px-3 py-2 text-sm leading-5 outline-none"
+          className="min-h-24 resize-y text-sm leading-5"
           value={value}
           onChange={(event) => onChange(event.target.value)}
         />
-      </div>
-    </div>
+      </InputGroup>
+    </FormField>
   );
 }
 
@@ -1496,7 +1545,7 @@ function ImportSkillFolderButton({ onImport }: { onImport: (files: FileList | nu
 
   return (
     <>
-      <input
+      <Input
         ref={inputRef}
         className="hidden"
         multiple
@@ -1525,28 +1574,22 @@ function ToggleRow({
   onToggle: () => void;
 }) {
   return (
-    <button
-      aria-pressed={enabled}
-      className="mb-2 flex w-full items-center gap-4 rounded-xl border bg-card p-4 text-left transition-colors hover:bg-muted/40"
-      onClick={onToggle}
-      type="button"
-    >
-      <span className="flex size-9 items-center justify-center rounded-lg bg-muted">
+    <Item variant="outline">
+      <ItemMedia variant="icon">
         <Wrench className="size-4" />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-sm font-medium">{title}</span>
-        <span className="mt-0.5 block text-xs text-muted-foreground">{description}</span>
-      </span>
-      <span
-        className={cn(
-          'flex h-5 w-9 items-center rounded-full p-0.5 transition-colors',
-          enabled ? 'justify-end bg-primary' : 'justify-start bg-muted-foreground/25'
-        )}
-      >
-        <span className="size-4 rounded-full bg-white shadow-sm" />
-      </span>
-    </button>
+      </ItemMedia>
+      <ItemContent>
+        <ItemTitle>{title}</ItemTitle>
+        <ItemDescription>{description}</ItemDescription>
+      </ItemContent>
+      <ItemActions>
+        <Switch
+          aria-label={`${enabled ? 'Disable' : 'Enable'} ${title}`}
+          checked={enabled}
+          onCheckedChange={onToggle}
+        />
+      </ItemActions>
+    </Item>
   );
 }
 
@@ -1565,10 +1608,14 @@ function SettingsPage({ variant }: { variant: Variant }) {
           description="Control the default limits applied to every workflow run."
         >
           <Field label="Node timeout" value="300" suffix="seconds" />
-          <div className="rounded-lg border border-border/70 bg-muted/30 p-3 text-xs text-muted-foreground">
-            A running node is cancelled after this limit. Individual node behavior and workflow
-            execution semantics remain unchanged.
-          </div>
+          <Alert>
+            <Clock3 />
+            <AlertTitle>Timeout behavior</AlertTitle>
+            <AlertDescription>
+              A running node is cancelled after this limit. Individual node behavior and workflow
+              execution semantics remain unchanged.
+            </AlertDescription>
+          </Alert>
         </SettingsCard>
         <SettingsCard
           icon={Database}
@@ -1598,9 +1645,13 @@ function SettingsPage({ variant }: { variant: Variant }) {
           title="Local data"
           description="Understand where workflows, agents and run history are stored."
         >
-          <div className="rounded-lg border bg-muted/30 p-3 font-mono text-xs">
-            ~/.config/workflow/workflow.db
-          </div>
+          <Alert>
+            <Database />
+            <AlertTitle>Database path</AlertTitle>
+            <AlertDescription className="font-mono">
+              ~/.config/workflow/workflow.db
+            </AlertDescription>
+          </Alert>
           <Button className="w-fit" variant="outline" size="sm">
             <ExternalLink data-icon="inline-start" /> Open data directory
           </Button>
@@ -1860,23 +1911,26 @@ function EditorCanvas({
         </NodeCard>
       </div>
       {variant === 'A' && (
-        <div className="absolute bottom-4 left-4 flex items-center gap-1 rounded-lg border bg-background p-1 shadow-sm">
+        <ButtonGroup className="absolute bottom-4 left-4 bg-background shadow-sm">
           <Button variant="ghost" size="icon-sm">
             <Plus />
           </Button>
-          <span className="min-w-12 text-center text-xs text-muted-foreground">100%</span>
+          <Button variant="ghost" size="sm">
+            100%
+          </Button>
           <Button variant="ghost" size="icon-sm">
             <RotateCcw />
           </Button>
           <Button variant="ghost" size="icon-sm">
             <Maximize2 />
           </Button>
-        </div>
+        </ButtonGroup>
       )}
       {running && (
-        <div className="absolute right-4 bottom-4 flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-medium text-blue-700 shadow-sm dark:border-blue-900 dark:bg-blue-950 dark:text-blue-200">
-          <LoaderCircle className="size-3.5 animate-spin" /> Executing “Analyze request”
-        </div>
+        <Alert className="absolute right-4 bottom-4 w-auto bg-background shadow-sm">
+          <Spinner />
+          <AlertTitle>Executing “Analyze request”</AlertTitle>
+        </Alert>
       )}
     </div>
   );
@@ -1884,9 +1938,9 @@ function EditorCanvas({
 
 function CanvasToolbar({ variant }: { variant: Variant }) {
   return (
-    <div
+    <ButtonGroup
       className={cn(
-        'absolute top-4 z-20 flex items-center gap-1 rounded-lg border bg-background p-1 shadow-sm',
+        'absolute top-4 z-20 bg-background shadow-sm',
         variant === 'C' ? 'left-[268px]' : 'left-4'
       )}
     >
@@ -1901,14 +1955,14 @@ function CanvasToolbar({ variant }: { variant: Variant }) {
       <IconButton label="Auto layout">
         <WandSparkles />
       </IconButton>
-      <Separator className="mx-0.5 h-5" orientation="vertical" />
+      <ButtonGroupSeparator />
       <IconButton label="Horizontal layout">
         <Columns3 />
       </IconButton>
       <IconButton label="Fit view">
         <Maximize2 />
       </IconButton>
-    </div>
+    </ButtonGroup>
   );
 }
 
@@ -1942,68 +1996,61 @@ function NodeCard({
   onOpen?: () => void;
 }) {
   const config = {
-    start: { icon: Radio, tone: 'bg-slate-700 text-white dark:bg-slate-200 dark:text-slate-950' },
-    llm: { icon: Sparkles, tone: 'bg-blue-600 text-white' },
-    condition: { icon: GitBranch, tone: 'bg-amber-500 text-white' },
-    http: { icon: Webhook, tone: 'bg-violet-600 text-white' },
-    end: { icon: Check, tone: 'bg-emerald-600 text-white' },
+    start: { icon: Radio, tone: 'bg-foreground text-background' },
+    llm: { icon: Sparkles, tone: 'bg-primary text-primary-foreground' },
+    condition: { icon: GitBranch, tone: 'bg-secondary text-secondary-foreground' },
+    http: { icon: Webhook, tone: 'bg-accent text-accent-foreground' },
+    end: { icon: Check, tone: 'bg-muted text-muted-foreground' },
   }[kind];
   const NodeIcon = config.icon;
 
   return (
     <Card
-      aria-label={`${title} node${kind === 'llm' ? '. Click to configure' : ''}`}
       className={cn(
-        'node-card absolute w-[180px] touch-none gap-3 border-border/90 bg-card p-3 shadow-[0_4px_16px_rgb(15_23_42/0.08)] select-none',
-        active && 'border-blue-400 ring-2 ring-blue-500/15',
-        selected && 'border-primary ring-2 ring-primary/15'
+        'node-card absolute w-[180px] touch-none gap-0 border-border/90 bg-card py-0 shadow-sm select-none',
+        active && 'ring-2 ring-primary/30',
+        selected && 'ring-2 ring-ring/40'
       )}
       data-node-id={id}
-      role="button"
       style={{ left: `${position.x}%`, top: `${position.y}%` }}
-      tabIndex={0}
-      onKeyDown={(event) => {
-        if (kind === 'llm' && (event.key === 'Enter' || event.key === ' ')) {
-          event.preventDefault();
-          onOpen?.();
-        }
-      }}
-      onPointerDown={(event) => onPointerDown(id, event)}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
     >
+      <Button
+        aria-label={`${title} node${kind === 'llm' ? '. Click to configure' : ''}`}
+        className="absolute inset-0 z-10 h-full w-full rounded-xl border-0 bg-transparent p-0 hover:bg-transparent focus-visible:ring-2 focus-visible:ring-ring/50"
+        variant="ghost"
+        onKeyDown={(event) => {
+          if (kind === 'llm' && (event.key === 'Enter' || event.key === ' ')) {
+            event.preventDefault();
+            onOpen?.();
+          }
+        }}
+        onPointerDown={(event) => onPointerDown(id, event)}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+      />
       <span className="node-port -left-1.5" />
       <span className="node-port -right-1.5" />
       <span className="node-port-y -top-1.5" />
       <span className="node-port-y -bottom-1.5" />
-      <div className="flex items-start gap-2.5">
+      <CardHeader className="grid grid-cols-[auto_1fr] gap-2.5 border-b py-3">
         <span
           className={cn('flex size-8 shrink-0 items-center justify-center rounded-lg', config.tone)}
         >
           <NodeIcon className="size-4" />
         </span>
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0">
           <div className="flex items-center gap-1.5">
-            <h3 className="truncate text-xs font-semibold">{title}</h3>
+            <CardTitle className="truncate text-xs">{title}</CardTitle>
             <GripVertical className="ml-auto size-3.5 text-muted-foreground/60" />
           </div>
-          <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{subtitle}</p>
+          <CardDescription className="truncate text-[11px]">{subtitle}</CardDescription>
         </div>
-      </div>
-      {children}
-      <div className="flex items-center justify-between border-t border-border/60 pt-2 text-[10px] text-muted-foreground">
-        <span className="flex items-center gap-1.5">
-          <span
-            className={cn(
-              'size-1.5 rounded-full',
-              active ? 'animate-pulse bg-blue-500' : 'bg-emerald-500'
-            )}
-          />
-          {status}
-        </span>
-        <MoreHorizontal className="size-3.5" />
-      </div>
+      </CardHeader>
+      {children && <CardContent className="flex flex-col gap-2 py-3">{children}</CardContent>}
+      <CardFooter className="border-t bg-transparent py-2 text-[10px] text-muted-foreground">
+        <Badge variant={active ? 'default' : 'secondary'}>{status}</Badge>
+      </CardFooter>
     </Card>
   );
 }
@@ -2066,81 +2113,100 @@ function Inspector({ variant, onClose }: { variant: 'A' | 'C'; onClose: () => vo
 
   const content = (
     <>
-      <div className="flex h-14 items-center gap-2 border-b px-4">
-        <div>
-          <div className="text-xs font-semibold">Analyze request</div>
-          <div className="text-[11px] text-muted-foreground">LLM node</div>
-        </div>
-        <Badge className="ml-auto" variant="secondary">
-          Ready
-        </Badge>
-        <Button aria-label="Close node settings" variant="ghost" size="icon-xs" onClick={onClose}>
-          <X />
-        </Button>
-      </div>
+      <CardHeader className="h-14 border-b">
+        <CardTitle className="text-xs">Analyze request</CardTitle>
+        <CardDescription className="text-[11px]">LLM node</CardDescription>
+        <CardAction className="flex items-center gap-1.5">
+          <Badge variant="secondary">Ready</Badge>
+          <Button aria-label="Close node settings" variant="ghost" size="icon-xs" onClick={onClose}>
+            <X />
+          </Button>
+        </CardAction>
+      </CardHeader>
       <ScrollArea className="h-[calc(100%-56px)]">
-        <div className="flex flex-col gap-5 p-4">
+        <CardContent className="flex flex-col gap-5 p-4">
           <FormSection
             title="Run with agent"
             description="Choose the reusable Agent profile that will execute this node."
           >
-            <div className="flex flex-col gap-1.5">
-              <span className="text-xs font-medium">Agent</span>
-              <button
-                aria-label="Selected agent: Support analyst"
-                className="flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left"
-                type="button"
+            <FormField>
+              <FieldLabel htmlFor="node-agent">Agent</FieldLabel>
+              <Select
+                defaultValue="support-analyst"
+                items={AGENTS.map((agent) => ({
+                  label: agent.name,
+                  value: agent.name.toLowerCase().replace(/ /g, '-'),
+                }))}
               >
-                <span className="flex size-7 items-center justify-center rounded-md bg-blue-600 text-white">
-                  <Bot className="size-3.5" />
-                </span>
-                <span className="flex-1 text-xs font-medium">Support analyst</span>
-                <ChevronDown className="size-3.5 text-muted-foreground" />
-              </button>
-              <p className="text-[11px] leading-4 text-muted-foreground">
+                <SelectTrigger className="w-full" id="node-agent">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {AGENTS.map((agent) => (
+                      <SelectItem
+                        key={agent.name}
+                        value={agent.name.toLowerCase().replace(/ /g, '-')}
+                      >
+                        {agent.name}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              <FieldDescription className="text-[11px] leading-4">
                 Inherits this Agent’s model, system prompt, tools, skills and runtime settings.
-              </p>
-            </div>
+              </FieldDescription>
+            </FormField>
           </FormSection>
           <FormSection
             title="Prompt"
             description="Reference values from upstream nodes or global workflow variables."
           >
-            <textarea
+            <Textarea
               aria-label="Node prompt"
-              className="min-h-40 w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-xs leading-5 outline-none focus:ring-2 focus:ring-ring/30"
+              className="min-h-40 resize-none text-xs leading-5"
               value={prompt}
               onChange={(event) => setPrompt(event.target.value)}
             />
-            <button
-              className="flex items-center gap-1.5 text-xs font-medium text-primary"
+            <Button
+              className="w-fit"
+              size="sm"
+              variant="ghost"
               onClick={() => setVariablePickerOpen((current) => !current)}
-              type="button"
             >
-              <Braces className="size-3.5" /> Insert variable
-            </button>
+              <Braces data-icon="inline-start" /> Insert variable
+            </Button>
             {variablePickerOpen && (
-              <Card className="gap-3 bg-muted/20 p-3 shadow-none">
-                {[
-                  ['Upstream nodes', ['start.request']],
-                  ['Global variables', ['global.current_user', 'global.environment']],
-                ].map(([group, variables]) => (
-                  <div className="flex flex-col gap-1.5" key={group as string}>
-                    <span className="text-[10px] font-medium text-muted-foreground">{group}</span>
-                    <div className="flex flex-wrap gap-1.5">
-                      {(variables as string[]).map((variable) => (
-                        <Button
-                          key={variable}
-                          variant="outline"
-                          size="xs"
-                          onClick={() => insertVariable(variable)}
-                        >
-                          <Variable data-icon="inline-start" /> {variable}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-                ))}
+              <Card size="sm">
+                <CardHeader>
+                  <CardTitle>Available variables</CardTitle>
+                  <CardDescription>
+                    Values from upstream nodes and workflow globals.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-3">
+                  {[
+                    ['Upstream nodes', ['start.request']],
+                    ['Global variables', ['global.current_user', 'global.environment']],
+                  ].map(([group, variables]) => (
+                    <FormField key={group as string}>
+                      <FieldLabel>{group}</FieldLabel>
+                      <ButtonGroup className="flex-wrap">
+                        {(variables as string[]).map((variable) => (
+                          <Button
+                            key={variable}
+                            variant="outline"
+                            size="xs"
+                            onClick={() => insertVariable(variable)}
+                          >
+                            <Variable data-icon="inline-start" /> {variable}
+                          </Button>
+                        ))}
+                      </ButtonGroup>
+                    </FormField>
+                  ))}
+                </CardContent>
               </Card>
             )}
           </FormSection>
@@ -2173,20 +2239,31 @@ function Inspector({ variant, onClose }: { variant: 'A' | 'C'; onClose: () => vo
                       value={field.key}
                       onChange={(event) => updateOutputField(field.id, { key: event.target.value })}
                     />
-                    <select
-                      aria-label={`Output type ${index + 1}`}
-                      className="h-8 rounded-lg border border-input bg-background px-2 text-xs outline-none focus:ring-2 focus:ring-ring/30"
+                    <Select
+                      items={[
+                        { label: 'String', value: 'string' },
+                        { label: 'Number', value: 'number' },
+                        { label: 'Boolean', value: 'boolean' },
+                      ]}
                       value={field.type}
-                      onChange={(event) =>
+                      onValueChange={(value) =>
+                        value &&
                         updateOutputField(field.id, {
-                          type: event.target.value as OutputField['type'],
+                          type: value as OutputField['type'],
                         })
                       }
                     >
-                      <option value="string">String</option>
-                      <option value="number">Number</option>
-                      <option value="boolean">Boolean</option>
-                    </select>
+                      <SelectTrigger aria-label={`Output type ${index + 1}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectItem value="string">String</SelectItem>
+                          <SelectItem value="number">Number</SelectItem>
+                          <SelectItem value="boolean">Boolean</SelectItem>
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
                     <Button
                       aria-label={`Remove output ${field.key || index + 1}`}
                       variant="ghost"
@@ -2221,31 +2298,26 @@ function Inspector({ variant, onClose }: { variant: 'A' | 'C'; onClose: () => vo
                 <p className="text-[11px] leading-4 text-muted-foreground">
                   Provide a JSON Schema when nested objects, arrays or strict enums are required.
                 </p>
-                <textarea
+                <Textarea
                   aria-label="JSON output schema"
-                  className="min-h-64 w-full resize-y rounded-lg border border-input bg-background p-3 font-mono text-[11px] leading-5 outline-none focus:ring-2 focus:ring-ring/30"
+                  className="min-h-64 resize-y font-mono text-[11px] leading-5"
                   spellCheck={false}
                   value={jsonSchema}
                   onChange={(event) => setJsonSchema(event.target.value)}
                 />
               </TabsContent>
             </Tabs>
-            <div className="flex flex-col gap-1.5 rounded-lg border bg-muted/20 p-3">
-              <span className="text-[10px] font-medium text-muted-foreground uppercase">
-                Downstream paths
-              </span>
-              {outputPaths.length === 0 ? (
-                <span className="text-[11px] text-muted-foreground">No valid output keys yet.</span>
-              ) : (
-                outputPaths.map((key) => (
-                  <code className="text-[11px]" key={key}>
-                    analyze_request.{key}
-                  </code>
-                ))
-              )}
-            </div>
+            <Alert>
+              <Variable />
+              <AlertTitle>Downstream paths</AlertTitle>
+              <AlertDescription className="flex flex-col gap-1 font-mono text-[11px]">
+                {outputPaths.length === 0
+                  ? 'No valid output keys yet.'
+                  : outputPaths.map((key) => <code key={key}>analyze_request.{key}</code>)}
+              </AlertDescription>
+            </Alert>
           </FormSection>
-        </div>
+        </CardContent>
       </ScrollArea>
     </>
   );
@@ -2275,20 +2347,27 @@ function NodeLibrary() {
         </Button>
       </div>
       <div className="p-3">
-        <div className="relative mb-3">
-          <Search className="absolute top-2 left-2.5 size-3.5 text-muted-foreground" />
-          <Input className="h-8 pl-8 text-xs" placeholder="Find a node" />
-        </div>
+        <InputGroup className="mb-3">
+          <InputGroupAddon align="inline-start">
+            <Search />
+          </InputGroupAddon>
+          <InputGroupInput className="text-xs" placeholder="Find a node" />
+        </InputGroup>
         <div className="grid grid-cols-2 gap-1.5">
           {NODE_TYPES.map(([name, IconComponent]) => (
-            <button
-              className="flex min-h-16 flex-col items-start justify-between rounded-lg border border-border/70 bg-card p-2 text-left hover:border-foreground/20 hover:bg-muted/40"
+            <Item
               key={name}
-              type="button"
+              render={<Button type="button" variant="ghost" />}
+              size="xs"
+              variant="outline"
             >
-              <IconComponent className="size-3.5 text-muted-foreground" />
-              <span className="text-[11px] font-medium">{name}</span>
-            </button>
+              <ItemMedia variant="icon">
+                <IconComponent />
+              </ItemMedia>
+              <ItemContent>
+                <ItemTitle className="text-[11px]">{name}</ItemTitle>
+              </ItemContent>
+            </Item>
           ))}
         </div>
       </div>
@@ -2320,7 +2399,7 @@ function ExecutionDock({ running }: { running: boolean }) {
             <div>
               <span className="text-foreground">10:42:09</span> Start completed
             </div>
-            <div className="text-blue-600 dark:text-blue-300">
+            <div className="text-primary">
               <span>10:42:09</span> Analyze request · streaming content…
             </div>
           </>
@@ -2352,13 +2431,11 @@ function FormSection({
   children: ReactNode;
 }) {
   return (
-    <section className="space-y-3">
-      <div>
-        <h3 className="text-xs font-semibold">{title}</h3>
-        <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{description}</p>
-      </div>
-      <div className="space-y-3">{children}</div>
-    </section>
+    <FieldSet>
+      <FieldLegend variant="label">{title}</FieldLegend>
+      <FieldDescription className="text-[11px] leading-4">{description}</FieldDescription>
+      <FieldGroup className="gap-3">{children}</FieldGroup>
+    </FieldSet>
   );
 }
 
@@ -2374,22 +2451,19 @@ function Field({
   suffix?: string;
 }) {
   return (
-    <label className="block space-y-1.5">
-      <span className="text-xs font-medium">{label}</span>
-      <div className="relative">
-        {multiline ? (
-          <textarea
-            className="min-h-20 w-full resize-none rounded-lg border border-input bg-background px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-ring/30"
-            defaultValue={value}
-          />
-        ) : (
-          <Input className={cn('text-xs', suffix && 'pr-20')} defaultValue={value} />
-        )}
-        {suffix && (
-          <span className="absolute top-2 right-3 text-xs text-muted-foreground">{suffix}</span>
-        )}
-      </div>
-    </label>
+    <FormField>
+      <FieldLabel>{label}</FieldLabel>
+      {multiline ? (
+        <Textarea className="min-h-20 resize-none text-xs" defaultValue={value} />
+      ) : suffix ? (
+        <InputGroup>
+          <InputGroupInput className="text-xs" defaultValue={value} />
+          <InputGroupAddon align="inline-end">{suffix}</InputGroupAddon>
+        </InputGroup>
+      ) : (
+        <Input className="text-xs" defaultValue={value} />
+      )}
+    </FormField>
   );
 }
 
@@ -2405,18 +2479,19 @@ function SettingsCard({
   children: ReactNode;
 }) {
   return (
-    <Card className="gap-5 p-5 shadow-none">
-      <div className="flex items-start gap-3">
-        <span className="flex size-9 items-center justify-center rounded-lg border bg-muted/50">
-          <IconComponent className="size-4" />
-        </span>
-        <div>
-          <h2 className="text-sm font-semibold">{title}</h2>
-          <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{description}</p>
-        </div>
-      </div>
-      <Separator />
-      <div className="space-y-4">{children}</div>
+    <Card className="shadow-none">
+      <CardHeader className="border-b">
+        <CardTitle>{title}</CardTitle>
+        <CardDescription className="text-xs leading-5">{description}</CardDescription>
+        <CardAction>
+          <Avatar size="sm">
+            <AvatarFallback>
+              <IconComponent />
+            </AvatarFallback>
+          </Avatar>
+        </CardAction>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">{children}</CardContent>
     </Card>
   );
 }
@@ -2441,12 +2516,15 @@ function KeyValue({ label, value }: { label: string; value: string }) {
 
 function Brand({ compact }: { compact: boolean }) {
   return (
-    <button
-      className={cn('flex h-14 shrink-0 items-center gap-2.5 px-4 text-left', compact && 'px-0')}
-      type="button"
+    <Button
+      className={cn(
+        'h-14 shrink-0 justify-start gap-2.5 rounded-none px-4 text-left',
+        compact && 'px-0'
+      )}
+      variant="ghost"
     >
       <span className="flex size-8 items-center justify-center rounded-lg bg-foreground text-background">
-        <Zap className="size-4" />
+        <Zap />
       </span>
       <span className="leading-tight">
         <span className="block text-sm font-semibold tracking-[-0.02em]">Workflow</span>
@@ -2454,7 +2532,7 @@ function Brand({ compact }: { compact: boolean }) {
           <span className="block text-[10px] text-muted-foreground">Agent orchestration</span>
         )}
       </span>
-    </button>
+    </Button>
   );
 }
 
@@ -2474,16 +2552,17 @@ function RailNavItem({
   return (
     <Tooltip>
       <TooltipTrigger
-        aria-label={label}
-        className={cn(
-          'flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground',
-          collapsed && 'justify-center px-0',
-          active && 'bg-accent font-medium text-foreground'
-        )}
-        onClick={onClick}
-      >
-        <IconComponent className="size-4" /> {!collapsed && label}
-      </TooltipTrigger>
+        render={
+          <Button
+            aria-label={label}
+            className={cn('w-full justify-start', collapsed && 'justify-center px-0')}
+            variant={active ? 'secondary' : 'ghost'}
+            onClick={onClick}
+          >
+            <IconComponent data-icon="inline-start" /> {!collapsed && label}
+          </Button>
+        }
+      />
       <TooltipContent side="right" hidden={!collapsed}>
         {label}
       </TooltipContent>
@@ -2505,12 +2584,18 @@ function IconButton({
   return (
     <Tooltip>
       <TooltipTrigger
-        aria-label={label}
-        className={cn(buttonVariants({ variant: 'ghost', size: 'icon-sm' }), className)}
-        onClick={onClick}
-      >
-        {children}
-      </TooltipTrigger>
+        render={
+          <Button
+            aria-label={label}
+            className={className}
+            size="icon-sm"
+            variant="ghost"
+            onClick={onClick}
+          >
+            {children}
+          </Button>
+        }
+      />
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
   );
@@ -2536,33 +2621,30 @@ function VariantSwitcher({
   onChange: (variant: Variant) => void;
 }) {
   return (
-    <div className="fixed bottom-4 left-1/2 z-[100] flex -translate-x-1/2 items-center gap-1 rounded-xl border border-border bg-background p-1.5 shadow-[0_16px_44px_rgb(15_23_42/0.18)]">
-      <Badge className="mr-1" variant="outline">
-        Prototype
-      </Badge>
-      {VARIANTS.map((item) => (
-        <Tooltip key={item.id}>
-          <TooltipTrigger
-            className={cn(
-              'flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground',
-              variant === item.id &&
-                'bg-foreground text-background hover:bg-foreground hover:text-background'
-            )}
-            onClick={() => onChange(item.id)}
-          >
-            <kbd
-              className={cn(
-                'flex size-5 items-center justify-center rounded border text-[10px]',
-                variant === item.id ? 'border-background/25' : 'border-border bg-muted'
-              )}
-            >
-              {item.id}
-            </kbd>
-            <span className="hidden sm:inline">{item.name}</span>
-          </TooltipTrigger>
-          <TooltipContent>{item.description} · use ← →</TooltipContent>
-        </Tooltip>
-      ))}
-    </div>
+    <Card className="fixed bottom-4 left-1/2 -translate-x-1/2 py-1.5 shadow-lg" size="sm">
+      <CardContent className="flex items-center gap-1">
+        <Badge className="mr-1" variant="outline">
+          Prototype
+        </Badge>
+        <ToggleGroup
+          value={[variant]}
+          onValueChange={(value) => value[0] && onChange(value[0] as Variant)}
+        >
+          {VARIANTS.map((item) => (
+            <Tooltip key={item.id}>
+              <TooltipTrigger
+                render={
+                  <ToggleGroupItem aria-label={item.name} value={item.id}>
+                    <Kbd>{item.id}</Kbd>
+                    <span className="hidden sm:inline">{item.name}</span>
+                  </ToggleGroupItem>
+                }
+              />
+              <TooltipContent>{item.description} · use ← →</TooltipContent>
+            </Tooltip>
+          ))}
+        </ToggleGroup>
+      </CardContent>
+    </Card>
   );
 }
