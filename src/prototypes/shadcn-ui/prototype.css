@@ -57,6 +57,16 @@
   --sidebar: oklch(0.972 0.004 260);
   --sidebar-foreground: oklch(0.2 0.014 260);
   --canvas: oklch(0.965 0.004 255);
+  --node-start: var(--foreground);
+  --node-start-foreground: var(--background);
+  --node-llm: var(--primary);
+  --node-llm-foreground: var(--primary-foreground);
+  --node-condition: oklch(0.72 0.16 58);
+  --node-condition-foreground: oklch(0.2 0.02 58);
+  --node-http: oklch(0.62 0.19 292);
+  --node-http-foreground: oklch(0.98 0.01 292);
+  --node-end: oklch(0.58 0.15 155);
+  --node-end-foreground: oklch(0.98 0.01 155);
 }
 
 .dark {
@@ -81,6 +91,12 @@
   --sidebar: oklch(0.185 0.012 260);
   --sidebar-foreground: oklch(0.96 0.004 260);
   --canvas: oklch(0.13 0.006 255);
+  --node-condition: oklch(0.76 0.15 65);
+  --node-condition-foreground: oklch(0.18 0.02 58);
+  --node-http: oklch(0.7 0.17 292);
+  --node-http-foreground: oklch(0.16 0.02 292);
+  --node-end: oklch(0.69 0.14 155);
+  --node-end-foreground: oklch(0.16 0.02 155);
 }
 
 @layer base {
@@ -160,6 +176,31 @@
 
 .node-card:active {
   cursor: grabbing;
+}
+
+.node-tone-start {
+  background: var(--node-start);
+  color: var(--node-start-foreground);
+}
+
+.node-tone-llm {
+  background: var(--node-llm);
+  color: var(--node-llm-foreground);
+}
+
+.node-tone-condition {
+  background: var(--node-condition);
+  color: var(--node-condition-foreground);
+}
+
+.node-tone-http {
+  background: var(--node-http);
+  color: var(--node-http-foreground);
+}
+
+.node-tone-end {
+  background: var(--node-end);
+  color: var(--node-end-foreground);
 }
 
 .node-port {

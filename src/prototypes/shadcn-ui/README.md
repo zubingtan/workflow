@@ -23,12 +23,14 @@ The preferred review entry is <http://localhost:4173/?variant=A&view=workflows>.
 
 Variant A now tests the preferred product structure:
 
-- A floating rounded sidebar collapses to an icon rail and owns the theme switcher.
+- A brandless floating sidebar collapses to an icon rail and owns the theme switcher.
 - Workflows and Agents open as compact row-based collection pages with one primary `New` action.
 - Selecting a row fades and shifts the collection away before replacing it with the full editor or settings surface.
 - The detail header provides a single Back action that restores the collection page.
-- Workflow editing exposes recent saved versions through a real `History` sheet in the editor header.
-- The node inspector is a rounded floating surface over the workflow canvas, consistent with the app rail and canvas controls.
+- The editor header, canvas toolbar and zoom controls float over the canvas as rounded pill surfaces; workflow history remains available through a real `History` sheet.
+- The node inspector is a true floating surface over the workflow canvas with an explicit icon, title, status and close hierarchy.
+- Workflow and Agent collection rows keep a predictable minimum height when composed as clickable shadcn `Item` + `Button` controls.
+- Node kinds retain distinct semantic colors in light and dark themes without raw palette utilities in component code.
 - Agent details use a vertical settings sidebar and retain inline title editing plus provider model discovery/testing.
 - Sessions owns conversation entry: `New session` replaces the settings content with a full inline Agent conversation, and Back restores the recent-session list.
 - Settings uses the same vertical section-navigation pattern as Agent details and autosaves field changes with visible `Saving` / `Saved automatically` feedback.

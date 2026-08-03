@@ -389,7 +389,12 @@ function WorkbenchRail(props: LayoutProps) {
           collapsed ? 'w-14' : 'w-[212px]'
         )}
       >
-        <div className={cn('flex h-14 shrink-0 items-center px-2', collapsed && 'justify-center')}>
+        <div
+          className={cn(
+            'flex h-11 shrink-0 items-center px-2',
+            collapsed ? 'justify-center' : 'justify-end'
+          )}
+        >
           {collapsed ? (
             <IconButton
               className="text-muted-foreground/50 hover:text-muted-foreground"
@@ -399,25 +404,13 @@ function WorkbenchRail(props: LayoutProps) {
               <ChevronRight />
             </IconButton>
           ) : (
-            <>
-              <Button
-                aria-label="Open workflow editor"
-                className="shrink-0"
-                onClick={() => setView('editor')}
-                size="icon-lg"
-              >
-                <Zap />
-              </Button>
-              <span className="ml-2 text-sm font-semibold">Studio</span>
-              <div className="flex-1" />
-              <IconButton
-                className="text-muted-foreground/50 hover:text-muted-foreground"
-                label="Collapse sidebar"
-                onClick={() => setCollapsed(true)}
-              >
-                <ChevronLeft />
-              </IconButton>
-            </>
+            <IconButton
+              className="text-muted-foreground/50 hover:text-muted-foreground"
+              label="Collapse sidebar"
+              onClick={() => setCollapsed(true)}
+            >
+              <ChevronLeft />
+            </IconButton>
           )}
         </div>
         <nav className="flex flex-col gap-1 px-2">
@@ -437,9 +430,9 @@ function WorkbenchRail(props: LayoutProps) {
         </div>
       </aside>
 
-      <section className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border bg-background shadow-sm">
+      <section className="relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border bg-background shadow-sm">
         <WorkbenchHeader {...props} />
-        <div className={cn('flex min-h-0 flex-1', view === 'editor' && 'workflow-canvas')}>
+        <div className={cn('relative flex min-h-0 flex-1', view === 'editor' && 'workflow-canvas')}>
           <main className="min-w-0 flex-1 overflow-auto">
             <ViewContent variant="A" {...props} />
           </main>
@@ -460,17 +453,21 @@ function WorkbenchHeader(props: LayoutProps) {
   }
 
   return (
-    <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border/80 bg-background px-4">
+    <header
+      aria-label="Workflow editor controls"
+      className="absolute top-3 right-3 left-3 z-30 flex h-11 items-center gap-2 rounded-full border bg-background/95 px-2 shadow-lg backdrop-blur-sm"
+      data-ui="floating-editor-header"
+    >
       <Button variant="ghost" size="sm" onClick={() => setView('workflows')}>
         <ArrowLeft data-icon="inline-start" /> Workflows
       </Button>
-      <span className="text-muted-foreground/50">/</span>
+      <span className="px-1 text-muted-foreground/50">/</span>
       <span className="text-sm font-semibold">{selectedWorkflow}</span>
       <Badge className="ml-1" variant="outline">
         Draft
       </Badge>
       <span className="text-xs text-muted-foreground">Saved just now</span>
-      <div className="ml-auto flex items-center gap-1.5">
+      <div className="ml-auto flex items-center gap-1">
         <Sheet>
           <SheetTrigger render={<Button variant="ghost" size="sm" />}>
             <History data-icon="inline-start" /> History
@@ -510,7 +507,7 @@ function WorkbenchHeader(props: LayoutProps) {
         <IconButton label="Redo">
           <Redo2 />
         </IconButton>
-        <Separator className="mx-1 h-5" orientation="vertical" />
+        <Separator className="mx-0.5 h-5" orientation="vertical" />
         <Button variant="outline" size="sm">
           <Save data-icon="inline-start" /> Save
         </Button>
@@ -1004,7 +1001,8 @@ function AgentsPage({
         <ItemGroup className="gap-0 overflow-hidden rounded-xl border">
           {visibleAgents.map(({ item, index }) => (
             <Item
-              className="rounded-none border-0 border-b last:border-b-0"
+              className="h-auto min-h-16 rounded-none border-0 border-b px-4 py-3 last:border-b-0"
+              data-ui="agent-list-row"
               key={item.name}
               onClick={() => selectAgent(index)}
               render={<Button type="button" variant="ghost" />}
@@ -1392,7 +1390,7 @@ function AgentsPage({
                       ['Account access review', 'Stopped', '2 days ago'],
                     ].map(([name, status, time]) => (
                       <Item
-                        className="rounded-none border-0 border-b last:border-b-0"
+                        className="h-auto min-h-14 rounded-none border-0 border-b py-3 last:border-b-0"
                         key={name}
                         onClick={() => openSession(name)}
                         render={<Button type="button" variant="ghost" />}
@@ -2154,7 +2152,10 @@ function EditorCanvas({
         </NodeCard>
       </div>
       {variant === 'A' && (
-        <ButtonGroup className="absolute bottom-4 left-4 bg-background shadow-sm">
+        <ButtonGroup
+          className="absolute bottom-4 left-4 overflow-hidden rounded-full border bg-background/95 p-1 shadow-lg backdrop-blur-sm"
+          data-ui="canvas-zoom-controls"
+        >
           <Button variant="ghost" size="icon-sm">
             <Plus />
           </Button>
@@ -2183,9 +2184,12 @@ function CanvasToolbar({ variant }: { variant: Variant }) {
   return (
     <ButtonGroup
       className={cn(
-        'absolute top-4 z-20 bg-background shadow-sm',
-        variant === 'C' ? 'left-[268px]' : 'left-4'
+        'absolute z-20 overflow-hidden rounded-full border bg-background/95 p-1 shadow-lg backdrop-blur-sm',
+        variant === 'A' && 'top-20 left-4',
+        variant === 'B' && 'top-4 left-4',
+        variant === 'C' && 'top-4 left-[268px]'
       )}
+      data-ui="canvas-toolbar"
     >
       {variant !== 'C' && (
         <Button variant="ghost" size="sm">
@@ -2239,11 +2243,11 @@ function NodeCard({
   onOpen?: () => void;
 }) {
   const config = {
-    start: { icon: Radio, tone: 'bg-foreground text-background' },
-    llm: { icon: Sparkles, tone: 'bg-primary text-primary-foreground' },
-    condition: { icon: GitBranch, tone: 'bg-secondary text-secondary-foreground' },
-    http: { icon: Webhook, tone: 'bg-accent text-accent-foreground' },
-    end: { icon: Check, tone: 'bg-muted text-muted-foreground' },
+    start: { icon: Radio, tone: 'node-tone-start' },
+    llm: { icon: Sparkles, tone: 'node-tone-llm' },
+    condition: { icon: GitBranch, tone: 'node-tone-condition' },
+    http: { icon: Webhook, tone: 'node-tone-http' },
+    end: { icon: Check, tone: 'node-tone-end' },
   }[kind];
   const NodeIcon = config.icon;
 
@@ -2356,9 +2360,18 @@ function Inspector({ variant, onClose }: { variant: 'A' | 'C'; onClose: () => vo
 
   const content = (
     <>
-      <CardHeader className="h-14 border-b">
-        <CardTitle className="text-xs">Analyze request</CardTitle>
-        <CardDescription className="text-[11px]">LLM node</CardDescription>
+      <CardHeader className="shrink-0 border-b px-4 py-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <Avatar size="sm">
+            <AvatarFallback className="node-tone-llm">
+              <Sparkles />
+            </AvatarFallback>
+          </Avatar>
+          <div className="min-w-0">
+            <CardTitle className="truncate text-sm">Analyze request</CardTitle>
+            <CardDescription className="text-[11px]">LLM node settings</CardDescription>
+          </div>
+        </div>
         <CardAction className="flex items-center gap-1.5">
           <Badge variant="secondary">Ready</Badge>
           <Button aria-label="Close node settings" variant="ghost" size="icon-xs" onClick={onClose}>
@@ -2366,8 +2379,8 @@ function Inspector({ variant, onClose }: { variant: 'A' | 'C'; onClose: () => vo
           </Button>
         </CardAction>
       </CardHeader>
-      <ScrollArea className="h-[calc(100%-56px)]">
-        <CardContent className="flex flex-col gap-5 p-4">
+      <ScrollArea className="min-h-0 flex-1">
+        <CardContent className="flex flex-col gap-6 p-5">
           <FormSection
             title="Run with agent"
             description="Choose the reusable Agent profile that will execute this node."
@@ -2567,15 +2580,23 @@ function Inspector({ variant, onClose }: { variant: 'A' | 'C'; onClose: () => vo
 
   if (variant === 'C') {
     return (
-      <Card className="absolute top-[72px] right-4 z-30 h-[calc(100%-104px)] w-[360px] gap-0 overflow-hidden p-0 shadow-[0_18px_48px_rgb(15_23_42/0.16)]">
+      <Card
+        className="absolute top-[72px] right-4 z-30 h-[calc(100%-104px)] w-[380px] gap-0 overflow-hidden p-0 shadow-xl"
+        data-ui="node-inspector"
+      >
         {content}
       </Card>
     );
   }
 
   return (
-    <aside className="w-[380px] shrink-0 p-3">
-      <Card className="h-full gap-0 overflow-hidden rounded-2xl p-0 shadow-lg">{content}</Card>
+    <aside
+      className="pointer-events-none absolute top-[76px] right-4 bottom-4 z-20 w-[390px]"
+      data-ui="node-inspector"
+    >
+      <Card className="pointer-events-auto h-full gap-0 overflow-hidden rounded-2xl p-0 shadow-xl">
+        {content}
+      </Card>
     </aside>
   );
 }
@@ -2599,6 +2620,7 @@ function NodeLibrary() {
         <div className="grid grid-cols-2 gap-1.5">
           {NODE_TYPES.map(([name, IconComponent]) => (
             <Item
+              className="h-auto min-h-10"
               key={name}
               render={<Button type="button" variant="ghost" />}
               size="xs"

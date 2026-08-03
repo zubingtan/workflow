@@ -47,6 +47,11 @@ const requiredContracts = [
   ['embedding model select', 'id="memory-embedding-model"'],
   ['workflow list', 'aria-label="Workflow list"'],
   ['workflow history sheet', '<SheetTitle>Workflow history</SheetTitle>'],
+  ['floating editor header', 'data-ui="floating-editor-header"'],
+  ['pill canvas toolbar', 'data-ui="canvas-toolbar"'],
+  ['pill canvas zoom controls', 'data-ui="canvas-zoom-controls"'],
+  ['floating node inspector', 'data-ui="node-inspector"'],
+  ['agent list row sizing', 'data-ui="agent-list-row"'],
 ];
 
 for (const [label, marker] of requiredContracts) {
@@ -57,6 +62,10 @@ for (const [label, marker] of requiredContracts) {
 
 if (source.includes('Save settings')) {
   violations.push('settings must autosave: Save settings');
+}
+
+if (source.includes('>Studio</span>')) {
+  violations.push('workbench rail must not render the Studio brand block');
 }
 
 if (violations.length > 0) {
