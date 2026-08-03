@@ -10,8 +10,8 @@
 #   docker compose -f docker-compose.e2e-mem0.yml down -v
 #
 # Requires:
-#   OPENAI_API_KEY / OPENAI_BASE_URL for the LLM+embedding provider.
-#   Default: open-webui.corp.pony.ai (Deepseek flash v4 + text-embedding-v4).
+#   MEM0_LLM_API_KEY / MEM0_LLM_BASE_URL for the LLM+embedding provider.
+#   Defaults: deepseek-v4-flash LLM + text-embedding-v4 embedder (OpenAI-compatible).
 
 name: workflow-e2e-mem0
 
@@ -23,7 +23,7 @@ services:
     environment:
       MEM0_LLM_API_KEY: ${MEM0_LLM_API_KEY:-}
       MEM0_LLM_BASE_URL: ${MEM0_LLM_BASE_URL:-}
-      # Model configuration (defaults match open-webui.corp.pony.ai provider).
+      # Model configuration (OpenAI-compatible provider; set via env).
       MEM0_LLM_MODEL: ${MEM0_LLM_MODEL:-deepseek-v4-flash}
       MEM0_EMBEDDER_MODEL: ${MEM0_EMBEDDER_MODEL:-text-embedding-v4}
       MEM0_EMBEDDING_DIMS: ${MEM0_EMBEDDING_DIMS:-1024}
