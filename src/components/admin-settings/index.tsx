@@ -233,7 +233,7 @@ export function AdminSettings() {
         <Input
           value={llmBaseUrl}
           onChange={(v) => setLlmBaseUrl(v)}
-          placeholder="https://open-webui.corp.pony.ai/api"
+          placeholder="https://your-openai-compatible-endpoint.example/api"
           style={{ width: '100%', marginTop: 4 }}
         />
         <Typography.Text type="tertiary" size="small">
