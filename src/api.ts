@@ -324,6 +324,11 @@ export interface AppSettings {
   node_timeout_default_ms: number | null;
   mem0_host: string | null;
   mem0_api_key: string | null;
+  mem0_admin_key: string | null;
+  mem0_llm_base_url: string | null;
+  mem0_llm_model: string | null;
+  mem0_embedder_model: string | null;
+  mem0_embedding_dims: number | null;
 }
 
 export const getSettings = () =>
@@ -335,3 +340,60 @@ export const updateSettings = (patch: Partial<AppSettings>) =>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(patch),
   }).then((r) => json<AppSettings>(r));
+
+// --- mem0 proxy (T7 #220 follow-up: settings UI test + observability) ---
+// The backend proxies mem0 calls so the browser never holds the mem0 API key.
+
+export interface Mem0StatusResponse {
+  ok: boolean;
+  status?: { ok: boolean; status: number; body: unknown };
+  config?: { ok: boolean; status: number; body: { llm?: unknown; embedder?: unknown } };
+  error?: string;
+}
+
+export interface Mem0TestStep {
+  name: string;
+  ok: boolean;
+  detail: string;
+}
+
+export interface Mem0TestResponse {
+  ok: boolean;
+  steps?: Mem0TestStep[];
+  error?: string;
+}
+
+export interface Mem0Memory {
+  id: string;
+  memory: string;
+  created_at?: string;
+  updated_at?: string;
+  [key: string]: unknown;
+}
+
+export const getMem0Status = () =>
+  fetch(`${SERVER_URL}/api/mem0/status`).then((r) => json<Mem0StatusResponse>(r));
+
+export const testMem0 = () =>
+  fetch(`${SERVER_URL}/api/mem0/test`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  }).then((r) => json<Mem0TestResponse>(r));
+
+export const configureMem0 = (cfg: {
+  llm_base_url?: string | null;
+  llm_model?: string | null;
+  embedder_model?: string | null;
+  embedding_dims?: number | null;
+}) =>
+  fetch(`${SERVER_URL}/api/mem0/configure`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(cfg),
+  }).then((r) => json<{ ok: boolean; status?: number; body?: unknown; error?: string }>(r));
+
+export const getAgentMemories = (agentId: string) =>
+  fetch(`${SERVER_URL}/api/mem0/memories?agentId=${encodeURIComponent(agentId)}`).then((r) =>
+    json<{ ok: boolean; status?: number; results?: Mem0Memory[]; error?: string }>(r)
+  );

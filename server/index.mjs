@@ -199,7 +199,7 @@ if (IS_PROD) {
   // that appends AFTER rsbuild's own middlewares (including the SPA fallback).
   // Instead, wrap both in our own connect stack with Hono first.
   const honoListener = getRequestListener(app.fetch);
-  const API_PREFIXES = ["/health", "/agents", "/workflows", "/api/task", "/api/runs", "/api/workflows", "/api/settings"];
+  const API_PREFIXES = ["/health", "/agents", "/workflows", "/api/task", "/api/runs", "/api/workflows", "/api/settings", "/api/mem0"];
   const apiGate = (req, res, next) => {
     const path = (req.url ?? "").split("?")[0];
     if (API_PREFIXES.some((p) => path === p || path.startsWith(p + "/"))) {
