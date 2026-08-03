@@ -49,7 +49,16 @@ test("GET /api/settings returns null for all keys when no settings row exists", 
   const res = await getSettings(app);
   assert.equal(res.status, 200);
   const body = await res.json();
-  assert.deepEqual(body, { node_timeout_default_ms: null, mem0_host: null, mem0_api_key: null });
+  assert.deepEqual(body, {
+    node_timeout_default_ms: null,
+    mem0_host: null,
+    mem0_api_key: null,
+    mem0_admin_key: null,
+    mem0_llm_base_url: null,
+    mem0_llm_model: null,
+    mem0_embedder_model: null,
+    mem0_embedding_dims: null,
+  });
 });
 
 test("PUT /api/settings persists node_timeout_default_ms and GET returns it", async () => {
@@ -84,7 +93,7 @@ test("PUT /api/settings is idempotent (upsert replaces previous value)", async (
 test("PUT /api/settings rejects non-integer with 400", async () => {
   const { db, dir } = setupDb();
   const app = createApp({ db, agentDir: dir });
-  for (const bad of [300000.5, "300000", true, {}, null]) {
+  for (const bad of [300000.5, "300000", true, {}]) {
     const res = await putSettings(app, { node_timeout_default_ms: bad });
     assert.equal(res.status, 400, `should reject ${JSON.stringify(bad)}`);
     const body = await res.json();
@@ -113,6 +122,17 @@ test("PUT /api/settings accepts exactly 24h (86400000ms)", async () => {
   const app = createApp({ db, agentDir: dir });
   const res = await putSettings(app, { node_timeout_default_ms: 86400000 });
   assert.equal(res.status, 200);
+});
+
+test("PUT /api/settings accepts node_timeout_default_ms: null (clears the row)", async () => {
+  const { db, dir } = setupDb();
+  const app = createApp({ db, agentDir: dir });
+  // Set first, then clear with null.
+  await putSettings(app, { node_timeout_default_ms: 300000 });
+  const res = await putSettings(app, { node_timeout_default_ms: null });
+  assert.equal(res.status, 200);
+  const body = await (await getSettings(app)).json();
+  assert.equal(body.node_timeout_default_ms, null);
 });
 
 test("PUT /api/settings rejects unknown key with 400", async () => {

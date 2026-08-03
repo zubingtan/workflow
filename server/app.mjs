@@ -42,6 +42,14 @@ import {
   validateSettingsBody,
 } from "./settings.mjs";
 import {
+  resolveMem0Config,
+  checkMem0Status,
+  getMem0Config,
+  listAgentMemories,
+  configureMem0,
+  runMem0Test,
+} from "./mem0-proxy.mjs";
+import {
   persistExecution,
   listExecutions,
   getExecutionById,
@@ -484,6 +492,71 @@ export function createApp({
       }
     }
     return c.json(getKnownSettings(db));
+  });
+
+  // --- mem0 proxy (thin forwarding to the self-hosted mem0 server) ---
+  // The browser never holds the mem0 API key; every mem0 call goes through
+  // these routes, which read credentials from the settings table.
+  // mem0 config is resolved lazily per-request (the settings table may not
+  // exist in minimal test DBs, and settings can change between requests).
+
+  // GET /api/mem0/status — connectivity + current LLM/embedding config.
+  app.get("/api/mem0/status", async (c) => {
+    const mem0 = resolveMem0Config(db);
+    if (!mem0) return c.json({ ok: false, error: "mem0 not configured (set mem0_host + mem0_api_key)" }, 400);
+    try {
+      const [status, config] = await Promise.all([
+        checkMem0Status(mem0),
+        getMem0Config(mem0).catch((e) => ({ ok: false, status: 0, body: { detail: e.message } })),
+      ]);
+      return c.json({ ok: status.ok, status: status, config: config });
+    } catch (err) {
+      return c.json({ ok: false, error: err.message }, 502);
+    }
+  });
+
+  // GET /api/mem0/memories?agentId=xxx — list memories for one agent.
+  app.get("/api/mem0/memories", async (c) => {
+    const mem0 = resolveMem0Config(db);
+    if (!mem0) return c.json({ ok: false, error: "mem0 not configured" }, 400);
+    const agentId = c.req.query("agentId") ?? c.req.query("agent_id");
+    if (!agentId) return c.json({ ok: false, error: "agentId is required" }, 400);
+    try {
+      const result = await listAgentMemories(mem0, agentId);
+      return c.json({ ok: result.ok, status: result.status, ...result.body });
+    } catch (err) {
+      return c.json({ ok: false, error: err.message }, 502);
+    }
+  });
+
+  // POST /api/mem0/test — minimal end-to-end test (connect + extract + search + cleanup).
+  app.post("/api/mem0/test", async (c) => {
+    const mem0 = resolveMem0Config(db);
+    if (!mem0) return c.json({ ok: false, error: "mem0 not configured" }, 400);
+    try {
+      return c.json(await runMem0Test(mem0));
+    } catch (err) {
+      return c.json({ ok: false, error: err.message }, 502);
+    }
+  });
+
+  // POST /api/mem0/configure — push LLM/embedding config to the mem0 server.
+  app.post("/api/mem0/configure", async (c) => {
+    const mem0 = resolveMem0Config(db);
+    if (!mem0) return c.json({ ok: false, error: "mem0 not configured" }, 400);
+    let body;
+    try { body = await c.req.json(); } catch { return c.json({ error: "invalid JSON" }, 400); }
+    try {
+      const result = await configureMem0(mem0, {
+        llmBaseUrl: body.llm_base_url ?? null,
+        llmModel: body.llm_model ?? null,
+        embedderModel: body.embedder_model ?? null,
+        embeddingDims: body.embedding_dims ?? null,
+      });
+      return c.json(result);
+    } catch (err) {
+      return c.json({ ok: false, error: err.message }, 502);
+    }
   });
 
   // --- FlowGram task endpoints ---

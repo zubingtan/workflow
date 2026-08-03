@@ -53,6 +53,6 @@ export { DREAM_PROTOCOL } from './dream/prompt.js';
 // Telemetry
 export { captureEvent, captureToolEvent } from './telemetry.js';
 
-// Extension entry (default export)
-export { default } from './extension.js';
+// Extension entry (default export — pi-agent loads extensions by `export default`)
 export { default as mem0Extension, buildRecallContext } from './extension.js';
+export { default } from './extension.js';

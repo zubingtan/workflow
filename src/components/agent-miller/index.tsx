@@ -26,6 +26,7 @@ import { StatsSection } from './sections/stats-section';
 import { SkillsSection } from './sections/skills-section';
 import { SessionsSection } from './sections/sessions-section';
 import { RuntimeSection } from './sections/runtime-section';
+import { MemoriesSection } from './sections/memories-section';
 import { GeneralSection } from './sections/general-section';
 import { ExtensionsSection } from './sections/extensions-section';
 
@@ -36,6 +37,7 @@ const SECTIONS: Array<{ key: string; label: string }> = [
   { key: 'runtime', label: 'Runtime' },
   { key: 'skills', label: 'Skills' },
   { key: 'extensions', label: 'Extensions' },
+  { key: 'memories', label: 'Memories' },
   { key: 'sessions', label: 'Sessions' },
   { key: 'stats', label: 'Stats' },
 ];
@@ -241,6 +243,8 @@ export function AgentMillerColumns() {
         return <SkillsSection {...props} />;
       case 'extensions':
         return <ExtensionsSection {...props} />;
+      case 'memories':
+        return <MemoriesSection agent={selectedAgent} />;
       case 'sessions':
         return <SessionsSection agent={selectedAgent} onSelectExecution={setSelectedExecutionId} />;
       case 'stats':
