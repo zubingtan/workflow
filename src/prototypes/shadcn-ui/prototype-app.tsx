@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ComponentType, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from 'react';
 
 import {
   Activity,
@@ -7,25 +7,30 @@ import {
   ArrowDownToLine,
   ArrowLeft,
   ArrowRight,
+  Bold,
   Bot,
   Box,
   Braces,
   Check,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   CircleStop,
   Clock3,
   Cloud,
   Code2,
   Columns3,
   Database,
-  Ellipsis,
   ExternalLink,
+  FolderUp,
   FileClock,
   GitBranch,
   Globe2,
   GripVertical,
   History,
+  Italic,
   LoaderCircle,
+  List,
   Maximize2,
   MessageSquareText,
   Moon,
@@ -291,7 +296,7 @@ function WorkbenchRail(props: LayoutProps) {
               label="Expand sidebar"
               onClick={() => setCollapsed(false)}
             >
-              <PanelLeftClose className="rotate-180" />
+              <ChevronRight />
             </IconButton>
           ) : (
             <>
@@ -310,7 +315,7 @@ function WorkbenchRail(props: LayoutProps) {
                 label="Collapse sidebar"
                 onClick={() => setCollapsed(true)}
               >
-                <PanelLeftClose />
+                <ChevronLeft />
               </IconButton>
             </>
           )}
@@ -378,9 +383,6 @@ function WorkbenchHeader(props: LayoutProps) {
           {running ? <LoaderCircle className="animate-spin" /> : <Play data-icon="inline-start" />}
           {running ? 'Running' : 'Test run'}
         </Button>
-        <IconButton label="More options">
-          <Ellipsis />
-        </IconButton>
       </div>
     </header>
   );
@@ -686,7 +688,7 @@ const AGENT_SECTIONS = [
   { id: 'skills', label: 'Skills', icon: Sparkles },
   { id: 'extensions', label: 'Extensions', icon: Box },
   { id: 'sessions', label: 'Sessions', icon: History },
-  { id: 'stats', label: 'Stats', icon: Activity },
+  { id: 'stats', label: 'Statistics', icon: Activity },
 ] as const;
 
 type AgentSectionId = (typeof AGENT_SECTIONS)[number]['id'];
@@ -716,12 +718,21 @@ function AgentsPage({
   const [systemPrompt, setSystemPrompt] = useState(
     'Analyze incoming support requests, ground every claim in available context, and prepare a concise response for human review.'
   );
+  const [description, setDescription] = useState(
+    'Analyzes incoming support requests and prepares a grounded response for human review.'
+  );
   const [enabledTools, setEnabledTools] = useState(['web_search', 'read_file']);
+  const [skillNames, setSkillNames] = useState([
+    'Support triage',
+    'Source verification',
+    'Response editor',
+  ]);
   const [enabledSkills, setEnabledSkills] = useState(['Support triage']);
   const [enabledExtensions, setEnabledExtensions] = useState(['Git context']);
   const [activeSection, setActiveSection] = useState<AgentSectionId>('general');
   const [sessionOpen, setSessionOpen] = useState(false);
   const [sessionDraft, setSessionDraft] = useState('');
+  const [sessionTitle, setSessionTitle] = useState('New session');
   const [sessionMessages, setSessionMessages] = useState<
     Array<{ role: 'assistant' | 'user'; text: string }>
   >([{ role: 'assistant', text: 'Hi — what would you like to work on?' }]);
@@ -781,9 +792,40 @@ function AgentsPage({
   };
 
   const startNewSession = () => {
+    setSessionTitle('New session');
     setSessionMessages([{ role: 'assistant', text: 'Hi — what would you like to work on?' }]);
     setSessionDraft('');
     setSessionOpen(true);
+  };
+
+  const openSession = (name: string) => {
+    setSessionTitle(name);
+    setSessionMessages([
+      {
+        role: 'user',
+        text:
+          name === 'Support request #1842'
+            ? 'Summarize the customer request and next action.'
+            : name,
+      },
+      {
+        role: 'assistant',
+        text: 'This is the saved conversation for this session. You can continue from here.',
+      },
+    ]);
+    setSessionDraft('');
+    setSessionOpen(true);
+  };
+
+  const importSkillFolder = (files: FileList | null) => {
+    const firstFile = files?.[0] as (File & { webkitRelativePath?: string }) | undefined;
+    if (!firstFile) return;
+
+    const folderName = firstFile.webkitRelativePath?.split('/')[0] || firstFile.name;
+    setSkillNames((current) => (current.includes(folderName) ? current : [...current, folderName]));
+    setEnabledSkills((current) =>
+      current.includes(folderName) ? current : [...current, folderName]
+    );
   };
 
   const toggleValue = (value: string, current: string[], update: (next: string[]) => void) =>
@@ -840,7 +882,10 @@ function AgentsPage({
                   OpenAI-compatible · {item.model}
                 </span>
               </span>
-              <Badge variant={item.status === 'Ready' ? 'secondary' : 'outline'}>
+              <Badge
+                className="w-14 justify-center"
+                variant={item.status === 'Ready' ? 'secondary' : 'outline'}
+              >
                 {item.status}
               </Badge>
               <ArrowRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
@@ -865,11 +910,11 @@ function AgentsPage({
         </IconButton>
         <span
           className={cn(
-            'flex size-8 shrink-0 items-center justify-center rounded-lg text-white',
+            'flex size-7 shrink-0 items-center justify-center rounded-md text-white',
             agent.color
           )}
         >
-          <Bot className="size-4" />
+          <Bot className="size-3.5" />
         </span>
         <div className="min-w-0">
           {editingName ? (
@@ -911,15 +956,15 @@ function AgentsPage({
       </div>
 
       <div className="flex min-h-0 flex-1">
-        <aside className="w-48 shrink-0 border-r bg-muted/15 p-2">
-          <nav aria-label="Agent settings" className="space-y-1">
+        <aside className="w-40 shrink-0 border-r bg-muted/15 p-2">
+          <nav aria-label="Agent settings" className="flex flex-col gap-0.5">
             {AGENT_SECTIONS.map((section) => {
               const SectionIcon = section.icon;
               return (
                 <button
                   aria-current={activeSection === section.id ? 'page' : undefined}
                   className={cn(
-                    'flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
+                    'flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
                     activeSection === section.id && 'bg-muted text-foreground'
                   )}
                   key={section.id}
@@ -944,22 +989,10 @@ function AgentsPage({
                 <ArrowLeft data-icon="inline-start" /> Sessions
               </Button>
               <Separator className="mx-1 h-5" orientation="vertical" />
-              <span className="text-sm font-semibold">New session</span>
+              <span className="truncate text-sm font-semibold">{sessionTitle}</span>
             </div>
             <ScrollArea className="min-h-0 flex-1">
-              <div className="mx-auto max-w-3xl space-y-4 px-6 py-8">
-                <div className="mb-8 flex flex-col items-center text-center">
-                  <span
-                    className={cn(
-                      'flex size-11 items-center justify-center rounded-xl text-white',
-                      agent.color
-                    )}
-                  >
-                    <Bot className="size-5" />
-                  </span>
-                  <h2 className="mt-3 text-base font-semibold">{agent.name}</h2>
-                  <p className="mt-1 text-xs text-muted-foreground">New agent session</p>
-                </div>
+              <div className="mx-auto flex max-w-3xl flex-col gap-4 px-6 py-8">
                 {sessionMessages.map((message, index) => (
                   <div
                     className={cn(
@@ -1002,11 +1035,7 @@ function AgentsPage({
             <div className="p-5 lg:p-7">
               {activeSection === 'general' && (
                 <div className="mx-auto max-w-5xl space-y-7">
-                  <Field
-                    label="Description"
-                    value="Analyzes incoming support requests and prepares a grounded response for human review."
-                    multiline
-                  />
+                  <MarkdownEditor value={description} onChange={setDescription} />
                   <FormSection
                     title="Provider"
                     description="Connect the provider, discover its available models, then verify the connection here."
@@ -1152,9 +1181,9 @@ function AgentsPage({
                 <AgentSection
                   title="Skills"
                   description="Attach reusable instruction packages to this agent."
-                  action={<SaveSectionButton />}
+                  action={<ImportSkillFolderButton onImport={importSkillFolder} />}
                 >
-                  {['Support triage', 'Source verification', 'Response editor'].map((name) => (
+                  {skillNames.map((name) => (
                     <ToggleRow
                       key={name}
                       title={name}
@@ -1170,7 +1199,6 @@ function AgentsPage({
                 <AgentSection
                   title="Extensions"
                   description="Connect optional integrations to this agent."
-                  action={<SaveSectionButton />}
                 >
                   {['Git context', 'mem0 memory', 'Issue tracker'].map((name) => (
                     <ToggleRow
@@ -1200,14 +1228,17 @@ function AgentsPage({
                       ['Refund escalation', 'Completed', 'Yesterday'],
                       ['Account access review', 'Stopped', '2 days ago'],
                     ].map(([name, status, time]) => (
-                      <div
-                        className="grid grid-cols-[1fr_auto_auto] items-center gap-6 border-b px-4 py-3 text-sm last:border-b-0"
+                      <button
+                        className="group grid w-full grid-cols-[1fr_auto_auto_auto] items-center gap-6 border-b px-4 py-3 text-left text-sm transition-colors last:border-b-0 hover:bg-muted/40"
                         key={name}
+                        onClick={() => openSession(name)}
+                        type="button"
                       >
                         <span className="font-medium">{name}</span>
                         <Badge variant="outline">{status}</Badge>
                         <span className="text-xs text-muted-foreground">{time}</span>
-                      </div>
+                        <ArrowRight className="size-3.5 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+                      </button>
                     ))}
                   </div>
                 </AgentSection>
@@ -1215,7 +1246,7 @@ function AgentsPage({
 
               {activeSection === 'stats' && (
                 <AgentSection
-                  title="Stats"
+                  title="Statistics"
                   description="Performance and usage for this agent over the last 7 days."
                 >
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -1286,6 +1317,107 @@ function SaveSectionButton() {
     <Button size="sm">
       <Save data-icon="inline-start" /> Save changes
     </Button>
+  );
+}
+
+function MarkdownEditor({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const restoreSelection = (start: number, end: number) => {
+    window.requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+      textareaRef.current?.setSelectionRange(start, end);
+    });
+  };
+
+  const wrapSelection = (prefix: string, suffix = prefix) => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    const { selectionStart, selectionEnd } = textarea;
+    const selectedText = value.slice(selectionStart, selectionEnd);
+    onChange(
+      `${value.slice(0, selectionStart)}${prefix}${selectedText}${suffix}${value.slice(
+        selectionEnd
+      )}`
+    );
+    restoreSelection(selectionStart + prefix.length, selectionEnd + prefix.length);
+  };
+
+  const makeList = () => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    const lineStart = value.lastIndexOf('\n', textarea.selectionStart - 1) + 1;
+    const nextLineBreak = value.indexOf('\n', textarea.selectionEnd);
+    const lineEnd = nextLineBreak === -1 ? value.length : nextLineBreak;
+    const selectedLines = value.slice(lineStart, lineEnd);
+    const formatted = selectedLines
+      .split('\n')
+      .map((line) => `- ${line}`)
+      .join('\n');
+    onChange(`${value.slice(0, lineStart)}${formatted}${value.slice(lineEnd)}`);
+    restoreSelection(lineStart, lineStart + formatted.length);
+  };
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label className="text-xs font-medium" htmlFor="agent-description">
+        Description
+      </label>
+      <div className="overflow-hidden rounded-lg border border-input bg-background focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/30">
+        <div className="flex items-center gap-0.5 border-b bg-muted/25 p-1">
+          <IconButton label="Bold" onClick={() => wrapSelection('**')}>
+            <Bold />
+          </IconButton>
+          <IconButton label="Italic" onClick={() => wrapSelection('_')}>
+            <Italic />
+          </IconButton>
+          <IconButton label="Inline code" onClick={() => wrapSelection('`')}>
+            <Code2 />
+          </IconButton>
+          <IconButton label="Bulleted list" onClick={makeList}>
+            <List />
+          </IconButton>
+          <span className="ml-auto pr-2 text-[10px] text-muted-foreground">Markdown</span>
+        </div>
+        <textarea
+          ref={textareaRef}
+          id="agent-description"
+          aria-label="Description"
+          className="min-h-24 w-full resize-y bg-transparent px-3 py-2 text-sm leading-5 outline-none"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ImportSkillFolderButton({ onImport }: { onImport: (files: FileList | null) => void }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.setAttribute('webkitdirectory', '');
+    inputRef.current?.setAttribute('directory', '');
+  }, []);
+
+  return (
+    <>
+      <input
+        ref={inputRef}
+        className="hidden"
+        multiple
+        type="file"
+        onChange={(event) => {
+          onImport(event.target.files);
+          event.target.value = '';
+        }}
+      />
+      <Button variant="outline" size="sm" onClick={() => inputRef.current?.click()}>
+        <FolderUp data-icon="inline-start" /> Import folder
+      </Button>
+    </>
   );
 }
 

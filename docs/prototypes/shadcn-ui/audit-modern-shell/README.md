@@ -26,7 +26,11 @@ Validate the preferred Variant A structure after the latest navigation feedback:
 - After: the Variant A node inspector uses the same floating rounded-surface rule as the primary rail and canvas controls, with canvas visible on every side.
 - Consistency check: Workflow and Agent collection cards plus Settings sections already use rounded surfaces. Agent detail navigation intentionally remains full-height inside the detail pane because it is page structure, not a temporary tool surface.
 - After: Agent General starts directly with Description; the redundant Identity heading and rename instructions are removed because the name is edited in the detail header.
-- After: Agent save actions belong to their editable section instead of the global detail header. General, System prompt, Tools, Runtime, Skills, and Extensions each expose one local `Save changes`; Sessions and Stats remain action-free read-only views.
+- After: Agent save actions belong to the specific sections that need an explicit commit instead of the global detail header. General, System prompt, Tools, and Runtime retain local save actions; Skills and Extensions apply toggles immediately.
+- After: Agent list states occupy one fixed-width column, the detail identity icon is smaller, the settings rail is narrower, and the collapse control is reduced to a quiet chevron.
+- After: Description has dependency-free Markdown shortcuts for bold, italic, inline code, and lists. Skills can import a local folder, and the imported package is enabled immediately in prototype state.
+- After: Session history rows open their saved conversation in place; `New session` opens the same chat shell without a redundant centered Agent introduction.
+- After: `Stats` is renamed `Statistics`, and the unused Workflow editor overflow action is removed.
 
 ## Evidence
 
@@ -49,5 +53,10 @@ Validate the preferred Variant A structure after the latest navigation feedback:
 - `22-agent-general-without-identity.png`: General settings after removing the redundant Identity introduction.
 - `23-agent-general-local-save.png`: General with its local save action and a clean Agent header.
 - `24-agent-sessions-no-global-save.png`: Sessions without an irrelevant global or local save action.
+- `25-agent-list-density.png`: aligned status widths and the simplified sidebar-collapse affordance.
+- `26-agent-general-markdown.png`: compact Agent identity, narrow settings rail, and lightweight Markdown editing.
+- `27-agent-skills-import.png`: immediate Skill toggles with local folder import and no save action.
+- `28-agent-session-history.png`: an existing session opened as a resumable conversation.
+- `29-editor-clean-header.png`: Workflow editor header without an unused overflow menu.
 
-Browser verification covered Workflow list -> editor -> Back, Agent list -> settings -> Back, Sessions -> New session -> Send -> Back, sidebar collapse/expand, theme switching, node-inspector surface consistency, and console warnings/errors.
+Browser verification covered Workflow list -> editor -> Back, Agent list -> settings -> Back, Markdown selection formatting, immediate Skill toggles, Sessions -> existing history/New session -> chat, sidebar collapse/expand, theme switching, node-inspector surface consistency, and console warnings/errors.
