@@ -39,6 +39,26 @@ const violations = forbiddenPatterns.flatMap(({ label, pattern }) => {
   });
 });
 
+const requiredContracts = [
+  ['settings section sidebar', 'aria-label="Settings sections"'],
+  ['settings autosave state', 'type SettingsSaveState ='],
+  ['memory model discovery', 'discoverMemoryModels'],
+  ['LLM model select', 'id="memory-llm-model"'],
+  ['embedding model select', 'id="memory-embedding-model"'],
+  ['workflow list', 'aria-label="Workflow list"'],
+  ['workflow history sheet', '<SheetTitle>Workflow history</SheetTitle>'],
+];
+
+for (const [label, marker] of requiredContracts) {
+  if (!source.includes(marker)) {
+    violations.push(`missing ${label}: ${marker}`);
+  }
+}
+
+if (source.includes('Save settings')) {
+  violations.push('settings must autosave: Save settings');
+}
+
 if (violations.length > 0) {
   console.error('Shadcn prototype audit failed:\n');
   console.error(violations.map((violation) => `- ${violation}`).join('\n'));

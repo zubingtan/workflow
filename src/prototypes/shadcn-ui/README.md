@@ -24,18 +24,21 @@ The preferred review entry is <http://localhost:4173/?variant=A&view=workflows>.
 Variant A now tests the preferred product structure:
 
 - A floating rounded sidebar collapses to an icon rail and owns the theme switcher.
-- Workflows and Agents open as collection pages with one primary `New` action.
+- Workflows and Agents open as compact row-based collection pages with one primary `New` action.
 - Selecting a row fades and shifts the collection away before replacing it with the full editor or settings surface.
 - The detail header provides a single Back action that restores the collection page.
+- Workflow editing exposes recent saved versions through a real `History` sheet in the editor header.
 - The node inspector is a rounded floating surface over the workflow canvas, consistent with the app rail and canvas controls.
 - Agent details use a vertical settings sidebar and retain inline title editing plus provider model discovery/testing.
 - Sessions owns conversation entry: `New session` replaces the settings content with a full inline Agent conversation, and Back restores the recent-session list.
+- Settings uses the same vertical section-navigation pattern as Agent details and autosaves field changes with visible `Saving` / `Saved automatically` feedback.
+- Memory models are discovered from the LLM base URL; LLM and embedding models are selected from separate dropdowns instead of entered manually.
 
 The prototype uses local mock state only. It does not call backend APIs, persist workflow data, or change Workflow JSON and execution behavior.
 
 ## Shadcn control audit
 
-All interactive controls in `prototype-app.tsx` are composed from the local shadcn registry: Button and ButtonGroup, Field and InputGroup, Input, Textarea, Select, Switch, Item, Alert, Avatar, Tabs, ToggleGroup, Tooltip, ScrollArea, and Card subcomponents. The canvas keeps only domain-specific geometry and positioning in custom CSS: node coordinates, ports, connection paths, drag cursors, and stack transitions.
+All interactive controls in `prototype-app.tsx` are composed from the local shadcn registry: Button and ButtonGroup, Field and InputGroup, Input, Textarea, Select, Switch, Item, Alert, Avatar, Tabs, ToggleGroup, Tooltip, ScrollArea, Sheet, and Card subcomponents. The canvas keeps only domain-specific geometry and positioning in custom CSS: node coordinates, ports, connection paths, drag cursors, and stack transitions.
 
 Run the regression guard before review:
 

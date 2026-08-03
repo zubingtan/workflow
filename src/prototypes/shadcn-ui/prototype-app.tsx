@@ -89,6 +89,14 @@ import {
 } from '@/prototypes/shadcn-ui/components/ui/tabs';
 import { Switch } from '@/prototypes/shadcn-ui/components/ui/switch';
 import { Spinner } from '@/prototypes/shadcn-ui/components/ui/spinner';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from '@/prototypes/shadcn-ui/components/ui/sheet';
 import { Separator } from '@/prototypes/shadcn-ui/components/ui/separator';
 import {
   Select,
@@ -105,9 +113,7 @@ import {
   ItemActions,
   ItemContent,
   ItemDescription,
-  ItemFooter,
   ItemGroup,
-  ItemHeader,
   ItemMedia,
   ItemTitle,
 } from '@/prototypes/shadcn-ui/components/ui/item';
@@ -465,6 +471,39 @@ function WorkbenchHeader(props: LayoutProps) {
       </Badge>
       <span className="text-xs text-muted-foreground">Saved just now</span>
       <div className="ml-auto flex items-center gap-1.5">
+        <Sheet>
+          <SheetTrigger render={<Button variant="ghost" size="sm" />}>
+            <History data-icon="inline-start" /> History
+          </SheetTrigger>
+          <SheetContent>
+            <SheetHeader>
+              <SheetTitle>Workflow history</SheetTitle>
+              <SheetDescription>
+                Review recent saved versions of {selectedWorkflow}.
+              </SheetDescription>
+            </SheetHeader>
+            <ScrollArea className="min-h-0 flex-1 px-4 pb-4">
+              <ItemGroup aria-label="Workflow history versions" className="gap-2">
+                {[
+                  ['Version 18', 'Current draft', 'Saved just now'],
+                  ['Version 17', 'Test run passed', '18 min ago'],
+                  ['Version 16', 'Published', 'Yesterday'],
+                ].map(([version, change, time]) => (
+                  <Item key={version} variant="outline">
+                    <ItemMedia variant="icon">
+                      <FileClock />
+                    </ItemMedia>
+                    <ItemContent>
+                      <ItemTitle>{version}</ItemTitle>
+                      <ItemDescription>{change}</ItemDescription>
+                    </ItemContent>
+                    <ItemActions className="text-xs text-muted-foreground">{time}</ItemActions>
+                  </Item>
+                ))}
+              </ItemGroup>
+            </ScrollArea>
+          </SheetContent>
+        </Sheet>
         <IconButton label="Undo">
           <Undo2 />
         </IconButton>
@@ -737,42 +776,37 @@ function WorkflowsPage({ variant, onOpen }: { variant: Variant; onOpen: (name: s
           </Button>
         )}
       </div>
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <ItemGroup
+        aria-label="Workflow list"
+        className="gap-0 overflow-hidden rounded-xl border bg-card"
+      >
         {visibleWorkflows.map((workflow) => (
-          <Item
-            className="h-full flex-col items-stretch"
-            key={workflow.name}
-            onClick={() => openWorkflow(workflow.name)}
-            render={<Button type="button" variant="ghost" />}
-            variant="outline"
-          >
-            <ItemHeader>
-              <ItemContent>
-                <ItemTitle>{workflow.name}</ItemTitle>
-                <ItemDescription>{workflow.description}</ItemDescription>
-              </ItemContent>
+          <div className="border-b last:border-b-0" key={workflow.name} role="listitem">
+            <Item
+              className="h-auto min-h-16 rounded-none border-0 px-4 py-3"
+              onClick={() => openWorkflow(workflow.name)}
+              render={<Button type="button" variant="ghost" />}
+            >
               <ItemMedia variant="icon">
                 <Workflow />
               </ItemMedia>
-            </ItemHeader>
-            <ItemContent className="flex-row items-center gap-2">
-              <Badge variant={workflow.status === 'Published' ? 'secondary' : 'outline'}>
-                {workflow.status}
-              </Badge>
-              <span className="text-muted-foreground">{workflow.nodes} nodes</span>
-              <span className="ml-auto font-medium">{workflow.success}</span>
-            </ItemContent>
-            <ItemFooter className="text-xs text-muted-foreground">
-              <span className="flex items-center gap-1.5">
-                <Clock3 /> {workflow.lastRun}
-              </span>
-              <span className="flex items-center gap-1 font-medium text-foreground">
-                Open <ArrowRight />
-              </span>
-            </ItemFooter>
-          </Item>
+              <ItemContent>
+                <ItemTitle>{workflow.name}</ItemTitle>
+                <ItemDescription>
+                  {workflow.description} · {workflow.nodes} nodes · {workflow.lastRun}
+                </ItemDescription>
+              </ItemContent>
+              <ItemActions>
+                <Badge variant={workflow.status === 'Published' ? 'secondary' : 'outline'}>
+                  {workflow.status}
+                </Badge>
+                <Badge variant="outline">{workflow.success}</Badge>
+                <ArrowRight className="text-muted-foreground" />
+              </ItemActions>
+            </Item>
+          </div>
         ))}
-      </div>
+      </ItemGroup>
     </div>
   );
 }
@@ -1593,79 +1627,288 @@ function ToggleRow({
   );
 }
 
+const SETTINGS_SECTIONS = [
+  {
+    id: 'execution',
+    label: 'Execution',
+    description: 'Default workflow run limits.',
+    icon: Clock3,
+  },
+  {
+    id: 'memory',
+    label: 'Memory',
+    description: 'Persistent memory and retrieval models.',
+    icon: Database,
+  },
+  {
+    id: 'local-data',
+    label: 'Local data',
+    description: 'Storage location and access.',
+    icon: Archive,
+  },
+  {
+    id: 'environment',
+    label: 'Environment',
+    description: 'Current runtime information.',
+    icon: Cloud,
+  },
+] as const;
+
+type SettingsSectionId = (typeof SETTINGS_SECTIONS)[number]['id'];
+type SettingsSaveState = 'saving' | 'saved';
+type MemoryModel = { id: string; kind: 'llm' | 'embedding' };
+
+const MEMORY_MODEL_CATALOG: MemoryModel[] = [
+  { id: 'deepseek-v4-flash', kind: 'llm' },
+  { id: 'deepseek-v4-pro', kind: 'llm' },
+  { id: 'text-embedding-v4', kind: 'embedding' },
+  { id: 'text-embedding-3-large', kind: 'embedding' },
+];
+
 function SettingsPage({ variant }: { variant: Variant }) {
+  const [activeSection, setActiveSection] = useState<SettingsSectionId>('execution');
+  const [saveState, setSaveState] = useState<SettingsSaveState>('saved');
+  const [llmBaseUrl, setLlmBaseUrl] = useState('https://api.example.com');
+  const [memoryModels, setMemoryModels] = useState<MemoryModel[]>(MEMORY_MODEL_CATALOG);
+  const [llmModel, setLlmModel] = useState('deepseek-v4-flash');
+  const [embeddingModel, setEmbeddingModel] = useState('text-embedding-v4');
+  const [discoveringModels, setDiscoveringModels] = useState(false);
+  const saveTimerRef = useRef<number | null>(null);
+  const discoveryTimerRef = useRef<number | null>(null);
+
+  useEffect(
+    () => () => {
+      if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current);
+      if (discoveryTimerRef.current !== null) window.clearTimeout(discoveryTimerRef.current);
+    },
+    []
+  );
+
+  const scheduleSettingsSave = () => {
+    setSaveState('saving');
+    if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = window.setTimeout(() => setSaveState('saved'), 480);
+  };
+
+  const discoverMemoryModels = () => {
+    setDiscoveringModels(true);
+    setMemoryModels([]);
+    setSaveState('saving');
+    if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current);
+    if (discoveryTimerRef.current !== null) window.clearTimeout(discoveryTimerRef.current);
+    discoveryTimerRef.current = window.setTimeout(() => {
+      setMemoryModels(MEMORY_MODEL_CATALOG);
+      setLlmModel('deepseek-v4-flash');
+      setEmbeddingModel('text-embedding-v4');
+      setDiscoveringModels(false);
+      setSaveState('saved');
+    }, 620);
+  };
+
+  const llmModels = memoryModels.filter((model) => model.kind === 'llm');
+  const embeddingModels = memoryModels.filter((model) => model.kind === 'embedding');
+  const activeSettings = SETTINGS_SECTIONS.find((section) => section.id === activeSection)!;
+
   return (
-    <div className="mx-auto min-h-full max-w-[980px] p-6 lg:p-8">
-      <div className="mb-4 flex justify-end">
-        <Button>
-          <Save data-icon="inline-start" /> Save settings
-        </Button>
-      </div>
-      <div className={cn('grid gap-4', variant === 'B' ? 'md:grid-cols-2' : 'grid-cols-1')}>
-        <SettingsCard
-          icon={Clock3}
-          title="Execution"
-          description="Control the default limits applied to every workflow run."
-        >
-          <Field label="Node timeout" value="300" suffix="seconds" />
-          <Alert>
-            <Clock3 />
-            <AlertTitle>Timeout behavior</AlertTitle>
-            <AlertDescription>
-              A running node is cancelled after this limit. Individual node behavior and workflow
-              execution semantics remain unchanged.
-            </AlertDescription>
-          </Alert>
-        </SettingsCard>
-        <SettingsCard
-          icon={Database}
-          title="Memory (mem0)"
-          description="Configure persistent Agent memory and the models used to extract and search it."
-        >
-          <div className="grid gap-3 md:grid-cols-2">
-            <Field label="Server URL" value="http://localhost:8890" />
-            <Field label="API key" value="••••••••••••••••••••" />
-            <Field label="Admin key" value="••••••••••••" />
-            <Field label="LLM base URL" value="https://api.example.com" />
-            <Field label="LLM model" value="deepseek-v4-flash" />
-            <Field label="Embedding model" value="text-embedding-v4" />
-            <Field label="Embedding dimensions" value="1024" />
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm">
-              <Radio data-icon="inline-start" /> Test connection
+    <div className="flex min-h-full">
+      <aside className="w-44 shrink-0 border-r bg-muted/15 p-2.5">
+        <nav aria-label="Settings sections" className="flex flex-col gap-1">
+          {SETTINGS_SECTIONS.map((section) => (
+            <Button
+              className="justify-start"
+              key={section.id}
+              variant={activeSection === section.id ? 'secondary' : 'ghost'}
+              onClick={() => setActiveSection(section.id)}
+            >
+              <section.icon data-icon="inline-start" /> {section.label}
             </Button>
-            <span className="text-xs text-muted-foreground">
-              Saved credentials stay on the backend proxy.
-            </span>
+          ))}
+        </nav>
+      </aside>
+
+      <ScrollArea className="min-w-0 flex-1">
+        <div className={cn('mx-auto p-5 lg:p-7', variant === 'C' ? 'max-w-4xl' : 'max-w-5xl')}>
+          <div className="mb-5 flex items-start gap-4">
+            <div>
+              <h2 className="text-base font-semibold">{activeSettings.label}</h2>
+              <p className="text-sm text-muted-foreground">{activeSettings.description}</p>
+            </div>
+            <Badge className="ml-auto" variant="outline">
+              {saveState === 'saving' && <Spinner data-icon="inline-start" />}
+              {saveState === 'saving' ? 'Saving' : 'Saved automatically'}
+            </Badge>
           </div>
-        </SettingsCard>
-        <SettingsCard
-          icon={Archive}
-          title="Local data"
-          description="Understand where workflows, agents and run history are stored."
-        >
-          <Alert>
-            <Database />
-            <AlertTitle>Database path</AlertTitle>
-            <AlertDescription className="font-mono">
-              ~/.config/workflow/workflow.db
-            </AlertDescription>
-          </Alert>
-          <Button className="w-fit" variant="outline" size="sm">
-            <ExternalLink data-icon="inline-start" /> Open data directory
-          </Button>
-        </SettingsCard>
-        <SettingsCard
-          icon={Cloud}
-          title="Environment"
-          description="Current application runtime information."
-        >
-          <KeyValue label="Mode" value="Development" />
-          <KeyValue label="API origin" value="Same origin" />
-          <KeyValue label="Provider" value="Fake provider :4010" />
-        </SettingsCard>
-      </div>
+
+          {activeSection === 'execution' && (
+            <SettingsCard
+              icon={Clock3}
+              title="Execution"
+              description="Control the default limits applied to every workflow run."
+            >
+              <Field
+                label="Node timeout"
+                value="300"
+                suffix="seconds"
+                onBlur={scheduleSettingsSave}
+              />
+              <Alert>
+                <Clock3 />
+                <AlertTitle>Timeout behavior</AlertTitle>
+                <AlertDescription>
+                  A running node is cancelled after this limit. Individual node behavior and
+                  workflow execution semantics remain unchanged.
+                </AlertDescription>
+              </Alert>
+            </SettingsCard>
+          )}
+
+          {activeSection === 'memory' && (
+            <SettingsCard
+              icon={Database}
+              title="Memory (mem0)"
+              description="Configure persistent Agent memory and the models used to extract and search it."
+            >
+              <FieldGroup className="grid gap-3 md:grid-cols-2">
+                <Field
+                  label="Server URL"
+                  value="http://localhost:8890"
+                  onBlur={scheduleSettingsSave}
+                />
+                <Field label="API key" value="••••••••••••••••••••" onBlur={scheduleSettingsSave} />
+                <Field label="Admin key" value="••••••••••••" onBlur={scheduleSettingsSave} />
+                <FormField>
+                  <FieldLabel htmlFor="memory-llm-base-url">LLM base URL</FieldLabel>
+                  <InputGroup>
+                    <InputGroupInput
+                      id="memory-llm-base-url"
+                      value={llmBaseUrl}
+                      onChange={(event) => setLlmBaseUrl(event.target.value)}
+                      onBlur={discoverMemoryModels}
+                    />
+                    <InputGroupAddon align="inline-end">
+                      <InputGroupButton
+                        aria-label="Refresh available models"
+                        disabled={discoveringModels}
+                        onClick={discoverMemoryModels}
+                        size="icon-xs"
+                      >
+                        {discoveringModels ? <Spinner /> : <RefreshCw />}
+                      </InputGroupButton>
+                    </InputGroupAddon>
+                  </InputGroup>
+                  <FieldDescription>
+                    Models refresh automatically after the URL changes.
+                  </FieldDescription>
+                </FormField>
+                <FormField>
+                  <FieldLabel htmlFor="memory-llm-model">LLM model</FieldLabel>
+                  <Select
+                    items={llmModels.map((model) => ({ label: model.id, value: model.id }))}
+                    value={llmModel}
+                    onValueChange={(value) => {
+                      if (!value) return;
+                      setLlmModel(value);
+                      scheduleSettingsSave();
+                    }}
+                  >
+                    <SelectTrigger
+                      className="w-full"
+                      disabled={discoveringModels || llmModels.length === 0}
+                      id="memory-llm-model"
+                    >
+                      <SelectValue
+                        placeholder={discoveringModels ? 'Discovering…' : 'Select model'}
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        {llmModels.map((model) => (
+                          <SelectItem key={model.id} value={model.id}>
+                            {model.id}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </FormField>
+                <FormField>
+                  <FieldLabel htmlFor="memory-embedding-model">Embedding model</FieldLabel>
+                  <Select
+                    items={embeddingModels.map((model) => ({ label: model.id, value: model.id }))}
+                    value={embeddingModel}
+                    onValueChange={(value) => {
+                      if (!value) return;
+                      setEmbeddingModel(value);
+                      scheduleSettingsSave();
+                    }}
+                  >
+                    <SelectTrigger
+                      className="w-full"
+                      disabled={discoveringModels || embeddingModels.length === 0}
+                      id="memory-embedding-model"
+                    >
+                      <SelectValue
+                        placeholder={discoveringModels ? 'Discovering…' : 'Select model'}
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        {embeddingModels.map((model) => (
+                          <SelectItem key={model.id} value={model.id}>
+                            {model.id}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </FormField>
+                <Field label="Embedding dimensions" value="1024" onBlur={scheduleSettingsSave} />
+              </FieldGroup>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm">
+                  <Radio data-icon="inline-start" /> Test connection
+                </Button>
+                <span className="text-xs text-muted-foreground">
+                  {discoveringModels
+                    ? `Discovering models from ${llmBaseUrl}…`
+                    : `${memoryModels.length} models discovered from this URL.`}
+                </span>
+              </div>
+            </SettingsCard>
+          )}
+
+          {activeSection === 'local-data' && (
+            <SettingsCard
+              icon={Archive}
+              title="Local data"
+              description="Understand where workflows, agents and run history are stored."
+            >
+              <Alert>
+                <Database />
+                <AlertTitle>Database path</AlertTitle>
+                <AlertDescription className="font-mono">
+                  ~/.config/workflow/workflow.db
+                </AlertDescription>
+              </Alert>
+              <Button className="w-fit" variant="outline" size="sm">
+                <ExternalLink data-icon="inline-start" /> Open data directory
+              </Button>
+            </SettingsCard>
+          )}
+
+          {activeSection === 'environment' && (
+            <SettingsCard
+              icon={Cloud}
+              title="Environment"
+              description="Current application runtime information."
+            >
+              <KeyValue label="Mode" value="Development" />
+              <KeyValue label="API origin" value="Same origin" />
+              <KeyValue label="Provider" value="Fake provider :4010" />
+            </SettingsCard>
+          )}
+        </div>
+      </ScrollArea>
     </div>
   );
 }
@@ -2444,24 +2687,26 @@ function Field({
   value,
   multiline,
   suffix,
+  onBlur,
 }: {
   label: string;
   value: string;
   multiline?: boolean;
   suffix?: string;
+  onBlur?: () => void;
 }) {
   return (
     <FormField>
       <FieldLabel>{label}</FieldLabel>
       {multiline ? (
-        <Textarea className="min-h-20 resize-none text-xs" defaultValue={value} />
+        <Textarea className="min-h-20 resize-none text-xs" defaultValue={value} onBlur={onBlur} />
       ) : suffix ? (
         <InputGroup>
-          <InputGroupInput className="text-xs" defaultValue={value} />
+          <InputGroupInput className="text-xs" defaultValue={value} onBlur={onBlur} />
           <InputGroupAddon align="inline-end">{suffix}</InputGroupAddon>
         </InputGroup>
       ) : (
-        <Input className="text-xs" defaultValue={value} />
+        <Input className="text-xs" defaultValue={value} onBlur={onBlur} />
       )}
     </FormField>
   );
