@@ -52,6 +52,14 @@ const requiredContracts = [
   ['pill canvas zoom controls', 'data-ui="canvas-zoom-controls"'],
   ['floating node inspector', 'data-ui="node-inspector"'],
   ['agent list row sizing', 'data-ui="agent-list-row"'],
+  ['workflow list row sizing', 'data-ui="workflow-list-row"'],
+  ['workflow list actions', 'data-ui="workflow-list-actions"'],
+  ['agent list actions', 'data-ui="agent-list-actions"'],
+  ['selection export surface', 'data-ui="export-selection"'],
+  ['file import input', 'data-ui="import-file-input"'],
+  ['import conflict surface', 'data-ui="import-conflict-sheet"'],
+  ['new workflow action', 'data-ui="new-workflow"'],
+  ['new agent action', 'data-ui="new-agent"'],
 ];
 
 for (const [label, marker] of requiredContracts) {

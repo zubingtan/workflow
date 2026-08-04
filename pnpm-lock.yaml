@@ -86,6 +86,9 @@ importers:
       hono:
         specifier: ^4.12.31
         version: 4.12.31
+      js-yaml:
+        specifier: 4.3.0
+        version: 4.3.0
       lodash-es:
         specifier: ^4.17.21
         version: 4.18.1
@@ -135,6 +138,9 @@ importers:
       '@types/better-sqlite3':
         specifier: ^7.6.0
         version: 7.6.13
+      '@types/js-yaml':
+        specifier: ^4.0.9
+        version: 4.0.9
       '@types/lodash-es':
         specifier: ^4.17.12
         version: 4.17.12
@@ -3055,6 +3061,9 @@ packages:
     resolution: {integrity: sha512-PQTyIulDkIDro8P+IHbKCsw7U2xxBYflVzW/FgWdCAePD9xGSidgA76/GeJ6lBKoblyhf9pBY763gbrN+1dI8g==}
     peerDependencies:
       '@types/react': '*'
+
+  '@types/js-yaml@4.0.9':
+    resolution: {integrity: sha512-k4MGaQl5TGo/iipqb2UDG2UwjXziSWkh0uysQelTlJpX1qGlpUZYm8PnO4DxG1qBomtJUdYJ6qR6xdIah10JLg==}
 
   '@types/jsesc@2.5.1':
     resolution: {integrity: sha512-9VN+6yxLOPLOav+7PwjZbxiID2bVaeq0ED4qSQmdQTdjnXJSaCVKTR58t15oqH1H5t8Ng2ZX1SabJVoN9Q34bw==}
@@ -10924,6 +10933,8 @@ snapshots:
     dependencies:
       '@types/react': 18.3.31
       hoist-non-react-statics: 3.3.2
+
+  '@types/js-yaml@4.0.9': {}
 
   '@types/jsesc@2.5.1': {}
 

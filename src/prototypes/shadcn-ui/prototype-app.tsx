@@ -71,6 +71,7 @@ import {
   X,
   Zap,
 } from 'lucide-react';
+import { dump as dumpYaml, load as loadYaml } from 'js-yaml';
 
 import { cn } from '@/prototypes/shadcn-ui/lib/utils';
 import {
@@ -133,6 +134,7 @@ import {
   FieldLegend,
   FieldSet,
 } from '@/prototypes/shadcn-ui/components/ui/field';
+import { Checkbox } from '@/prototypes/shadcn-ui/components/ui/checkbox';
 import {
   Card,
   CardAction,
@@ -151,6 +153,9 @@ import { Badge } from '@/prototypes/shadcn-ui/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/prototypes/shadcn-ui/components/ui/avatar';
 import { Alert, AlertDescription, AlertTitle } from '@/prototypes/shadcn-ui/components/ui/alert';
 
+import type { FlowDocumentJSON } from '../../typings';
+import { newWorkflowTemplate } from '../../new-workflow-template.mjs';
+
 type View = 'workflows' | 'agents' | 'settings' | 'editor';
 type Variant = 'A' | 'B' | 'C';
 type StackTransition = 'idle' | 'leaving' | 'entering';
@@ -159,6 +164,124 @@ type CanvasNodeId = 'start' | 'llm' | 'condition' | 'http' | 'end';
 type CanvasPosition = { x: number; y: number };
 type OutputMode = 'fields' | 'json';
 type OutputField = { id: number; key: string; type: 'string' | 'number' | 'boolean' };
+type WorkflowRecord = {
+  name: string;
+  description: string;
+  status: 'Published' | 'Draft';
+  nodes: number;
+  lastRun: string;
+  success: string;
+  data: FlowDocumentJSON;
+};
+type AgentRecord = {
+  name: string;
+  model: string;
+  status: 'Ready' | 'Draft';
+  runtime: string;
+  tags: string[];
+  config: {
+    provider: { base_url: string; api_key: string | null; model: string };
+    system_prompt: string;
+    session_options: Record<string, unknown>;
+    pi_settings: Record<string, unknown>;
+  };
+};
+type ImportConflictStrategy = 'skip' | 'overwrite' | 'rename';
+
+function cloneWorkflowDocument(): FlowDocumentJSON {
+  return JSON.parse(JSON.stringify(newWorkflowTemplate())) as FlowDocumentJSON;
+}
+
+function createAgentRecord(
+  name: string,
+  model: string,
+  status: AgentRecord['status'] = 'Ready'
+): AgentRecord {
+  return {
+    name,
+    model,
+    status,
+    runtime: 'pi-coding-agent',
+    tags: [],
+    config: {
+      provider: {
+        base_url: model.startsWith('deepseek')
+          ? 'https://api.deepseek.com/v1'
+          : 'https://api.openai.com/v1',
+        api_key: null,
+        model,
+      },
+      system_prompt: '',
+      session_options: {},
+      pi_settings: { defaultProjectTrust: 'always' },
+    },
+  };
+}
+
+function safeFileName(value: string) {
+  return (
+    value
+      .trim()
+      .replace(/[^a-zA-Z0-9_-]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'export'
+  );
+}
+
+function downloadText(filename: string, content: string, type = 'application/json') {
+  const url = URL.createObjectURL(new Blob([content], { type }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function nextImportedName(name: string, existing: Set<string>) {
+  let suffix = 2;
+  let candidate = `${name} (${suffix})`;
+  while (existing.has(candidate)) {
+    suffix += 1;
+    candidate = `${name} (${suffix})`;
+  }
+  return candidate;
+}
+
+function mergeNamedRecords<T extends { name: string }>(
+  current: T[],
+  incoming: T[],
+  strategy: ImportConflictStrategy
+) {
+  const next = [...current];
+  const names = new Set(current.map((item) => item.name));
+  let created = 0;
+  let skipped = 0;
+  let overwritten = 0;
+
+  for (const item of incoming) {
+    const index = next.findIndex((candidate) => candidate.name === item.name);
+    if (index === -1) {
+      next.push(item);
+      names.add(item.name);
+      created += 1;
+      continue;
+    }
+    if (strategy === 'skip') {
+      skipped += 1;
+      continue;
+    }
+    if (strategy === 'overwrite') {
+      next[index] = item;
+      overwritten += 1;
+      continue;
+    }
+    const renamed = { ...item, name: nextImportedName(item.name, names) };
+    next.push(renamed);
+    names.add(renamed.name);
+    created += 1;
+  }
+
+  return { next, created, skipped, overwritten };
+}
 
 const INITIAL_NODE_POSITIONS: Record<CanvasNodeId, CanvasPosition> = {
   start: { x: 1.5, y: 48 },
@@ -187,7 +310,7 @@ const VARIANTS: Array<{ id: Variant; name: string; description: string }> = [
   { id: 'C', name: 'Focus Dock', description: 'icon rail + floating context' },
 ];
 
-const WORKFLOWS = [
+const WORKFLOWS: WorkflowRecord[] = [
   {
     name: 'Support triage',
     description: 'Classify requests, gather context and prepare a response for review.',
@@ -195,6 +318,7 @@ const WORKFLOWS = [
     nodes: 8,
     lastRun: '4 min ago',
     success: '98.1%',
+    data: cloneWorkflowDocument(),
   },
   {
     name: 'Research brief',
@@ -203,6 +327,7 @@ const WORKFLOWS = [
     nodes: 12,
     lastRun: 'Yesterday',
     success: '94.8%',
+    data: cloneWorkflowDocument(),
   },
   {
     name: 'Release notes',
@@ -211,13 +336,14 @@ const WORKFLOWS = [
     nodes: 6,
     lastRun: '3 days ago',
     success: '100%',
+    data: cloneWorkflowDocument(),
   },
 ];
 
-const AGENTS = [
-  { name: 'Support analyst', model: 'gpt-5', status: 'Ready' },
-  { name: 'Research lead', model: 'deepseek-v4-pro', status: 'Ready' },
-  { name: 'Release editor', model: 'gpt-5-mini', status: 'Draft' },
+const AGENTS: AgentRecord[] = [
+  createAgentRecord('Support analyst', 'gpt-5'),
+  createAgentRecord('Research lead', 'deepseek-v4-pro'),
+  createAgentRecord('Release editor', 'gpt-5-mini', 'Draft'),
 ];
 
 const NODE_TYPES = [
@@ -260,6 +386,8 @@ export function PrototypeApp() {
   const [selectedAgent, setSelectedAgent] = useState<number | null>(null);
   const [agentTransition, setAgentTransition] = useState<StackTransition>('idle');
   const [selectedNode, setSelectedNode] = useState<CanvasNodeId | null>(null);
+  const [workflows, setWorkflows] = useState<WorkflowRecord[]>(() => WORKFLOWS);
+  const [agents, setAgents] = useState<AgentRecord[]>(() => AGENTS);
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -326,6 +454,39 @@ export function PrototypeApp() {
     setView('editor');
   };
 
+  const createWorkflow = () => {
+    const names = new Set(workflows.map((workflow) => workflow.name));
+    const name = nextImportedName('Untitled workflow', names);
+    const workflow: WorkflowRecord = {
+      name,
+      description: 'A new workflow ready to configure.',
+      status: 'Draft',
+      nodes: 3,
+      lastRun: 'Never',
+      success: '—',
+      data: cloneWorkflowDocument(),
+    };
+    setWorkflows((current) => [...current, workflow]);
+    setSelectedWorkflow(name);
+    setView('editor');
+  };
+
+  const createAgent = () => {
+    const name = nextImportedName('Untitled agent', new Set(agents.map((agent) => agent.name)));
+    setAgents((current) => [...current, createAgentRecord(name, 'gpt-5', 'Draft')]);
+    setSelectedAgent(agents.length);
+    setAgentTransition('entering');
+    window.setTimeout(() => setAgentTransition('idle'), 220);
+  };
+
+  const importWorkflows = (incoming: WorkflowRecord[], strategy: ImportConflictStrategy) => {
+    setWorkflows((current) => mergeNamedRecords(current, incoming, strategy).next);
+  };
+
+  const importAgents = (incoming: AgentRecord[], strategy: ImportConflictStrategy) => {
+    setAgents((current) => mergeNamedRecords(current, incoming, strategy).next);
+  };
+
   const shared: LayoutProps = {
     view,
     setView: changeView,
@@ -335,10 +496,16 @@ export function PrototypeApp() {
     selectedWorkflow,
     selectedAgent,
     selectedNode,
+    workflows,
+    agents,
     agentTransition,
     onOpenAgent: openAgent,
     onCloseAgent: closeAgent,
     onOpenWorkflow: openWorkflow,
+    onCreateWorkflow: createWorkflow,
+    onCreateAgent: createAgent,
+    onImportWorkflows: importWorkflows,
+    onImportAgents: importAgents,
     onSelectNode: setSelectedNode,
     onRun: () => {
       setRunning(true);
@@ -370,10 +537,16 @@ interface LayoutProps {
   selectedWorkflow: string;
   selectedAgent: number | null;
   selectedNode: CanvasNodeId | null;
+  workflows: WorkflowRecord[];
+  agents: AgentRecord[];
   agentTransition: StackTransition;
   onOpenAgent: (index: number) => void;
   onCloseAgent: () => void;
   onOpenWorkflow: (name: string) => void;
+  onCreateWorkflow: () => void;
+  onCreateAgent: () => void;
+  onImportWorkflows: (incoming: WorkflowRecord[], strategy: ImportConflictStrategy) => void;
+  onImportAgents: (incoming: AgentRecord[], strategy: ImportConflictStrategy) => void;
   onSelectNode: (nodeId: CanvasNodeId | null) => void;
 }
 
@@ -521,17 +694,7 @@ function WorkbenchHeader(props: LayoutProps) {
 }
 
 function CommandDeck(props: LayoutProps) {
-  const {
-    view,
-    setView,
-    dark,
-    setDark,
-    running,
-    onRun,
-    selectedAgent,
-    selectedWorkflow,
-    onOpenWorkflow,
-  } = props;
+  const { view, setView, dark, setDark, running, onRun, selectedWorkflow } = props;
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
@@ -556,16 +719,6 @@ function CommandDeck(props: LayoutProps) {
         </Button>
         <div className="ml-auto flex items-center gap-1.5">
           <ThemeToggle dark={dark} setDark={setDark} />
-          {view === 'workflows' && (
-            <Button size="sm" onClick={() => onOpenWorkflow('Untitled workflow')}>
-              <Plus data-icon="inline-start" /> New workflow
-            </Button>
-          )}
-          {view === 'agents' && selectedAgent === null && (
-            <Button size="sm">
-              <Plus data-icon="inline-start" /> New agent
-            </Button>
-          )}
           <Avatar className="ml-1">
             <AvatarFallback>ZT</AvatarFallback>
           </Avatar>
@@ -604,17 +757,7 @@ function CommandDeck(props: LayoutProps) {
 }
 
 function FocusDock(props: LayoutProps) {
-  const {
-    view,
-    setView,
-    dark,
-    setDark,
-    running,
-    onRun,
-    selectedAgent,
-    selectedWorkflow,
-    onOpenWorkflow,
-  } = props;
+  const { view, setView, dark, setDark, running, onRun, selectedWorkflow } = props;
 
   return (
     <div className="grid h-screen grid-cols-[64px_minmax(0,1fr)] overflow-hidden bg-muted/30 text-foreground">
@@ -667,16 +810,6 @@ function FocusDock(props: LayoutProps) {
             <IconButton label="Workflow history">
               <FileClock />
             </IconButton>
-            {view === 'workflows' && (
-              <Button size="sm" onClick={() => onOpenWorkflow('Untitled workflow')}>
-                <Plus data-icon="inline-start" /> New workflow
-              </Button>
-            )}
-            {view === 'agents' && selectedAgent === null && (
-              <Button size="sm">
-                <Plus data-icon="inline-start" /> New agent
-              </Button>
-            )}
             {view === 'editor' && (
               <>
                 <Button variant="outline" size="sm">
@@ -708,15 +841,25 @@ function FocusDock(props: LayoutProps) {
 function ViewContent(props: LayoutProps & { variant: Variant }) {
   switch (props.view) {
     case 'workflows':
-      return <WorkflowsPage variant={props.variant} onOpen={props.onOpenWorkflow} />;
+      return (
+        <WorkflowsPage
+          variant={props.variant}
+          workflows={props.workflows}
+          onOpen={props.onOpenWorkflow}
+          onCreate={props.onCreateWorkflow}
+          onImport={props.onImportWorkflows}
+        />
+      );
     case 'agents':
       return (
         <AgentsPage
-          variant={props.variant}
+          agents={props.agents}
           selectedAgent={props.selectedAgent}
           transition={props.agentTransition}
           onSelectAgent={props.onOpenAgent}
           onClose={props.onCloseAgent}
+          onCreate={props.onCreateAgent}
+          onImport={props.onImportAgents}
         />
       );
     case 'settings':
@@ -733,10 +876,156 @@ function ViewContent(props: LayoutProps & { variant: Variant }) {
   }
 }
 
-function WorkflowsPage({ variant, onOpen }: { variant: Variant; onOpen: (name: string) => void }) {
+function isWorkflowDocument(value: unknown): value is FlowDocumentJSON {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as { nodes?: unknown; edges?: unknown };
+  return Array.isArray(candidate.nodes) && Array.isArray(candidate.edges);
+}
+
+function workflowNameFromFile(fileName: string) {
+  return (
+    fileName
+      .replace(/\.(json|ya?ml)$/i, '')
+      .replace(/[-_]+/g, ' ')
+      .trim() || 'Imported workflow'
+  );
+}
+
+function importedWorkflow(name: string, data: FlowDocumentJSON): WorkflowRecord {
+  return {
+    name,
+    description: 'Imported workflow definition.',
+    status: 'Draft',
+    nodes: data.nodes.length,
+    lastRun: 'Never',
+    success: '—',
+    data,
+  };
+}
+
+async function parseWorkflowFile(file: File): Promise<WorkflowRecord[]> {
+  const text = await file.text();
+  const parsed = /\.ya?ml$/i.test(file.name) ? loadYaml(text) : JSON.parse(text);
+  if (Array.isArray(parsed)) {
+    return parsed.map((entry, index) => {
+      if (!entry || typeof entry !== 'object') {
+        throw new Error(`Workflow ${index + 1} is not an object`);
+      }
+      const candidate = entry as { name?: unknown; data?: unknown };
+      if (typeof candidate.name !== 'string' || !isWorkflowDocument(candidate.data)) {
+        throw new Error(`Workflow ${index + 1} must contain a name and FlowDocumentJSON data`);
+      }
+      return importedWorkflow(candidate.name, candidate.data);
+    });
+  }
+  if (!isWorkflowDocument(parsed)) {
+    throw new Error('Expected a FlowDocumentJSON object or a workflow export array');
+  }
+  return [importedWorkflow(workflowNameFromFile(file.name), parsed)];
+}
+
+function ImportConflictSheet({
+  kind,
+  open,
+  conflicts,
+  total,
+  onClose,
+  onChoose,
+}: {
+  kind: 'workflows' | 'agents';
+  open: boolean;
+  conflicts: string[];
+  total: number;
+  onClose: () => void;
+  onChoose: (strategy: ImportConflictStrategy) => void;
+}) {
+  const [confirmOverwrite, setConfirmOverwrite] = useState(false);
+
+  useEffect(() => {
+    if (!open) setConfirmOverwrite(false);
+  }, [open]);
+
+  return (
+    <Sheet open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
+      <SheetContent data-ui="import-conflict-sheet" className="gap-0 sm:max-w-md">
+        <SheetHeader>
+          <SheetTitle>Resolve import conflicts</SheetTitle>
+          <SheetDescription>
+            {conflicts.length} of {total} {kind} already exist by name.
+          </SheetDescription>
+        </SheetHeader>
+        <ScrollArea className="min-h-0 flex-1 px-4">
+          <ItemGroup className="gap-2">
+            {conflicts.map((name) => (
+              <Item key={name} variant="muted">
+                <ItemMedia variant="icon">{kind === 'agents' ? <Bot /> : <Workflow />}</ItemMedia>
+                <ItemContent>
+                  <ItemTitle>{name}</ItemTitle>
+                  <ItemDescription>Same-name item found in the current catalog.</ItemDescription>
+                </ItemContent>
+              </Item>
+            ))}
+          </ItemGroup>
+          {confirmOverwrite && (
+            <Alert className="mt-4" variant="destructive">
+              <AlertTitle>Overwrite existing {kind}?</AlertTitle>
+              <AlertDescription>
+                This replaces the current definition for every conflicting name.
+              </AlertDescription>
+            </Alert>
+          )}
+        </ScrollArea>
+        <div className="flex flex-wrap justify-end gap-2 border-t p-4">
+          <Button variant="outline" size="sm" onClick={() => onChoose('skip')}>
+            Skip conflicts
+          </Button>
+          <Button
+            variant={confirmOverwrite ? 'destructive' : 'outline'}
+            size="sm"
+            onClick={() => {
+              if (!confirmOverwrite) {
+                setConfirmOverwrite(true);
+                return;
+              }
+              onChoose('overwrite');
+            }}
+          >
+            {confirmOverwrite ? 'Confirm overwrite' : 'Overwrite existing'}
+          </Button>
+          <Button size="sm" onClick={() => onChoose('rename')}>
+            Rename imported
+          </Button>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function WorkflowsPage({
+  variant,
+  workflows,
+  onOpen,
+  onCreate,
+  onImport,
+}: {
+  variant: Variant;
+  workflows: WorkflowRecord[];
+  onOpen: (name: string) => void;
+  onCreate: () => void;
+  onImport: (incoming: WorkflowRecord[], strategy: ImportConflictStrategy) => void;
+}) {
   const [query, setQuery] = useState('');
   const [leaving, setLeaving] = useState(false);
-  const visibleWorkflows = WORKFLOWS.filter((workflow) =>
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedNames, setSelectedNames] = useState<string[]>([]);
+  const [importState, setImportState] = useState<{
+    items: WorkflowRecord[];
+    conflicts: string[];
+    total: number;
+  } | null>(null);
+  const [transferMessage, setTransferMessage] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+  const visibleWorkflows = workflows.filter((workflow) =>
     `${workflow.name} ${workflow.description}`.toLowerCase().includes(query.toLowerCase())
   );
 
@@ -745,17 +1034,73 @@ function WorkflowsPage({ variant, onOpen }: { variant: Variant; onOpen: (name: s
     window.setTimeout(() => onOpen(name), 160);
   };
 
+  const toggleSelection = (name: string) => {
+    setSelectedNames((current) =>
+      current.includes(name) ? current.filter((item) => item !== name) : [...current, name]
+    );
+  };
+
+  const exportSelected = (format: 'json' | 'yaml') => {
+    const selected = workflows.filter((workflow) => selectedNames.includes(workflow.name));
+    if (selected.length === 0) return;
+    const multiple = selected.length > 1;
+    const payload = multiple
+      ? selected.map(({ name, data }) => ({ name, data }))
+      : selected[0].data;
+    const content = format === 'yaml' ? dumpYaml(payload) : JSON.stringify(payload, null, 2);
+    const suffix = format === 'yaml' ? 'yaml' : 'json';
+    const filename = multiple
+      ? `workflows-export.${suffix}`
+      : `${safeFileName(selected[0].name)}.${suffix}`;
+    downloadText(filename, content, format === 'yaml' ? 'text/yaml' : 'application/json');
+    setTransferMessage(`Exported ${selected.length} workflow${selected.length === 1 ? '' : 's'}.`);
+    setSelectionMode(false);
+    setSelectedNames([]);
+  };
+
+  const chooseFile = async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      const items = await parseWorkflowFile(file);
+      const existingNames = new Set(workflows.map((workflow) => workflow.name));
+      const conflicts = items.map((item) => item.name).filter((name) => existingNames.has(name));
+      if (conflicts.length > 0) {
+        setImportState({ items, conflicts, total: items.length });
+        return;
+      }
+      onImport(items, 'skip');
+      setTransferMessage(`Imported ${items.length} workflow${items.length === 1 ? '' : 's'}.`);
+    } catch (error) {
+      setTransferMessage(error instanceof Error ? error.message : 'Import failed.');
+    }
+  };
+
+  const resolveImport = (strategy: ImportConflictStrategy) => {
+    if (!importState) return;
+    onImport(importState.items, strategy);
+    setTransferMessage(
+      `${
+        strategy === 'skip'
+          ? 'Imported without conflicts'
+          : strategy === 'overwrite'
+          ? 'Imported with replacements'
+          : 'Imported with renamed items'
+      }: ${importState.total} workflow${importState.total === 1 ? '' : 's'}.`
+    );
+    setImportState(null);
+  };
+
   return (
     <div
       className={cn(
-        'stack-screen mx-auto min-h-full max-w-[1240px] p-6 lg:p-8',
+        'stack-screen mx-auto min-h-full max-w-[1120px] p-4 lg:p-6',
         leaving && 'is-leaving',
         !leaving && 'is-entering',
         variant === 'C' && 'max-w-[1120px]'
       )}
     >
-      <div className="mb-5 flex items-center gap-3">
-        <InputGroup className="max-w-sm">
+      <div data-ui="workflow-list-actions" className="mb-4 flex flex-wrap items-center gap-2">
+        <InputGroup className="min-w-0 max-w-sm flex-1">
           <InputGroupAddon>
             <Search />
           </InputGroupAddon>
@@ -767,12 +1112,73 @@ function WorkflowsPage({ variant, onOpen }: { variant: Variant; onOpen: (name: s
           />
         </InputGroup>
         <Badge variant="secondary">{visibleWorkflows.length} workflows</Badge>
-        {variant === 'A' && (
-          <Button className="ml-auto" size="sm" onClick={() => openWorkflow('Untitled workflow')}>
-            <Plus data-icon="inline-start" /> New workflow
-          </Button>
-        )}
+        <Input
+          ref={inputRef}
+          accept=".json,.yaml,.yml,application/json,text/yaml"
+          className="hidden"
+          data-ui="import-file-input"
+          type="file"
+          onChange={(event) => {
+            void chooseFile(event.target.files?.[0]);
+            event.target.value = '';
+          }}
+        />
+        <div className="ml-auto flex flex-wrap items-center gap-1.5">
+          {selectionMode ? (
+            <>
+              <Badge variant="outline">{selectedNames.length} selected</Badge>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setSelectionMode(false);
+                  setSelectedNames([]);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                disabled={selectedNames.length === 0}
+                onClick={() => exportSelected('json')}
+              >
+                <Download data-icon="inline-start" /> Export JSON
+              </Button>
+              {selectedNames.length === 1 && (
+                <Button variant="outline" size="sm" onClick={() => exportSelected('yaml')}>
+                  Export YAML
+                </Button>
+              )}
+            </>
+          ) : (
+            <>
+              <Button variant="outline" size="sm" onClick={() => inputRef.current?.click()}>
+                <Upload data-icon="inline-start" /> Import
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                data-ui="export-selection"
+                onClick={() => {
+                  setSelectedNames([]);
+                  setSelectionMode(true);
+                }}
+              >
+                <Download data-icon="inline-start" /> Export
+              </Button>
+              <Button data-ui="new-workflow" size="sm" onClick={onCreate}>
+                <Plus data-icon="inline-start" /> New workflow
+              </Button>
+            </>
+          )}
+        </div>
       </div>
+      {transferMessage && (
+        <Alert className="mb-4">
+          <AlertTitle>Workflow transfer</AlertTitle>
+          <AlertDescription>{transferMessage}</AlertDescription>
+        </Alert>
+      )}
       <ItemGroup
         aria-label="Workflow list"
         className="gap-0 overflow-hidden rounded-xl border bg-card"
@@ -781,9 +1187,20 @@ function WorkflowsPage({ variant, onOpen }: { variant: Variant; onOpen: (name: s
           <div className="border-b last:border-b-0" key={workflow.name} role="listitem">
             <Item
               className="h-auto min-h-16 rounded-none border-0 px-4 py-3"
-              onClick={() => openWorkflow(workflow.name)}
-              render={<Button type="button" variant="ghost" />}
+              data-ui="workflow-list-row"
+              onClick={() =>
+                selectionMode ? toggleSelection(workflow.name) : openWorkflow(workflow.name)
+              }
+              render={selectionMode ? undefined : <Button type="button" variant="ghost" />}
             >
+              {selectionMode && (
+                <Checkbox
+                  aria-label={`Select ${workflow.name}`}
+                  checked={selectedNames.includes(workflow.name)}
+                  onCheckedChange={() => toggleSelection(workflow.name)}
+                  onClick={(event) => event.stopPropagation()}
+                />
+              )}
               <ItemMedia variant="icon">
                 <Workflow />
               </ItemMedia>
@@ -804,6 +1221,14 @@ function WorkflowsPage({ variant, onOpen }: { variant: Variant; onOpen: (name: s
           </div>
         ))}
       </ItemGroup>
+      <ImportConflictSheet
+        kind="workflows"
+        open={importState !== null}
+        conflicts={importState?.conflicts ?? []}
+        total={importState?.total ?? 0}
+        onClose={() => setImportState(null)}
+        onChoose={resolveImport}
+      />
     </div>
   );
 }
@@ -822,26 +1247,68 @@ const AGENT_SECTIONS = [
 
 type AgentSectionId = (typeof AGENT_SECTIONS)[number]['id'];
 
+async function parseAgentFile(file: File): Promise<AgentRecord[]> {
+  const parsed = JSON.parse(await file.text());
+  if (!Array.isArray(parsed) || parsed.length === 0) {
+    throw new Error('Expected a non-empty Agent JSON array');
+  }
+  return parsed.map((entry, index) => {
+    if (!entry || typeof entry !== 'object' || typeof entry.name !== 'string') {
+      throw new Error(`Agent ${index + 1} must contain a name`);
+    }
+    const rawConfig = typeof entry.config === 'string' ? JSON.parse(entry.config) : entry.config;
+    const model = rawConfig?.provider?.model;
+    if (!rawConfig || typeof model !== 'string' || !model) {
+      throw new Error(`Agent ${index + 1} must contain config.provider.model`);
+    }
+    return {
+      ...createAgentRecord(entry.name, model),
+      runtime: typeof entry.runtime === 'string' ? entry.runtime : 'pi-coding-agent',
+      tags: Array.isArray(entry.tags) ? entry.tags : [],
+      config: {
+        ...rawConfig,
+        provider: { ...rawConfig.provider, model, api_key: rawConfig.provider.api_key ?? null },
+      },
+    } as AgentRecord;
+  });
+}
+
+function exportAgentPayload(agent: AgentRecord) {
+  return {
+    name: agent.name,
+    runtime: agent.runtime,
+    tags: agent.tags,
+    config: {
+      ...agent.config,
+      provider: { ...agent.config.provider, api_key: null },
+    },
+  };
+}
+
 function AgentsPage({
-  variant,
+  agents,
   selectedAgent,
   transition,
   onSelectAgent,
   onClose,
+  onCreate,
+  onImport,
 }: {
-  variant: Variant;
+  agents: AgentRecord[];
   selectedAgent: number | null;
   transition: StackTransition;
   onSelectAgent: (index: number) => void;
   onClose: () => void;
+  onCreate: () => void;
+  onImport: (incoming: AgentRecord[], strategy: ImportConflictStrategy) => void;
 }) {
   const selected = selectedAgent ?? 0;
-  const [agentNames, setAgentNames] = useState(() => AGENTS.map((agent) => agent.name));
+  const [agentNames, setAgentNames] = useState(() => agents.map((agent) => agent.name));
   const [query, setQuery] = useState('');
   const [editingName, setEditingName] = useState(false);
   const [providerUrl, setProviderUrl] = useState('https://api.openai.com/v1');
-  const [models, setModels] = useState<string[]>([AGENTS[0].model]);
-  const [model, setModel] = useState(AGENTS[0].model);
+  const [models, setModels] = useState<string[]>([agents[0]?.model ?? 'gpt-5']);
+  const [model, setModel] = useState(agents[0]?.model ?? 'gpt-5');
   const [fetchingModels, setFetchingModels] = useState(false);
   const [providerStatus, setProviderStatus] = useState<'idle' | 'testing' | 'connected'>('idle');
   const [systemPrompt, setSystemPrompt] = useState(
@@ -865,14 +1332,34 @@ function AgentsPage({
   const [sessionMessages, setSessionMessages] = useState<
     Array<{ role: 'assistant' | 'user'; text: string }>
   >([{ role: 'assistant', text: 'Hi — what would you like to work on?' }]);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedNames, setSelectedNames] = useState<string[]>([]);
+  const [importState, setImportState] = useState<{
+    items: AgentRecord[];
+    conflicts: string[];
+    total: number;
+  } | null>(null);
+  const [transferMessage, setTransferMessage] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  const agent = { ...AGENTS[selected], name: agentNames[selected], model };
-  const visibleAgents = AGENTS.map((item, index) => ({ item, index })).filter(({ item, index }) =>
-    `${agentNames[index]} ${item.model}`.toLowerCase().includes(query.toLowerCase())
-  );
+  useEffect(() => {
+    setAgentNames((current) => agents.map((item, index) => current[index] ?? item.name));
+  }, [agents]);
+
+  const agent = {
+    ...(agents[selected] ?? createAgentRecord('Untitled agent', model, 'Draft')),
+    name: agentNames[selected] ?? agents[selected]?.name ?? 'Untitled agent',
+    model,
+  };
+  const visibleAgents = agents
+    .map((item, index) => ({ item, index }))
+    .filter(({ item, index }) =>
+      `${agentNames[index] ?? item.name} ${item.model}`.toLowerCase().includes(query.toLowerCase())
+    );
 
   const selectAgent = (index: number) => {
-    const nextAgent = AGENTS[index];
+    const nextAgent = agents[index];
+    if (!nextAgent) return;
     setEditingName(false);
     setActiveSection('general');
     setSessionOpen(false);
@@ -962,6 +1449,60 @@ function AgentsPage({
       current.includes(value) ? current.filter((item) => item !== value) : [...current, value]
     );
 
+  const toggleSelection = (name: string) => {
+    setSelectedNames((current) =>
+      current.includes(name) ? current.filter((item) => item !== name) : [...current, name]
+    );
+  };
+
+  const exportSelected = () => {
+    const selectedItems = agents.filter((item) => selectedNames.includes(item.name));
+    if (selectedItems.length === 0) return;
+    downloadText(
+      selectedItems.length === 1
+        ? `${safeFileName(selectedItems[0].name)}.json`
+        : 'agents-export.json',
+      JSON.stringify(selectedItems.map(exportAgentPayload), null, 2)
+    );
+    setTransferMessage(
+      `Exported ${selectedItems.length} agent${selectedItems.length === 1 ? '' : 's'}.`
+    );
+    setSelectionMode(false);
+    setSelectedNames([]);
+  };
+
+  const chooseFile = async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      const items = await parseAgentFile(file);
+      const existingNames = new Set(agents.map((agent) => agent.name));
+      const conflicts = items.map((item) => item.name).filter((name) => existingNames.has(name));
+      if (conflicts.length > 0) {
+        setImportState({ items, conflicts, total: items.length });
+        return;
+      }
+      onImport(items, 'skip');
+      setTransferMessage(`Imported ${items.length} agent${items.length === 1 ? '' : 's'}.`);
+    } catch (error) {
+      setTransferMessage(error instanceof Error ? error.message : 'Import failed.');
+    }
+  };
+
+  const resolveImport = (strategy: ImportConflictStrategy) => {
+    if (!importState) return;
+    onImport(importState.items, strategy);
+    setTransferMessage(
+      `${
+        strategy === 'skip'
+          ? 'Imported without conflicts'
+          : strategy === 'overwrite'
+          ? 'Imported with replacements'
+          : 'Imported with renamed items'
+      }: ${importState.total} agent${importState.total === 1 ? '' : 's'}.`
+    );
+    setImportState(null);
+  };
+
   if (selectedAgent === null) {
     return (
       <div
@@ -971,8 +1512,8 @@ function AgentsPage({
           transition === 'entering' && 'is-entering'
         )}
       >
-        <div className="mb-4 flex items-center gap-3">
-          <InputGroup className="max-w-sm">
+        <div data-ui="agent-list-actions" className="mb-4 flex flex-wrap items-center gap-2">
+          <InputGroup className="min-w-0 max-w-sm flex-1">
             <InputGroupAddon>
               <Search />
             </InputGroupAddon>
@@ -984,36 +1525,88 @@ function AgentsPage({
             />
           </InputGroup>
           <Badge variant="secondary">{visibleAgents.length} agents</Badge>
-          {variant === 'A' && (
-            <div className="ml-auto flex items-center gap-1.5">
-              <IconButton label="Export agents">
-                <Download />
-              </IconButton>
-              <Button variant="outline" size="sm">
-                <Upload data-icon="inline-start" /> Import
-              </Button>
-              <Button size="sm">
-                <Plus data-icon="inline-start" /> New agent
-              </Button>
-            </div>
-          )}
+          <Input
+            ref={inputRef}
+            accept=".json,application/json"
+            className="hidden"
+            data-ui="import-file-input"
+            type="file"
+            onChange={(event) => {
+              void chooseFile(event.target.files?.[0]);
+              event.target.value = '';
+            }}
+          />
+          <div className="ml-auto flex flex-wrap items-center gap-1.5">
+            {selectionMode ? (
+              <>
+                <Badge variant="outline">{selectedNames.length} selected</Badge>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setSelectionMode(false);
+                    setSelectedNames([]);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button size="sm" disabled={selectedNames.length === 0} onClick={exportSelected}>
+                  <Download data-icon="inline-start" /> Export selected
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button variant="outline" size="sm" onClick={() => inputRef.current?.click()}>
+                  <Upload data-icon="inline-start" /> Import
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  data-ui="export-selection"
+                  onClick={() => {
+                    setSelectedNames([]);
+                    setSelectionMode(true);
+                  }}
+                >
+                  <Download data-icon="inline-start" /> Export
+                </Button>
+                <Button data-ui="new-agent" size="sm" onClick={onCreate}>
+                  <Plus data-icon="inline-start" /> New agent
+                </Button>
+              </>
+            )}
+          </div>
         </div>
+        {transferMessage && (
+          <Alert className="mb-4">
+            <AlertTitle>Agent transfer</AlertTitle>
+            <AlertDescription>{transferMessage}</AlertDescription>
+          </Alert>
+        )}
         <ItemGroup className="gap-0 overflow-hidden rounded-xl border">
           {visibleAgents.map(({ item, index }) => (
             <Item
               className="h-auto min-h-16 rounded-none border-0 border-b px-4 py-3 last:border-b-0"
               data-ui="agent-list-row"
               key={item.name}
-              onClick={() => selectAgent(index)}
-              render={<Button type="button" variant="ghost" />}
+              onClick={() => (selectionMode ? toggleSelection(item.name) : selectAgent(index))}
+              render={selectionMode ? undefined : <Button type="button" variant="ghost" />}
             >
+              {selectionMode && (
+                <Checkbox
+                  aria-label={`Select ${item.name}`}
+                  checked={selectedNames.includes(item.name)}
+                  onCheckedChange={() => toggleSelection(item.name)}
+                  onClick={(event) => event.stopPropagation()}
+                />
+              )}
               <Avatar size="lg">
                 <AvatarFallback>
                   <Bot />
                 </AvatarFallback>
               </Avatar>
               <ItemContent>
-                <ItemTitle>{agentNames[index]}</ItemTitle>
+                <ItemTitle>{agentNames[index] ?? item.name}</ItemTitle>
                 <ItemDescription>OpenAI-compatible · {item.model}</ItemDescription>
               </ItemContent>
               <ItemActions>
@@ -1025,6 +1618,14 @@ function AgentsPage({
             </Item>
           ))}
         </ItemGroup>
+        <ImportConflictSheet
+          kind="agents"
+          open={importState !== null}
+          conflicts={importState?.conflicts ?? []}
+          total={importState?.total ?? 0}
+          onClose={() => setImportState(null)}
+          onChoose={resolveImport}
+        />
       </div>
     );
   }
