@@ -1203,9 +1203,11 @@ function WorkflowsPage({
                   onClick={(event) => event.stopPropagation()}
                 />
               )}
-              <ItemMedia variant="icon">
-                <Workflow />
-              </ItemMedia>
+              <Avatar size="lg">
+                <AvatarFallback>
+                  <Workflow />
+                </AvatarFallback>
+              </Avatar>
               <ItemContent>
                 <ItemTitle>{workflow.name}</ItemTitle>
                 <ItemDescription>
