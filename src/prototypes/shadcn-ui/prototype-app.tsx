@@ -188,6 +188,11 @@ type AgentRecord = {
 };
 type ImportConflictStrategy = 'skip' | 'overwrite' | 'rename';
 
+const CATALOG_PAGE_CLASS = 'stack-screen mx-auto min-h-full max-w-[1120px] p-4 lg:p-6';
+const CATALOG_ACTIONS_CLASS = 'mb-4 flex flex-wrap items-center gap-2';
+const CATALOG_LIST_CLASS = 'gap-0 overflow-hidden rounded-xl border bg-card';
+const CATALOG_ROW_CLASS = 'h-auto min-h-16 rounded-none border-0 px-4 py-3';
+
 function cloneWorkflowDocument(): FlowDocumentJSON {
   return JSON.parse(JSON.stringify(newWorkflowTemplate())) as FlowDocumentJSON;
 }
@@ -1093,13 +1098,13 @@ function WorkflowsPage({
   return (
     <div
       className={cn(
-        'stack-screen mx-auto min-h-full max-w-[1120px] p-4 lg:p-6',
+        CATALOG_PAGE_CLASS,
         leaving && 'is-leaving',
         !leaving && 'is-entering',
         variant === 'C' && 'max-w-[1120px]'
       )}
     >
-      <div data-ui="workflow-list-actions" className="mb-4 flex flex-wrap items-center gap-2">
+      <div data-ui="workflow-list-actions" className={CATALOG_ACTIONS_CLASS}>
         <InputGroup className="min-w-0 max-w-sm flex-1">
           <InputGroupAddon>
             <Search />
@@ -1179,14 +1184,11 @@ function WorkflowsPage({
           <AlertDescription>{transferMessage}</AlertDescription>
         </Alert>
       )}
-      <ItemGroup
-        aria-label="Workflow list"
-        className="gap-0 overflow-hidden rounded-xl border bg-card"
-      >
+      <ItemGroup aria-label="Workflow list" className={CATALOG_LIST_CLASS}>
         {visibleWorkflows.map((workflow) => (
           <div className="border-b last:border-b-0" key={workflow.name} role="listitem">
             <Item
-              className="h-auto min-h-16 rounded-none border-0 px-4 py-3"
+              className={CATALOG_ROW_CLASS}
               data-ui="workflow-list-row"
               onClick={() =>
                 selectionMode ? toggleSelection(workflow.name) : openWorkflow(workflow.name)
@@ -1507,12 +1509,12 @@ function AgentsPage({
     return (
       <div
         className={cn(
-          'stack-screen mx-auto min-h-full max-w-[1120px] p-4 lg:p-6',
+          CATALOG_PAGE_CLASS,
           transition === 'leaving' && 'is-leaving',
           transition === 'entering' && 'is-entering'
         )}
       >
-        <div data-ui="agent-list-actions" className="mb-4 flex flex-wrap items-center gap-2">
+        <div data-ui="agent-list-actions" className={CATALOG_ACTIONS_CLASS}>
           <InputGroup className="min-w-0 max-w-sm flex-1">
             <InputGroupAddon>
               <Search />
@@ -1583,39 +1585,40 @@ function AgentsPage({
             <AlertDescription>{transferMessage}</AlertDescription>
           </Alert>
         )}
-        <ItemGroup className="gap-0 overflow-hidden rounded-xl border">
+        <ItemGroup aria-label="Agent list" className={CATALOG_LIST_CLASS}>
           {visibleAgents.map(({ item, index }) => (
-            <Item
-              className="h-auto min-h-16 rounded-none border-0 border-b px-4 py-3 last:border-b-0"
-              data-ui="agent-list-row"
-              key={item.name}
-              onClick={() => (selectionMode ? toggleSelection(item.name) : selectAgent(index))}
-              render={selectionMode ? undefined : <Button type="button" variant="ghost" />}
-            >
-              {selectionMode && (
-                <Checkbox
-                  aria-label={`Select ${item.name}`}
-                  checked={selectedNames.includes(item.name)}
-                  onCheckedChange={() => toggleSelection(item.name)}
-                  onClick={(event) => event.stopPropagation()}
-                />
-              )}
-              <Avatar size="lg">
-                <AvatarFallback>
-                  <Bot />
-                </AvatarFallback>
-              </Avatar>
-              <ItemContent>
-                <ItemTitle>{agentNames[index] ?? item.name}</ItemTitle>
-                <ItemDescription>OpenAI-compatible · {item.model}</ItemDescription>
-              </ItemContent>
-              <ItemActions>
-                <Badge variant={item.status === 'Ready' ? 'secondary' : 'outline'}>
-                  {item.status}
-                </Badge>
-                <ArrowRight />
-              </ItemActions>
-            </Item>
+            <div className="border-b last:border-b-0" key={item.name} role="listitem">
+              <Item
+                className={CATALOG_ROW_CLASS}
+                data-ui="agent-list-row"
+                onClick={() => (selectionMode ? toggleSelection(item.name) : selectAgent(index))}
+                render={selectionMode ? undefined : <Button type="button" variant="ghost" />}
+              >
+                {selectionMode && (
+                  <Checkbox
+                    aria-label={`Select ${item.name}`}
+                    checked={selectedNames.includes(item.name)}
+                    onCheckedChange={() => toggleSelection(item.name)}
+                    onClick={(event) => event.stopPropagation()}
+                  />
+                )}
+                <Avatar size="lg">
+                  <AvatarFallback>
+                    <Bot />
+                  </AvatarFallback>
+                </Avatar>
+                <ItemContent>
+                  <ItemTitle>{agentNames[index] ?? item.name}</ItemTitle>
+                  <ItemDescription>OpenAI-compatible · {item.model}</ItemDescription>
+                </ItemContent>
+                <ItemActions>
+                  <Badge variant={item.status === 'Ready' ? 'secondary' : 'outline'}>
+                    {item.status}
+                  </Badge>
+                  <ArrowRight />
+                </ItemActions>
+              </Item>
+            </div>
           ))}
         </ItemGroup>
         <ImportConflictSheet
