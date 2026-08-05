@@ -170,6 +170,65 @@ test.describe('Structured output FlowGram integration (#250)', () => {
     expect(JSON.stringify(report)).toMatch(/unexpected extra field/);
   });
 
+  test('missing required field: corrected once, then failed with field-level reason', async () => {
+    const correlationId = `e2e-so-missing-${Date.now()}`;
+    // Response omits the declared `n` field entirely.
+    await configureFakeProvider(
+      correlationId,
+      'json_response',
+      undefined,
+      JSON.stringify({ result: 'x' })
+    );
+
+    const agentId = await createAgent();
+    const schema = buildWorkflow(
+      agentId,
+      { type: 'object', properties: { result: { type: 'string' }, n: { type: 'integer' } } },
+      ['llm_main', 'result'],
+      `Run ${correlationId}`
+    );
+    const workflowId = await createWorkflow(`E2E SO Missing ${Date.now()}`, schema);
+    const runID = await submitRun(workflowId, schema);
+
+    const terminal = await waitForTerminal(runID, 30_000);
+    expect(terminal.status).toBe('failed');
+    const run = await getRun(runID);
+    const report = typeof run.report === 'string' ? JSON.parse(run.report) : run.report;
+    // Note: report JSON escapes quotes (\"), so match field-less patterns;
+    // the field-level reason is asserted in unit tests.
+    expect(JSON.stringify(report)).toMatch(/missing required field/);
+    // No half-baked outputs reach the report.
+    expect(nodeOutputs(report, 'llm_main')).toBeNull();
+  });
+
+  test('type mismatch: integer not coerced, corrected once, then failed', async () => {
+    const correlationId = `e2e-so-type-${Date.now()}`;
+    // Provider returns a string where an integer is declared — must not coerce.
+    await configureFakeProvider(
+      correlationId,
+      'json_response',
+      undefined,
+      JSON.stringify({ result: 'x', n: 'not-an-int' })
+    );
+
+    const agentId = await createAgent();
+    const schema = buildWorkflow(
+      agentId,
+      { type: 'object', properties: { result: { type: 'string' }, n: { type: 'integer' } } },
+      ['llm_main', 'result'],
+      `Run ${correlationId}`
+    );
+    const workflowId = await createWorkflow(`E2E SO Type ${Date.now()}`, schema);
+    const runID = await submitRun(workflowId, schema);
+
+    const terminal = await waitForTerminal(runID, 30_000);
+    expect(terminal.status).toBe('failed');
+    const run = await getRun(runID);
+    const report = typeof run.report === 'string' ? JSON.parse(run.report) : run.report;
+    // Quotes are escaped in the report JSON — assert the type-level reason here.
+    expect(JSON.stringify(report)).toMatch(/must be integer/);
+  });
+
   test('legacy workflow (outputs without required) keeps working (#246 normalization)', async () => {
     const correlationId = `e2e-so-legacy-${Date.now()}`;
     await configureFakeProvider(

@@ -244,6 +244,9 @@ export function isIncompleteMessage(msg) {
  * Strictly validate a parsed JSON value against the compiled schema.
  * No coercion, no hidden fields, exact primitive types only.
  *
+ * Uses Object.hasOwn for membership so prototype-chain keys like
+ * `constructor`/`toString` can never bypass the extra/missing field checks.
+ *
  * @param {unknown} parsed - JSON.parse result
  * @param {{ schema: { properties: Record<string, {type: string}> } }} compiled
  * @returns {{ ok: true, outputs: Record<string, unknown> } | { ok: false, errors: string[] }}
@@ -256,25 +259,16 @@ export function validateStructuredOutput(parsed, compiled) {
 
   const errors = [];
   const outputs = {};
+  const parsedKeys = Object.keys(parsed);
+  const declaredKeys = Object.keys(properties);
 
-  // Missing fields (all declared fields are required — compileStrictSchema
-  // already normalized legacy documents).
-  for (const key of Object.keys(properties)) {
-    if (!(key in parsed)) {
+  // Single pass over the union of declared and present keys: missing,
+  // extra, and type checks are decided together.
+  for (const key of declaredKeys) {
+    if (!Object.hasOwn(parsed, key)) {
       errors.push(`missing required field "${key}"`);
+      continue;
     }
-  }
-
-  // Extra fields are rejected — the declared schema is the whole contract.
-  for (const key of Object.keys(parsed)) {
-    if (!(key in properties)) {
-      errors.push(`unexpected extra field "${key}"`);
-    }
-  }
-
-  // Exact primitive type matching (no coercion).
-  for (const key of Object.keys(properties)) {
-    if (!(key in parsed)) continue;
     const expected = properties[key].type;
     const value = parsed[key];
     const matches =
@@ -292,6 +286,11 @@ export function validateStructuredOutput(parsed, compiled) {
       continue;
     }
     outputs[key] = value;
+  }
+  for (const key of parsedKeys) {
+    if (!Object.hasOwn(properties, key)) {
+      errors.push(`unexpected extra field "${key}"`);
+    }
   }
 
   if (errors.length > 0) return { ok: false, errors };

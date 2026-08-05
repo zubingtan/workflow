@@ -84,6 +84,13 @@ describe('validateFields (#242 field-name rules)', () => {
     assert.match(errs.a, /cannot be empty/);
   });
 
+  test('leading/trailing spaces are rejected (no silent trim vs persisted name)', () => {
+    const errs = validateFields([field('a', ' result ')]);
+    assert.match(errs.a, /Leading or trailing spaces/);
+    // All-space keys are still an empty-name error, not a spaces error.
+    assert.match(validateFields([field('b', ' ')]) .b, /cannot be empty/);
+  });
+
   test('duplicate keys are rejected on the later occurrence', () => {
     const errs = validateFields([field('a', 'name'), field('b', 'name')]);
     assert.equal(errs.a, undefined, 'first occurrence stays valid');

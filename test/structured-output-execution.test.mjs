@@ -96,6 +96,19 @@ describe("structured output terminal classification (#249)", () => {
     assert.match(terminal.error.message, /unexpected extra field "secret"/);
   });
 
+  test("prototype-chain keys cannot smuggle extra fields", async () => {
+    // `constructor`/`toString`/`__proto__` live on Object.prototype; an `in`
+    // check would miss them and let them through. Object.hasOwn must reject.
+    for (const key of ["constructor", "toString", "__proto__"]) {
+      const payload = JSON.stringify({ result: "ok", n: 3, [key]: "x" });
+      const session = makeFakeSession([{ messages: [makeAssistant(payload)] }]);
+      const terminal = await collect({ ...BASE, structured: COMPILED, createSession: async () => session });
+      assert.equal(terminal.phase, "failed", `${key} must be rejected`);
+      assert.equal(terminal.error.kind, "structured_output_error", `${key} must be a validation error`);
+      assert.match(terminal.error.message, new RegExp(`unexpected extra field "${key}"`));
+    }
+  });
+
   test("invalid JSON corrects once in the same session, then succeeds", async () => {
     const session = makeFakeSession([
       { messages: [makeAssistant("not json at all")] },
@@ -194,6 +207,20 @@ describe("structured output terminal classification (#249)", () => {
     const terminal = await collect({ ...BASE, structured: COMPILED, createSession: async () => session });
     assert.equal(terminal.phase, "failed");
     assert.match(terminal.error.message, /no assistant response/);
+  });
+
+  test("refusal retry then invalid JSON still gets its own correction (independent budgets)", async () => {
+    // refusal is re-asked once; the retry answer is invalid JSON, which
+    // deserves its own single correction; the corrected answer passes.
+    const session = makeFakeSession([
+      { messages: [makeAssistant("", { stopReason: "error", errorMessage: "refusal" })] },
+      { messages: [makeAssistant("not json")] },
+      { messages: [makeAssistant('{"result":"ok","n":1}')] },
+    ]);
+    const terminal = await collect({ ...BASE, structured: COMPILED, createSession: async () => session });
+    assert.equal(terminal.phase, "succeeded");
+    assert.deepEqual(terminal.outputs, { result: "ok", n: 1 });
+    assert.equal(session._getPromptCalls().length, 3);
   });
 
   test("provider error stop reason fails as provider_error, not empty/structured", async () => {
