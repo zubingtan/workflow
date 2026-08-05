@@ -290,6 +290,19 @@ export async function* runAgentExecution({
         };
         return;
       }
+      // Provider error surfaced as an assistant message (e.g. an endpoint
+      // rejecting response_format) — classify as provider_error, never as an
+      // empty/structured failure, and never as a structured success.
+      if (finalMessage.stopReason === "error") {
+        yield {
+          type: "terminal", phase: "failed", partialText, toolEvents, stats, sessionFile,
+          error: {
+            kind: "provider_error",
+            message: finalMessage.errorMessage || "provider returned an error stop reason",
+          },
+        };
+        return;
+      }
       if (!finalMessage.text.trim()) {
         yield {
           type: "terminal", phase: "failed", partialText, toolEvents, stats, sessionFile,

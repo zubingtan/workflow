@@ -196,6 +196,27 @@ describe("structured output terminal classification (#249)", () => {
     assert.match(terminal.error.message, /no assistant response/);
   });
 
+  test("provider error stop reason fails as provider_error, not empty/structured", async () => {
+    // An endpoint rejecting response_format surfaces as stopReason=error +
+    // errorMessage on the final assistant message — never an empty-response
+    // or structured failure, and never a fake success.
+    const session = makeFakeSession([
+      {
+        messages: [
+          makeAssistant("", {
+            stopReason: "error",
+            errorMessage: "volcengine does not support parameters: ['response_format']",
+          }),
+        ],
+      },
+    ]);
+    const terminal = await collect({ ...BASE, structured: COMPILED, createSession: async () => session });
+    assert.equal(terminal.phase, "failed");
+    assert.equal(terminal.error.kind, "provider_error");
+    assert.match(terminal.error.message, /response_format/);
+    assert.equal(session._getPromptCalls().length, 1, "provider error never corrects");
+  });
+
   test("cancellation mid-run stays cancelled even with a structured contract", async () => {
     const ac = new AbortController();
     let resolvePrompt;
