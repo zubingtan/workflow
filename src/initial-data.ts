@@ -1,12 +1,29 @@
 import { FlowDocumentJSON } from './typings';
 
+/**
+ * Default example workflow — the translation pipeline (English ⇄ Chinese).
+ *
+ * Exercises the platform's core surfaces end to end:
+ *   - Start → Classifier Agent with a STRUCTURED OUTPUT boolean
+ *     (`is_english_word`) — the #247/#248/#249 contract
+ *   - Condition branching on that boolean (`is_true`)
+ *   - Two translator Agents (e2c / c2e), one per branch
+ *   - A code aggregator merging whichever branch ran
+ *   - End node consuming the aggregated result
+ *
+ * `agentId` is empty on purpose: every dev worktree has its own agent
+ * database, so the user picks an agent per node before running.
+ */
 export const initialData: FlowDocumentJSON = {
   nodes: [
     {
       id: 'start_0',
       type: 'start',
       meta: {
-        position: { x: 100, y: 300 },
+        position: {
+          x: 180,
+          y: 245,
+        },
       },
       data: {
         title: 'Start',
@@ -25,18 +42,18 @@ export const initialData: FlowDocumentJSON = {
       id: 'llm_main',
       type: 'llm',
       meta: {
-        position: { x: 420, y: 300 },
+        position: {
+          x: 640,
+          y: 156.9,
+        },
       },
       data: {
-        title: 'Agent_Main',
-        inputsValues: {
-          agentId: {
-            type: 'constant',
-            content: '',
-          },
-          prompt: {
-            type: 'template',
-            content: '{{start_0.query}}',
+        outputs: {
+          type: 'object',
+          properties: {
+            is_english_word: {
+              type: 'boolean',
+            },
           },
         },
         inputs: {
@@ -53,36 +70,40 @@ export const initialData: FlowDocumentJSON = {
             },
           },
         },
-        outputs: {
-          type: 'object',
-          properties: {
-            result: { type: 'string' },
+        inputsValues: {
+          agentId: {
+            type: 'constant',
+            content: '',
+          },
+          prompt: {
+            type: 'template',
+            content: 'return true if {{start_0.query}} is English',
           },
         },
+        title: 'Classifier',
       },
     },
     {
       id: 'condition_0',
       type: 'condition',
       meta: {
-        position: { x: 780, y: 300 },
+        position: {
+          x: 1100,
+          y: 191,
+        },
       },
       data: {
         title: 'Condition',
         conditions: [
           {
-            key: 'if_0',
             value: {
               left: {
                 type: 'ref',
-                content: ['llm_main', 'result'],
+                content: ['llm_main', 'is_english_word'],
               },
-              operator: 'contains',
-              right: {
-                type: 'constant',
-                content: 'yes',
-              },
+              operator: 'is_true',
             },
+            key: 'if_0',
           },
         ],
       },
@@ -91,10 +112,13 @@ export const initialData: FlowDocumentJSON = {
       id: 'llm_yes',
       type: 'llm',
       meta: {
-        position: { x: 1100, y: 180 },
+        position: {
+          x: 1560,
+          y: 0,
+        },
       },
       data: {
-        title: 'Agent_Yes',
+        title: 'translator(e2c)',
         inputsValues: {
           agentId: {
             type: 'constant',
@@ -102,7 +126,7 @@ export const initialData: FlowDocumentJSON = {
           },
           prompt: {
             type: 'template',
-            content: 'The answer was positive: {{llm_main.result}}',
+            content: 'translate {{start_0.query}} to Chinese',
           },
         },
         inputs: {
@@ -131,10 +155,13 @@ export const initialData: FlowDocumentJSON = {
       id: 'llm_no',
       type: 'llm',
       meta: {
-        position: { x: 1100, y: 450 },
+        position: {
+          x: 1560,
+          y: 332,
+        },
       },
       data: {
-        title: 'Agent_No',
+        title: 'translator(c2e)',
         inputsValues: {
           agentId: {
             type: 'constant',
@@ -142,7 +169,7 @@ export const initialData: FlowDocumentJSON = {
           },
           prompt: {
             type: 'template',
-            content: 'The answer was negative: {{llm_main.result}}',
+            content: 'translate {{start_0.query}} to English',
           },
         },
         inputs: {
@@ -168,23 +195,84 @@ export const initialData: FlowDocumentJSON = {
       },
     },
     {
+      id: 'code_k0pZu',
+      type: 'code',
+      meta: {
+        position: {
+          x: 2020,
+          y: 227.5,
+        },
+      },
+      data: {
+        title: 'aggregator',
+        inputsValues: {
+          e2c_result: {
+            type: 'ref',
+            content: ['llm_yes', 'result'],
+            extra: { index: 0 },
+          },
+          c2e_result: {
+            type: 'ref',
+            content: ['llm_no', 'result'],
+            extra: { index: 1 },
+          },
+          query: {
+            type: 'ref',
+            content: ['start_0', 'query'],
+          },
+        },
+        script: {
+          language: 'javascript',
+          content:
+            'async function main({ params }) {\n  return {\n    final_result: params.e2c_result ?? params.c2e_result ?? "No result",\n  };\n}',
+        },
+        outputs: {
+          type: 'object',
+          properties: {
+            final_result: {
+              type: 'string',
+            },
+          },
+          required: [],
+        },
+        inputs: {
+          type: 'object',
+          properties: {
+            e2c_result: {
+              type: 'string',
+            },
+            c2e_result: {
+              type: 'string',
+            },
+            query: {
+              type: 'string',
+            },
+          },
+        },
+      },
+    },
+    {
       id: 'end_0',
       type: 'end',
       meta: {
-        position: { x: 1420, y: 300 },
+        position: {
+          x: 2480,
+          y: 245,
+        },
       },
       data: {
         title: 'End',
         inputsValues: {
-          result: {
+          final_result: {
             type: 'ref',
-            content: ['llm_main', 'result'],
+            content: ['code_k0pZu', 'final_result'],
+            extra: { index: 0 },
           },
         },
         inputs: {
           type: 'object',
           properties: {
-            result: {
+            final_result: {
               type: 'string',
             },
           },
@@ -213,11 +301,24 @@ export const initialData: FlowDocumentJSON = {
     },
     {
       sourceNodeID: 'llm_yes',
-      targetNodeID: 'end_0',
+      targetNodeID: 'code_k0pZu',
     },
     {
       sourceNodeID: 'llm_no',
+      targetNodeID: 'code_k0pZu',
+    },
+    {
+      sourceNodeID: 'code_k0pZu',
       targetNodeID: 'end_0',
     },
   ],
+  globalVariable: {
+    type: 'object',
+    required: [],
+    properties: {
+      userId: {
+        type: 'string',
+      },
+    },
+  },
 };
