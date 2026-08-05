@@ -11,6 +11,7 @@ import {
 import { Select, Button, Typography } from '@douyinfe/semi-ui';
 import { IconChevronDown, IconChevronRight } from '@douyinfe/semi-icons';
 
+import type { JsonSchema } from '../../typings/json-schema';
 import { FlowNodeJSON } from '../../typings';
 import { useNodeRenderContext, useIsSidebar } from '../../hooks';
 import { FormHeader, FormContent } from '../../form-components';
@@ -187,7 +188,7 @@ function AgentOutput({ agentId, prompt }: { agentId: string; prompt: string }) {
 
 /** LLM form render — same layout, readonly on canvas card */
 function LLMFormRender({ form }: FormRenderProps<FlowNodeJSON>) {
-  const { readonly: ctxReadonly, data: nodeData, updateData } = useNodeRenderContext();
+  const { readonly: ctxReadonly } = useNodeRenderContext();
   const isSidebar = useIsSidebar();
   const isHistoryView = useContext(IsHistoryViewContext);
   const readonly = ctxReadonly || !isSidebar;
@@ -195,32 +196,6 @@ function LLMFormRender({ form }: FormRenderProps<FlowNodeJSON>) {
   const agentId = (form.getValueIn('inputsValues.agentId') as any)?.content ?? '';
   const promptVal = form.getValueIn('inputsValues.prompt') as any;
   const promptText = typeof promptVal === 'string' ? promptVal : promptVal?.content ?? '';
-
-  // Phase 9 (#161): per-node timeout override. Stored as node.data.timeoutOverride
-  //   - number > 0 → that many ms
-  //   - null       → "no timeout"
-  //   - undefined  → use global default
-  // The backend's resolveTimeoutMs reads this with precedence:
-  //   node.data.timeoutOverride > settings.global_default > env > 10min
-  const timeoutOverride: number | null | undefined = nodeData?.timeoutOverride;
-  const timeoutSelectValue =
-    timeoutOverride === undefined
-      ? 'default'
-      : timeoutOverride === null
-      ? 'none'
-      : String(timeoutOverride);
-  const onTimeoutChange = (v: string | number | undefined) => {
-    if (v === undefined || v === '' || v === 'default') {
-      // Clear → use global default (remove the key so fallback kicks in).
-      updateData({ timeoutOverride: undefined });
-    } else if (v === 'none') {
-      // No timeout → null signals "no timeout" to the backend.
-      updateData({ timeoutOverride: null });
-    } else {
-      const n = typeof v === 'number' ? v : Number(v);
-      updateData({ timeoutOverride: n });
-    }
-  };
 
   return (
     <>
@@ -254,37 +229,73 @@ function LLMFormRender({ form }: FormRenderProps<FlowNodeJSON>) {
             </div>
           )}
         </Field>
-        <div style={{ marginBottom: 12 }}>
-          <Typography.Text size="small" strong>
-            Node Timeout
-          </Typography.Text>
-          <Select
-            value={timeoutSelectValue}
-            onChange={(v) => onTimeoutChange(v as string | number | undefined)}
-            disabled={readonly}
-            style={{ width: '100%' }}
-            size="small"
-            optionList={[
-              { label: 'Use global default', value: 'default' },
-              { label: '1 min', value: '60000' },
-              { label: '5 min', value: '300000' },
-              { label: '10 min', value: '600000' },
-              { label: '30 min', value: '1800000' },
-              { label: 'No timeout', value: 'none' },
-            ]}
-          />
-        </div>
+        {/* Phase 9 (#161): per-node timeout override via Field — form-level
+            path updates only, never replaces sibling data (updateData would
+            wipe inputsValues). Stored as node.data.timeoutOverride:
+              - number > 0 → that many ms
+              - null       → "no timeout"
+              - undefined  → use global default
+            Backend precedence (resolveTimeoutMs):
+              node.data.timeoutOverride > settings.global_default > env > 10min */}
+        <Field<number | null | undefined> name="timeoutOverride">
+          {({ field }) => {
+            const timeoutValue = field.value;
+            const timeoutSelectValue =
+              timeoutValue === undefined
+                ? 'default'
+                : timeoutValue === null
+                ? 'none'
+                : String(timeoutValue);
+            return (
+              <div style={{ marginBottom: 12 }}>
+                <Typography.Text size="small" strong>
+                  Node Timeout
+                </Typography.Text>
+                <Select
+                  value={timeoutSelectValue}
+                  onChange={(v) => {
+                    if (v === undefined || v === '' || v === 'default') {
+                      // Clear → use global default (fallback kicks in).
+                      field.onChange(undefined);
+                    } else if (v === 'none') {
+                      // No timeout → null signals "no timeout" to the backend.
+                      field.onChange(null);
+                    } else {
+                      field.onChange(typeof v === 'number' ? v : Number(v));
+                    }
+                  }}
+                  disabled={readonly}
+                  style={{ width: '100%' }}
+                  size="small"
+                  optionList={[
+                    { label: 'Use global default', value: 'default' },
+                    { label: '1 min', value: '60000' },
+                    { label: '5 min', value: '300000' },
+                    { label: '10 min', value: '600000' },
+                    { label: '30 min', value: '1800000' },
+                    { label: 'No timeout', value: 'none' },
+                  ]}
+                />
+              </div>
+            );
+          }}
+        </Field>
         {/* Structured Output Schema (#247): edits node.data.outputs as a flat
-            field list; only valid states are persisted. Sidebar only — the
-            canvas card stays compact; readonly in history view (the persisted
-            declaration is shown). */}
+            field list; only valid states are persisted. Field-based update
+            (merge-safe) — updateData would replace the whole node data and
+            wipe inputsValues. Sidebar only — the canvas card stays compact;
+            readonly in history view (the persisted declaration is shown). */}
         {isSidebar && (
           <div style={{ marginBottom: 12 }}>
-            <StructuredOutputEditor
-              value={nodeData?.outputs}
-              onChange={(schema) => updateData({ outputs: schema })}
-              readonly={readonly}
-            />
+            <Field<JsonSchema> name="outputs">
+              {({ field }) => (
+                <StructuredOutputEditor
+                  value={field.value}
+                  onChange={(schema) => field.onChange(schema)}
+                  readonly={readonly}
+                />
+              )}
+            </Field>
           </div>
         )}
         {isSidebar &&
