@@ -24,6 +24,8 @@ import './styles/index.css';
 import { LayoutDirection } from './utils/rotate-ports';
 import { FlowDocumentJSON } from './typings';
 import { useTheme } from './theme';
+import StructuredOutputPrototype from './prototype/StructuredOutputPrototype';
+import PrototypeSwitcher from './prototype/PrototypeSwitcher';
 import { GetGlobalVariableSchema } from './plugins/variable-panel-plugin';
 import { WorkflowManager } from './manage';
 import { initialData } from './initial-data';
@@ -34,7 +36,7 @@ import * as api from './api';
 
 unstableSetCreateRoot(createRoot);
 
-type View = 'workflows' | 'agents' | 'settings' | 'editor';
+type View = 'workflows' | 'agents' | 'settings' | 'editor' | 'prototype';
 
 const NAV_ITEMS: { key: View; label: string }[] = [
   { key: 'workflows', label: 'Workflows' },
@@ -45,6 +47,7 @@ const NAV_ITEMS: { key: View; label: string }[] = [
 /** Parse top-level hash route → view + optional workflowId */
 function parseTopHash(): { view: View; workflowId: string | null } {
   const hash = window.location.hash;
+  if (hash.startsWith('#/prototype')) return { view: 'prototype', workflowId: null };
   if (hash.startsWith('#/agents')) return { view: 'agents', workflowId: null };
   if (hash.startsWith('#/settings')) return { view: 'settings', workflowId: null };
   const wfMatch = hash.match(/^#\/workflows\/(.+)$/);
@@ -130,6 +133,7 @@ function App() {
     if (v === 'workflows') window.location.hash = '#/workflows';
     else if (v === 'agents') window.location.hash = '#/agents';
     else if (v === 'settings') window.location.hash = '#/settings';
+    else if (v === 'prototype') window.location.hash = '#/prototype/structured-output';
   }, []);
 
   const saveWorkflow = useCallback(async () => {
@@ -317,6 +321,11 @@ function App() {
           <AgentMillerColumns />
         ) : view === 'settings' ? (
           <AdminSettings />
+        ) : view === 'prototype' ? (
+          <>
+            <StructuredOutputPrototype />
+            <PrototypeSwitcher />
+          </>
         ) : (
           <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
             <div
