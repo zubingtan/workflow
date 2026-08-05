@@ -15,7 +15,8 @@
  *     [--models gpt-4o-mini,qwen3.6-plus]
  *
  * The key defaults to $LLM_API_KEY (the repo `.env` value). Results are
- * printed as a per-model matrix; see research/ for the consolidated table.
+ * printed as a per-model matrix; the consolidated table lives in
+ * docs/structured-output-capability-matrix.md.
  */
 
 function parseArgs(argv) {

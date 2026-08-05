@@ -79,6 +79,25 @@ describe("compileStrictSchema", () => {
     assert.throws(() => compileStrictSchema({ type: "string" }), /type "object"/);
   });
 
+  test("throws on invalid field names (mirrors the UI rules)", () => {
+    // A hand-edited document can bypass the editor; the backend must reject
+    // prototype keys, dots (break node-id.field refs), control chars, Chinese.
+    // JSON.parse builds `__proto__` as an OWN property (a literal `{__proto__:}`
+    // would hit the setter instead), matching how hand-edited docs arrive.
+    assert.throws(
+      () => compileStrictSchema(JSON.parse('{"type":"object","properties":{"__proto__":{"type":"string"}}}')),
+      /reserved name/,
+    );
+    assert.throws(
+      () => compileStrictSchema({ type: "object", properties: { "user.name": { type: "string" } } }),
+      /Dots/,
+    );
+    assert.throws(
+      () => compileStrictSchema({ type: "object", properties: { "结果": { type: "string" } } }),
+      /Chinese characters/,
+    );
+  });
+
   test("throws on non-primitive / nested field types", () => {
     assert.throws(
       () => compileStrictSchema({ type: "object", properties: { nested: { type: "object" } } }),

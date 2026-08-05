@@ -4,7 +4,9 @@ import {
   configureFakeProvider,
   createAgent,
   createWorkflow,
+  getFakeProviderCalls,
   getRun,
+  resetFakeProviderStats,
   submitRun,
   waitForTerminal,
 } from './helpers';
@@ -286,6 +288,7 @@ test.describe('Structured output FlowGram integration (#250)', () => {
   test('refusal retries once, then fails (no fallback to plain text)', async () => {
     const correlationId = `e2e-so-refusal-${Date.now()}`;
     await configureFakeProvider(correlationId, 'refusal', undefined, 'I refuse');
+    await resetFakeProviderStats();
 
     const agentId = await createAgent();
     const schema = buildWorkflow(
@@ -302,6 +305,10 @@ test.describe('Structured output FlowGram integration (#250)', () => {
     const run = await getRun(runID);
     const report = typeof run.report === 'string' ? JSON.parse(run.report) : run.report;
     expect(JSON.stringify(report)).toMatch(/structured output validation failed|refused/);
+    // Pin the "asked again once" semantics: the refusal must have produced at
+    // least a second provider request (the retry turn). The retry prompt does
+    // not carry the correlationId, so count the GLOBAL counter.
+    expect(await getFakeProviderCalls()).toBeGreaterThanOrEqual(2);
   });
 
   test('incomplete (max tokens) fails directly', async () => {
@@ -396,6 +403,7 @@ test.describe('Structured output FlowGram integration (#250)', () => {
       'capability probe'
     );
     const workflowId = await createWorkflow(`E2E SO Capability ${Date.now()}`, schema);
+    await resetFakeProviderStats();
     const runID = await submitRun(workflowId, schema);
 
     const terminal = await waitForTerminal(runID, 30_000);
@@ -403,5 +411,8 @@ test.describe('Structured output FlowGram integration (#250)', () => {
     const run = await getRun(runID);
     const report = typeof run.report === 'string' ? JSON.parse(run.report) : run.report;
     expect(JSON.stringify(report)).toMatch(/Structured output not supported|capability/);
+    // Pin fail-fast: the capability error must occur BEFORE any provider
+    // request is sent (session creation rejects, no fallback/downgrade).
+    expect(await getFakeProviderCalls()).toBe(0);
   });
 });

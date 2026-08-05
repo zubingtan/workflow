@@ -31,6 +31,36 @@ const CORRECTION_PROMPT_PREFIX =
 export const ALLOWED_FIELD_TYPES = new Set(["string", "integer", "number", "boolean"]);
 
 /**
+ * Field-name rules mirrored from the UI editor (src/nodes/llm/schema-state.mjs
+ * RESERVED_FIELD_NAMES + validateFields). The backend re-validates because a
+ * hand-edited workflow document can bypass the editor — an invalid name here
+ * would either pollute the prototype (`__proto__`), vanish from the compiled
+ * schema (`constructor`, ...), or break node-id.field downstream references
+ * (dots). Keep this list in sync with the UI.
+ */
+const RESERVED_FIELD_NAMES = new Set([
+  "__proto__",
+  "constructor",
+  "prototype",
+  "toString",
+  "valueOf",
+  "hasOwnProperty",
+  "isPrototypeOf",
+  "propertyIsEnumerable",
+  "toLocaleString",
+]);
+
+/** @returns {string|null} an error message when the name is invalid. */
+function validateFieldName(key) {
+  if (typeof key !== "string" || key.length === 0) return "Field name cannot be empty";
+  if (RESERVED_FIELD_NAMES.has(key)) return `"${key}" is a reserved name`;
+  if (/[\u4e00-\u9fff]/.test(key)) return "Chinese characters are not allowed";
+  if (key.includes(".")) return "Dots (.) are not allowed";
+  if (/[\x00-\x1f]/.test(key)) return "Control characters are not allowed";
+  return null;
+}
+
+/**
  * Capability error: raised when the provider/API shape cannot honor the
  * structured output contract. Never falls back to json_object or plain text.
  * `apiShape` is the request API family ("openai-completions" |
@@ -86,6 +116,10 @@ export function compileStrictSchema(outputs) {
 
   const compiledProperties = {};
   for (const key of keys) {
+    const nameError = validateFieldName(key);
+    if (nameError) {
+      throw new Error(`Invalid structured output field name: ${nameError}`);
+    }
     const field = properties[key];
     if (!field || typeof field !== "object") {
       throw new Error(`Field "${key}" must be an object with a primitive type`);
