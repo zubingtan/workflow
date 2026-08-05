@@ -70,6 +70,11 @@ export function validateFields(fields) {
       errors[f.id] = 'Field name cannot be empty';
       continue;
     }
+    if (name !== f.name) {
+      // Leading/trailing whitespace would persist a name that differs from
+      // the validated one — reject it instead of silently trimming.
+      errors[f.id] = 'Leading or trailing spaces are not allowed';
+    }
     if (/[\u4e00-\u9fff]/.test(name)) {
       errors[f.id] = 'Chinese characters are not allowed';
     }

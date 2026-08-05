@@ -15,8 +15,10 @@
  *
  * pi-free: imports nothing from @earendil-works/*. Duck-types the injected
  * session's event variants and 5 methods (subscribe, prompt, abort, dispose,
- * agent.waitForIdle). Structured-output semantics (#249) come from the
- * schema module, which is also pi-free.
+ * agent.waitForIdle) plus one OPTIONAL error bridge: `session._lastExtensionError`
+ * (set by the session creator's bindExtensions onError binding — used to
+ * surface capability failures the extension runner swallows). Structured-output
+ * semantics (#249) come from the schema module, which is also pi-free.
  */
 
 import {
@@ -158,10 +160,13 @@ export async function* runAgentExecution({
     signal?.addEventListener("abort", onAbort, { once: true });
 
     // Run the agent loop. A structured contract may drive at most one extra
-    // turn in the SAME session (#243/#249): a refusal is asked again once,
-    // and an invalid/unparseable response gets one corrective prompt carrying
-    // only field-level reasons (never credentials or raw text).
+    // turn in the SAME session (#243/#249): a refusal is asked again once
+    // (refusalRetried), and an invalid/unparseable response gets one
+    // corrective prompt carrying only field-level reasons (correctionUsed,
+    // never credentials or raw text). The two budgets are independent — a
+    // refusal re-ask may still deserve its own correction afterwards.
     let turnPrompt = prompt;
+    let refusalRetried = false;
     let correctionUsed = false;
     let finalMessage = null;
     let lastValidation = null; // { ok, outputs?, errors? } for the final turn
@@ -186,8 +191,8 @@ export async function* runAgentExecution({
       finalMessage = extractFinalAssistantMessage(session);
       if (!finalMessage) break;
 
-      if (isRefusalMessage(finalMessage) && !correctionUsed) {
-        correctionUsed = true;
+      if (isRefusalMessage(finalMessage) && !refusalRetried) {
+        refusalRetried = true;
         turnPrompt = REFUSAL_RETRY_PROMPT;
         continue;
       }

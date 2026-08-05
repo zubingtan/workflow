@@ -122,7 +122,7 @@ describe("createStructuredOutputExtension", () => {
   function invokeExtension(factory, payload) {
     let handler;
     const api = { on: (event, fn) => { handler = fn; } };
-    factory()(api);
+    factory(api); // resource loader calls factory(api) directly
     return handler({ payload });
   }
 
