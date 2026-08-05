@@ -266,6 +266,47 @@ test.describe('Structured output FlowGram integration (#250)', () => {
     expect(JSON.stringify(report)).toMatch(/incomplete/);
   });
 
+  test('concurrent runs never leak schemas across sessions (#248 per-run isolation)', async () => {
+    const corrA = `e2e-so-conc-a-${Date.now()}`;
+    const corrB = `e2e-so-conc-b-${Date.now()}`;
+    await configureFakeProvider(corrA, 'json_response', undefined, JSON.stringify({ result: 'A' }));
+    await configureFakeProvider(corrB, 'json_response', undefined, JSON.stringify({ count: 7 }));
+
+    const agentId = await createAgent();
+    // Workflow A declares {result: string}; workflow B declares {count: integer}.
+    // If schemas leaked across sessions, one of them would fail validation.
+    const schemaA = buildWorkflow(
+      agentId,
+      { type: 'object', properties: { result: { type: 'string' } } },
+      ['llm_main', 'result'],
+      `Run ${corrA}`
+    );
+    const schemaB = buildWorkflow(
+      agentId,
+      { type: 'object', properties: { count: { type: 'integer' } } },
+      ['llm_main', 'result'],
+      `Run ${corrB}`
+    );
+    const wfA = await createWorkflow(`E2E SO ConcA ${Date.now()}`, schemaA);
+    const wfB = await createWorkflow(`E2E SO ConcB ${Date.now()}`, schemaB);
+
+    const [runA, runB] = await Promise.all([submitRun(wfA, schemaA), submitRun(wfB, schemaB)]);
+    const [termA, termB] = await Promise.all([
+      waitForTerminal(runA, 30_000),
+      waitForTerminal(runB, 30_000),
+    ]);
+    expect(termA.status).toBe('succeeded');
+    expect(termB.status).toBe('succeeded');
+
+    const [ra, rb] = await Promise.all([getRun(runA), getRun(runB)]);
+    const reportA = typeof ra.report === 'string' ? JSON.parse(ra.report) : ra.report;
+    const reportB = typeof rb.report === 'string' ? JSON.parse(rb.report) : rb.report;
+    expect(nodeOutputs(reportA, 'llm_main')?.result).toBe('A');
+    expect(nodeOutputs(reportA, 'llm_main')?.count).toBeUndefined();
+    expect(nodeOutputs(reportB, 'llm_main')?.count).toBe(7);
+    expect(nodeOutputs(reportB, 'llm_main')?.result).toBeUndefined();
+  });
+
   test('capability error: unknown API shape fails before any provider request', async () => {
     // Create an agent whose provider pins an unsupported API shape — the
     // session creator must fail fast with a capability error before any
