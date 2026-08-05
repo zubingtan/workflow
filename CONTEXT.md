@@ -8,6 +8,10 @@ Workflow lets users compose FlowGram workflows and run their LLM nodes through c
 A persisted provider and model configuration that a Workflow LLM node can reference. Its credential is represented by an environment-variable name, never by the credential value.
 _Avoid_: provider profile
 
+**Agent Configuration**:
+The editable settings that determine how an Agent connects to its provider and behaves during an Agent Execution, including provider connection details, prompts, tools, runtime options, skills, and extensions. It is part of the Agent and has no execution state of its own.
+_Avoid_: agent settings blob, provider profile
+
 **Agent Execution**:
 One invocation of an Agent with a prompt, from start until a terminal outcome. It has ordered progress as well as a final outcome, rather than only a final text value.
 _Avoid_: agent run, session

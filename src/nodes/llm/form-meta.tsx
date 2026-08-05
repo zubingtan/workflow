@@ -16,6 +16,7 @@ import { useNodeRenderContext, useIsSidebar } from '../../hooks';
 import { FormHeader, FormContent } from '../../form-components';
 import { IsHistoryViewContext } from '../../context';
 import { NodeStatusBar } from '../../components/testrun/node-status-bar';
+import { parseAgentConfig } from '../../components/agent-miller/agent-config-store.mjs';
 import * as api from '../../api';
 import { useAgentExecution } from '../../agent-execution/use-agent-execution';
 import type { ToolEvent } from '../../agent-execution/types';
@@ -66,12 +67,7 @@ function AgentSelect({
       loading={loading}
       placeholder="Select an agent"
       optionList={agents.map((a) => {
-        let m = '';
-        try {
-          m = JSON.parse(a.config)?.provider?.model || '';
-        } catch {
-          /* */
-        }
+        const m = parseAgentConfig(a.config)?.provider?.model || '';
         return { label: `${a.name}${m ? ` (${m})` : ''}`, value: a.id };
       })}
       style={{ width: '100%' }}

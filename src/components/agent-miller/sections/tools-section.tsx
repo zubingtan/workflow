@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { Checkbox, CheckboxGroup, Typography, Select, Radio, RadioGroup } from '@douyinfe/semi-ui';
 
@@ -8,18 +8,11 @@ const BUILTIN_TOOLS = ['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls'];
 
 interface Props {
   agent: AgentDef;
-  debouncedSave: (id: string, patch: any) => void;
-  reload: () => void;
+  config: Record<string, any>;
+  saveConfig: (patch: Record<string, any>) => void;
 }
 
-export function ToolsSection({ agent, debouncedSave }: Props) {
-  const config = useMemo(() => {
-    try {
-      return JSON.parse(agent.config);
-    } catch {
-      return {};
-    }
-  }, [agent.config]);
+export function ToolsSection({ agent, config, saveConfig }: Props) {
   const sessionOpts = config.session_options || {};
   const hasBlacklist =
     Array.isArray(sessionOpts.excludeTools) && sessionOpts.excludeTools.length > 0;
@@ -31,24 +24,17 @@ export function ToolsSection({ agent, debouncedSave }: Props) {
   const [noTools, setNoTools] = useState<string>(sessionOpts.noTools || '');
 
   useEffect(() => {
-    const cfg = (() => {
-      try {
-        return JSON.parse(agent.config);
-      } catch {
-        return {};
-      }
-    })();
-    const opts = cfg.session_options || {};
+    const opts = config.session_options || {};
     setTools(opts.tools || BUILTIN_TOOLS.slice(0, 4));
     setExcludeTools(opts.excludeTools || []);
     setNoTools(opts.noTools || '');
     setMode(
       Array.isArray(opts.excludeTools) && opts.excludeTools.length > 0 ? 'blacklist' : 'whitelist'
     );
-  }, [agent.id, agent.config]);
+  }, [agent.id, config]);
 
   const save = (patch: any) => {
-    debouncedSave(agent.id, { config: { session_options: { ...sessionOpts, ...patch } } });
+    saveConfig({ session_options: patch });
   };
 
   return (

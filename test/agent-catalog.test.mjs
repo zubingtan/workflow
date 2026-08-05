@@ -80,6 +80,30 @@ test('updateAgent merges config JSON (shallow per layer)', () => {
   assert.equal(config.system_prompt, 'You are helpful.'); // preserved
 });
 
+test('updateAgent recursively merges nested config and preserves unknown fields', () => {
+  const db = makeDb();
+  const agent = createAgent(db, {
+    ...validFields,
+    config: {
+      ...validFields.config,
+      pi_settings: {
+        defaultProjectTrust: 'always',
+        retry: { enabled: true, maxRetries: 3 },
+        futureSetting: { enabled: true },
+      },
+    },
+  });
+
+  const updated = updateAgent(db, agent.id, {
+    config: { pi_settings: { retry: { enabled: false } } },
+  });
+  const config = JSON.parse(updated.config);
+
+  assert.equal(config.pi_settings.retry.enabled, false);
+  assert.equal(config.pi_settings.retry.maxRetries, 3);
+  assert.deepEqual(config.pi_settings.futureSetting, { enabled: true });
+});
+
 test('updateAgent replaces tags', () => {
   const db = makeDb();
   const agent = createAgent(db, { ...validFields, tags: ['a'] });
@@ -103,12 +127,14 @@ test('deleteAgent throws workflow_reference when workflow references agent', () 
   const db = makeDb();
   const agent = createAgent(db, validFields);
   // Create a workflow that references this agent
-  db.prepare("INSERT INTO workflows (id, name, data) VALUES (?, ?, ?)").run(
-    'wf1', 'Test WF', JSON.stringify({ nodes: [{ data: { agentId: agent.id } }] })
+  db.prepare('INSERT INTO workflows (id, name, data) VALUES (?, ?, ?)').run(
+    'wf1',
+    'Test WF',
+    JSON.stringify({ nodes: [{ data: { agentId: agent.id } }] })
   );
   assert.throws(
     () => deleteAgent(db, agent.id),
-    (err) => err instanceof AgentCatalogError && err.code === 'workflow_reference',
+    (err) => err instanceof AgentCatalogError && err.code === 'workflow_reference'
   );
 });
 

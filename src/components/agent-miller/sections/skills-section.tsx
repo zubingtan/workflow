@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { Button, Input, List, Typography, Empty } from '@douyinfe/semi-ui';
 import { IconPlus, IconDelete } from '@douyinfe/semi-icons';
@@ -7,36 +7,22 @@ import type { AgentDef } from '../../../api';
 
 interface Props {
   agent: AgentDef;
-  debouncedSave: (id: string, patch: any) => void;
-  reload: () => void;
+  config: Record<string, any>;
+  saveConfig: (patch: Record<string, any>) => void;
 }
 
-export function SkillsSection({ agent, debouncedSave }: Props) {
-  const config = useMemo(() => {
-    try {
-      return JSON.parse(agent.config);
-    } catch {
-      return {};
-    }
-  }, [agent.config]);
+export function SkillsSection({ agent, config, saveConfig }: Props) {
   const piSettings = config.pi_settings || {};
   const [paths, setPaths] = useState<string[]>(piSettings.skills || []);
   const [input, setInput] = useState('');
 
   useEffect(() => {
-    const cfg = (() => {
-      try {
-        return JSON.parse(agent.config);
-      } catch {
-        return {};
-      }
-    })();
-    setPaths((cfg.pi_settings || {}).skills || []);
-  }, [agent.id, agent.config]);
+    setPaths((config.pi_settings || {}).skills || []);
+  }, [agent.id, config]);
 
   const save = (newPaths: string[]) => {
     setPaths(newPaths);
-    debouncedSave(agent.id, { config: { pi_settings: { ...piSettings, skills: newPaths } } });
+    saveConfig({ pi_settings: { skills: newPaths } });
   };
 
   const add = () => {
