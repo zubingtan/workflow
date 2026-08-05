@@ -103,8 +103,6 @@ export function StructuredOutputEditor({
     commitFields([...fields, { id: newFieldId(), name: '', type: 'string' }]);
   };
 
-  const errorList = Object.values(errors);
-
   return (
     <div style={{ marginTop: 4 }}>
       <Typography.Text size="small" strong style={{ display: 'block', marginBottom: 6 }}>
@@ -131,40 +129,59 @@ export function StructuredOutputEditor({
             <div
               key={field.id}
               style={{
-                ...rowBase,
                 background: err ? 'var(--semi-color-danger-light-default)' : undefined,
-                borderLeftColor: err ? 'var(--semi-color-danger)' : 'transparent',
-                borderBottom: isLast ? 'none' : '1px solid var(--semi-color-border)',
               }}
             >
-              <Tag type="light" size="small" style={{ minWidth: 24, textAlign: 'center' }}>
-                {idx + 1}
-              </Tag>
-              <Input
-                value={field.name}
-                onChange={(v) => updateField(field.id, { name: v })}
-                placeholder="field_name"
-                size="small"
-                style={{ flex: 1, border: 'none', background: 'transparent' }}
-                disabled={readonly}
-              />
-              <Select
-                value={field.type}
-                onChange={(v) => updateField(field.id, { type: v as SchemaField['type'] })}
-                optionList={TYPE_OPTIONS}
-                size="small"
-                style={{ width: 110 }}
-                disabled={readonly}
-              />
-              <Button
-                icon={<IconMinusCircle />}
-                theme="borderless"
-                size="small"
-                type="danger"
-                onClick={() => removeField(field.id)}
-                disabled={readonly}
-                aria-label={`Remove field ${field.name || idx + 1}`}
-              />
+              <div
+                style={{
+                  ...rowBase,
+                  borderLeftColor: err ? 'var(--semi-color-danger)' : 'transparent',
+                  borderBottom: isLast ? 'none' : '1px solid var(--semi-color-border)',
+                }}
+              >
+                <Tag type="light" size="small" style={{ minWidth: 24, textAlign: 'center' }}>
+                  {idx + 1}
+                </Tag>
+                <Input
+                  value={field.name}
+                  onChange={(v) => updateField(field.id, { name: v })}
+                  placeholder="field_name"
+                  size="small"
+                  style={{ flex: 1, border: 'none', background: 'transparent' }}
+                  disabled={readonly}
+                />
+                <Select
+                  value={field.type}
+                  onChange={(v) => updateField(field.id, { type: v as SchemaField['type'] })}
+                  optionList={TYPE_OPTIONS}
+                  size="small"
+                  style={{ width: 110 }}
+                  disabled={readonly}
+                />
+                <Button
+                  icon={<IconMinusCircle />}
+                  theme="borderless"
+                  size="small"
+                  type="danger"
+                  onClick={() => removeField(field.id)}
+                  disabled={readonly}
+                  aria-label={`Remove field ${field.name || idx + 1}`}
+                />
+              </div>
+              {/* Field-level error right under its row — the reason is always
+                  visible next to the offending field, never a bare red row. */}
+              {err && (
+                <div
+                  style={{
+                    padding: '0 8px 6px 11px',
+                    color: 'var(--semi-color-danger)',
+                    fontSize: 12,
+                    borderBottom: isLast ? 'none' : '1px solid var(--semi-color-border)',
+                  }}
+                >
+                  {err}
+                </div>
+              )}
             </div>
           );
         })}
@@ -193,17 +210,7 @@ export function StructuredOutputEditor({
         </div>
       )}
 
-      {/* Inline error detail under the block */}
-      {errorList.map((msg, i) => (
-        <Typography.Text
-          key={i}
-          type="danger"
-          size="small"
-          style={{ display: 'block', marginTop: 4, marginLeft: 10 }}
-        >
-          {msg}
-        </Typography.Text>
-      ))}
+      {/* Global error (block-level, e.g. last-field deletion guard) */}
       {globalError && (
         <Typography.Text
           type="danger"
