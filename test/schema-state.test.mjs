@@ -64,7 +64,9 @@ describe('fieldsToSchema (field list → IJsonSchema)', () => {
       field('a', 'result', 'string'),
       field('b', 'count', 'integer'),
     ]);
-    assert.deepEqual(schema, {
+    // properties is a null-prototype bag (defense against `__proto__` field
+    // names); normalize through JSON — the same path persistence takes.
+    assert.deepEqual(JSON.parse(JSON.stringify(schema)), {
       type: 'object',
       properties: {
         result: { type: 'string' },
@@ -75,6 +77,15 @@ describe('fieldsToSchema (field list → IJsonSchema)', () => {
 
   test('empty field list → null (never persists an empty contract)', () => {
     assert.equal(fieldsToSchema([]), null);
+  });
+});
+
+describe('prototype-chain field names', () => {
+  test('reserved/prototype keys are rejected by validateFields', () => {
+    for (const name of ['__proto__', 'constructor', 'toString', 'hasOwnProperty']) {
+      const errs = validateFields([field('a', name)]);
+      assert.match(errs.a, /reserved name/, `${name} must be rejected`);
+    }
   });
 });
 

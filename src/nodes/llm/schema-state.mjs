@@ -15,6 +15,24 @@
 
 const FIELD_TYPES = ['string', 'integer', 'number', 'boolean'];
 
+/**
+ * Keys inherited from Object.prototype. Using them as field names either
+ * pollutes the prototype (`__proto__`) or silently disappears from
+ * `Object.keys`/JSON round-trips (`constructor`, `toString`, ...) — so they
+ * are rejected outright, on both the UI and the backend.
+ */
+export const RESERVED_FIELD_NAMES = new Set([
+  '__proto__',
+  'constructor',
+  'prototype',
+  'toString',
+  'valueOf',
+  'hasOwnProperty',
+  'isPrototypeOf',
+  'propertyIsEnumerable',
+  'toLocaleString',
+]);
+
 let counter = 0;
 export function newFieldId() {
   return `so_${++counter}_${Date.now().toString(36)}`;
@@ -47,7 +65,9 @@ export function schemaToFields(schema) {
  */
 export function fieldsToSchema(fields) {
   if (fields.length === 0) return null;
-  const properties = {};
+  // Null-prototype bag: a plain `{}` would let a `__proto__` field name set
+  // the object's prototype instead of an own property, silently dropping it.
+  const properties = Object.create(null);
   for (const f of fields) {
     properties[f.name] = { type: f.type };
   }
@@ -74,6 +94,9 @@ export function validateFields(fields) {
       // Leading/trailing whitespace would persist a name that differs from
       // the validated one — reject it instead of silently trimming.
       errors[f.id] = 'Leading or trailing spaces are not allowed';
+    }
+    if (RESERVED_FIELD_NAMES.has(name)) {
+      errors[f.id] = `"${name}" is a reserved name`;
     }
     if (/[\u4e00-\u9fff]/.test(name)) {
       errors[f.id] = 'Chinese characters are not allowed';

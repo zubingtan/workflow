@@ -185,3 +185,21 @@ export async function configureFakeProvider(
     }),
   });
 }
+
+/**
+ * Fake-provider call counters (#251). Used to pin retry / fail-fast semantics:
+ *   - refusal must trigger a second provider request (calls >= 2)
+ *   - a capability error must fail before ANY provider request (calls === 0)
+ * `correlationId` narrows to one control's counter; omitted → global counter.
+ */
+export async function getFakeProviderCalls(correlationId?: string): Promise<number> {
+  const qs = correlationId ? `?correlationId=${encodeURIComponent(correlationId)}` : '';
+  const res = await fetch(`http://localhost:4011/test/stats${qs}`);
+  const body = await res.json();
+  return body.calls ?? 0;
+}
+
+/** Reset the fake-provider counters (serial workers make this safe). */
+export async function resetFakeProviderStats(): Promise<void> {
+  await fetch('http://localhost:4011/test/stats', { method: 'DELETE' });
+}
