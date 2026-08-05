@@ -20,6 +20,7 @@ import { parseAgentConfig } from '../../components/agent-miller/agent-config-sto
 import * as api from '../../api';
 import { useAgentExecution } from '../../agent-execution/use-agent-execution';
 import type { ToolEvent } from '../../agent-execution/types';
+import { StructuredOutputEditor } from './structured-output-editor';
 
 /** Fetch agent list from backend via the shared HTTP client (AGENTS.md). */
 function useAgents() {
@@ -271,6 +272,16 @@ function LLMFormRender({ form }: FormRenderProps<FlowNodeJSON>) {
               { label: '30 min', value: '1800000' },
               { label: 'No timeout', value: 'none' },
             ]}
+          />
+        </div>
+        {/* Structured Output Schema (#247): edits node.data.outputs as a flat
+            field list; only valid states are persisted. readonly on canvas
+            cards and in history view — the persisted declaration is shown. */}
+        <div style={{ marginBottom: 12 }}>
+          <StructuredOutputEditor
+            value={nodeData?.outputs}
+            onChange={(schema) => updateData({ outputs: schema })}
+            readonly={readonly}
           />
         </div>
         {isSidebar &&
