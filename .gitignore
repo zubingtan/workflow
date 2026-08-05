@@ -15,6 +15,7 @@ dist/
 research/
 .research/
 .scratch/
+handoff/
 
 # Tool caches
 .eslintcache

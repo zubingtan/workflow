@@ -12,6 +12,14 @@ _Avoid_: provider profile
 The editable settings that determine how an Agent connects to its provider and behaves during an Agent Execution, including provider connection details, prompts, tools, runtime options, skills, and extensions. It is part of the Agent and has no execution state of its own.
 _Avoid_: agent settings blob, provider profile
 
+**Agent Node**:
+A Workflow LLM node that invokes a configured Agent and declares the values available to downstream nodes. Its output contract belongs to the Workflow, not to the persisted Agent or its Agent Configuration.
+_Avoid_: agent card (when referring to the Workflow node), Agent (when referring to the persisted configuration)
+
+**Structured Output Schema**:
+The schema declared by an Agent Node for the typed values it produces and exposes to downstream nodes. It is part of the Workflow document and is independent of the Agent Configuration.
+_Avoid_: Agent output schema (when implying that the schema belongs to the persisted Agent)
+
 **Agent Execution**:
 One invocation of an Agent with a prompt, from start until a terminal outcome. It has ordered progress as well as a final outcome, rather than only a final text value.
 _Avoid_: agent run, session
