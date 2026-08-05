@@ -72,4 +72,52 @@ test.describe('Agent management', () => {
     await page.goto('/#/agents');
     await expect(page.getByText(AGENT_NAME, { exact: true })).toHaveCount(0);
   });
+
+  test('provider tab loads models, tests the selected model, then saves', async ({ page }) => {
+    const agent = await page.evaluate(async () => {
+      const response = await fetch('/agents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: `Provider E2E ${Date.now()}`,
+          config: {
+            provider: {
+              base_url: 'http://localhost:4011/v1',
+              api_key: 'fake-provider-local',
+              model: '',
+            },
+          },
+        }),
+      });
+      return response.json();
+    });
+
+    await page.reload();
+    await page.goto(`/#/agents/${agent.id}/provider`);
+    await expect(page.getByRole('heading', { name: 'Provider' })).toBeVisible();
+    await page.getByLabel('Provider Base URL').fill('http://localhost:4011/v1');
+    await page.getByLabel('API Key').fill('fake-provider-local');
+    await page.getByRole('button', { name: 'Load Models' }).click();
+    await page.locator('#provider-model').click();
+    await page.getByText('fake-m0', { exact: true }).last().click();
+    await expect(page.getByText('Context window', { exact: true })).toBeVisible();
+    await expect(page.getByText('32,768', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Test Provider' }).click();
+    await expect(page.getByText('Test passed')).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: 'Save Provider' }).click();
+
+    await expect
+      .poll(async () => {
+        const response = await page.evaluate(
+          async (id) => (await fetch(`/agents/${id}`)).json(),
+          agent.id
+        );
+        return JSON.parse(response.config).provider.model;
+      })
+      .toBe('fake-m0');
+
+    await page.evaluate(async (id) => {
+      await fetch(`/agents/${id}`, { method: 'DELETE' });
+    }, agent.id);
+  });
 });

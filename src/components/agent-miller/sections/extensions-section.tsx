@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { Button, Input, List, Typography, Empty } from '@douyinfe/semi-ui';
 import { IconPlus, IconDelete } from '@douyinfe/semi-icons';
@@ -7,18 +7,11 @@ import type { AgentDef } from '../../../api';
 
 interface Props {
   agent: AgentDef;
-  debouncedSave: (id: string, patch: any) => void;
-  reload: () => void;
+  config: Record<string, any>;
+  saveConfig: (patch: Record<string, any>) => void;
 }
 
-export function ExtensionsSection({ agent, debouncedSave }: Props) {
-  const config = useMemo(() => {
-    try {
-      return JSON.parse(agent.config);
-    } catch {
-      return {};
-    }
-  }, [agent.config]);
+export function ExtensionsSection({ agent, config, saveConfig }: Props) {
   const piSettings = config.pi_settings || {};
   const [paths, setPaths] = useState<string[]>(piSettings.extensions || []);
   const [packages, setPackages] = useState<string[]>(piSettings.packages || []);
@@ -26,25 +19,18 @@ export function ExtensionsSection({ agent, debouncedSave }: Props) {
   const [pkgInput, setPkgInput] = useState('');
 
   useEffect(() => {
-    const cfg = (() => {
-      try {
-        return JSON.parse(agent.config);
-      } catch {
-        return {};
-      }
-    })();
-    setPaths((cfg.pi_settings || {}).extensions || []);
-    setPackages((cfg.pi_settings || {}).packages || []);
-  }, [agent.id, agent.config]);
+    setPaths((config.pi_settings || {}).extensions || []);
+    setPackages((config.pi_settings || {}).packages || []);
+  }, [agent.id, config]);
 
   const save = (newPaths: string[]) => {
     setPaths(newPaths);
-    debouncedSave(agent.id, { config: { pi_settings: { ...piSettings, extensions: newPaths } } });
+    saveConfig({ pi_settings: { extensions: newPaths } });
   };
 
   const savePackages = (newPkgs: string[]) => {
     setPackages(newPkgs);
-    debouncedSave(agent.id, { config: { pi_settings: { ...piSettings, packages: newPkgs } } });
+    saveConfig({ pi_settings: { packages: newPkgs } });
   };
 
   const add = () => {

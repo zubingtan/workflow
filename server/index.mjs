@@ -1,21 +1,18 @@
-import { serve, getRequestListener } from "@hono/node-server";
-import Database from "better-sqlite3";
-import { mkdirSync } from "node:fs";
-import { createServer } from "node:http";
-import { join, resolve } from "node:path";
-import { homedir } from "node:os";
-import {
-  initRuntime,
-  createAgentSessionForAgent,
-} from "./runtime-adapter.mjs";
-import { runAgentExecution } from "./agent-execution.mjs";
-import { seedAgentIfEmpty } from "./agent-catalog.mjs";
-import { createApp } from "./app.mjs";
-import { ensureSchema, markInflightRunsInterrupted } from "./db-schema.mjs";
-import { createRunQueue } from "./queue.mjs";
-import { createQueueAdapter } from "./queue-adapter.mjs";
-import { createRunsEventBus } from "./runs-events.mjs";
-import { getNodeTimeoutDefaultMs } from "./settings.mjs";
+import { serve, getRequestListener } from '@hono/node-server';
+import Database from 'better-sqlite3';
+import { mkdirSync } from 'node:fs';
+import { createServer } from 'node:http';
+import { join, resolve } from 'node:path';
+import { homedir } from 'node:os';
+import { initRuntime, createAgentSessionForAgent } from './runtime-adapter.mjs';
+import { runAgentExecution } from './agent-execution.mjs';
+import { seedAgentIfEmpty } from './agent-catalog.mjs';
+import { createApp } from './app.mjs';
+import { ensureSchema, markInflightRunsInterrupted } from './db-schema.mjs';
+import { createRunQueue } from './queue.mjs';
+import { createQueueAdapter } from './queue-adapter.mjs';
+import { createRunsEventBus } from './runs-events.mjs';
+import { getNodeTimeoutDefaultMs } from './settings.mjs';
 
 // --- Config ---
 // PORT (cloud-native standard) replaces SERVER_PORT. The legacy name is
@@ -27,9 +24,11 @@ import { getNodeTimeoutDefaultMs } from "./settings.mjs";
 const PORT = Number(
   process.env.PORT ??
     (process.env.SERVER_PORT
-      ? (console.warn("[deprecated] SERVER_PORT is replaced by PORT; use PORT instead."),
+      ? (console.warn('[deprecated] SERVER_PORT is replaced by PORT; use PORT instead.'),
         process.env.SERVER_PORT)
-      : process.env.NODE_ENV === "production" ? 4000 : 4001)
+      : process.env.NODE_ENV === 'production'
+      ? 4000
+      : 4001)
 );
 // WORKFLOW_DATA_DIR overrides the default data dir — used by E2E tests to
 // isolate SQLite state and by Docker to mount a volume. Defaults diverge by
@@ -38,17 +37,17 @@ const PORT = Number(
 //   - development → ~/.config/workflow-dev/
 const DATA_DIR = process.env.WORKFLOW_DATA_DIR
   ? resolve(process.env.WORKFLOW_DATA_DIR)
-  : join(homedir(), ".config", process.env.NODE_ENV === "production" ? "workflow" : "workflow-dev");
-const DB_PATH = join(DATA_DIR, "workflow.db");
-const AGENT_DIR = join(DATA_DIR, "agents");
+  : join(homedir(), '.config', process.env.NODE_ENV === 'production' ? 'workflow' : 'workflow-dev');
+const DB_PATH = join(DATA_DIR, 'workflow.db');
+const AGENT_DIR = join(DATA_DIR, 'agents');
 
 // --- Static serving config (prod only; dev mode uses rsbuild middlewareMode) ---
 // STATIC_DIR lets Docker / custom deployments point at a non-default dist path.
 // Defaults to ./dist relative to cwd (where `pnpm build` emits).
 const STATIC_DIR = process.env.STATIC_DIR
   ? resolve(process.env.STATIC_DIR)
-  : resolve(process.cwd(), "dist");
-const IS_PROD = process.env.NODE_ENV === "production";
+  : resolve(process.cwd(), 'dist');
+const IS_PROD = process.env.NODE_ENV === 'production';
 const STATIC_ENABLED = IS_PROD;
 
 // --- SQLite init ---
@@ -56,7 +55,7 @@ mkdirSync(DATA_DIR, { recursive: true });
 mkdirSync(AGENT_DIR, { recursive: true });
 
 const db = new Database(DB_PATH);
-db.pragma("journal_mode = WAL");
+db.pragma('journal_mode = WAL');
 
 // Migration (#129): drop legacy agents table that used provider_api_key_env
 // (env-var name) column. New schema stores the key value directly in
@@ -64,10 +63,10 @@ db.pragma("journal_mode = WAL");
 // it exists, so fresh installs (no agents table yet) are unaffected. MUST run
 // before ensureSchema — the DROP needs to happen first so ensureSchema's
 // CREATE IF NOT EXISTS re-creates the table with the new column.
-const legacyCols = db.prepare("PRAGMA table_info(agents)").all();
-if (legacyCols.some((c) => c.name === "provider_api_key_env")) {
-  db.exec("DROP TABLE agents");
-  console.log("  dropped legacy agents table (provider_api_key_env → provider_api_key)");
+const legacyCols = db.prepare('PRAGMA table_info(agents)').all();
+if (legacyCols.some((c) => c.name === 'provider_api_key_env')) {
+  db.exec('DROP TABLE agents');
+  console.log('  dropped legacy agents table (provider_api_key_env → provider_api_key)');
 }
 
 // --- Schema (agents + workflows + workflow_runs + settings) ---
@@ -82,17 +81,17 @@ ensureSchema(db);
 // per-worktree port in their .env) seed the correct provider URL.
 const fakeProviderPort = Number(process.env.FAKE_PROVIDER_PORT ?? 4010);
 const seeded = seedAgentIfEmpty(db, {
-  id: "fake-default",
-  name: "Fake Provider",
+  id: 'fake-default',
+  name: 'Fake Provider',
   config: {
     provider: {
       base_url: `http://localhost:${fakeProviderPort}/v1`,
-      api_key: "fake-provider-local",
-      model: "fake-model",
+      api_key: 'fake-provider-local',
+      model: 'fake-m0',
     },
-    system_prompt: "You are a helpful assistant.",
+    system_prompt: 'You are a helpful assistant.',
     session_options: {},
-    pi_settings: { defaultProjectTrust: "always" },
+    pi_settings: { defaultProjectTrust: 'always' },
   },
 });
 if (seeded) console.log(`  seeded fake-provider agent (port ${fakeProviderPort})`);
@@ -159,7 +158,7 @@ const app = createApp({
 // is served via serveStatic (see server/app.mjs).
 let server;
 function shutdown() {
-  console.log("shutting down...");
+  console.log('shutting down...');
   runQueue.dispose();
   db.close();
   server?.close();
@@ -180,7 +179,7 @@ if (IS_PROD) {
   // loadConfig() reads rsbuild.config.ts (plugins, alias, html tags, etc.) so
   // we don't have to duplicate that config here — we just override
   // server.middlewareMode on top.
-  const { createRsbuild, loadConfig } = await import("@rsbuild/core");
+  const { createRsbuild, loadConfig } = await import('@rsbuild/core');
   const loaded = await loadConfig();
   const rsbuild = await createRsbuild({
     config: {
@@ -199,10 +198,19 @@ if (IS_PROD) {
   // that appends AFTER rsbuild's own middlewares (including the SPA fallback).
   // Instead, wrap both in our own connect stack with Hono first.
   const honoListener = getRequestListener(app.fetch);
-  const API_PREFIXES = ["/health", "/agents", "/workflows", "/api/task", "/api/runs", "/api/workflows", "/api/settings", "/api/mem0"];
+  const API_PREFIXES = [
+    '/health',
+    '/agents',
+    '/workflows',
+    '/api/task',
+    '/api/runs',
+    '/api/workflows',
+    '/api/settings',
+    '/api/mem0',
+  ];
   const apiGate = (req, res, next) => {
-    const path = (req.url ?? "").split("?")[0];
-    if (API_PREFIXES.some((p) => path === p || path.startsWith(p + "/"))) {
+    const path = (req.url ?? '').split('?')[0];
+    if (API_PREFIXES.some((p) => path === p || path.startsWith(p + '/'))) {
       return honoListener(req, res);
     }
     next();
@@ -225,5 +233,5 @@ if (IS_PROD) {
   console.log(`  db: ${DB_PATH}`);
 }
 
-process.on("SIGTERM", shutdown);
-process.on("SIGINT", shutdown);
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);

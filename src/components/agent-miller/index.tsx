@@ -11,6 +11,7 @@ import {
   Spin,
   Tag,
   Toast,
+  Typography,
   Select,
   Modal,
   Popconfirm,
@@ -26,12 +27,15 @@ import { StatsSection } from './sections/stats-section';
 import { SkillsSection } from './sections/skills-section';
 import { SessionsSection } from './sections/sessions-section';
 import { RuntimeSection } from './sections/runtime-section';
+import { ProviderSection, type ProviderDraft } from './sections/provider-section';
 import { MemoriesSection } from './sections/memories-section';
 import { GeneralSection } from './sections/general-section';
 import { ExtensionsSection } from './sections/extensions-section';
+import { AgentSaveCoordinator, parseAgentConfig } from './agent-config-store.mjs';
 
 const SECTIONS: Array<{ key: string; label: string }> = [
-  { key: 'general', label: 'General' },
+  { key: 'general', label: 'Basic' },
+  { key: 'provider', label: 'Provider' },
   { key: 'system-prompt', label: 'System Prompt' },
   { key: 'tools', label: 'Tools' },
   { key: 'runtime', label: 'Runtime' },
@@ -58,23 +62,52 @@ export function AgentMillerColumns() {
     total: number;
   }>({ visible: false, conflicts: [], agents: [], total: 0 });
   const { route, navigate } = useHashRoute();
-  const saveTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const providerDraftsRef = useRef<Map<string, ProviderDraft>>(new Map());
+  const coordinatorRef = useRef<AgentSaveCoordinator | null>(null);
+  const [, forceCoordinatorRender] = useState(0);
+
+  if (!coordinatorRef.current) {
+    coordinatorRef.current = new AgentSaveCoordinator({
+      save: async (id: string, patch: { name?: string; config?: any; tags?: string[] }) => {
+        const saved = await api.updateAgent(id, patch);
+        setAgents((current) => current.map((agent) => (agent.id === id ? saved : agent)));
+        return saved;
+      },
+    });
+  }
+  const coordinator = coordinatorRef.current as AgentSaveCoordinator;
+
+  useEffect(() => {
+    const unsubscribe = coordinator.subscribe(() => forceCoordinatorRender((value) => value + 1));
+    return () => {
+      unsubscribe();
+      coordinator.dispose();
+    };
+  }, [coordinator]);
+
+  const syncAgents = useCallback(
+    (rows: api.AgentDef[]) => {
+      setAgents(rows);
+      rows.forEach((agent) => coordinator.seed(agent));
+    },
+    [coordinator]
+  );
 
   const reload = useCallback(() => {
     api
       .listAgents()
-      .then(setAgents)
+      .then(syncAgents)
       .catch(() => Toast.error('Failed to load agents'));
-  }, []);
+  }, [syncAgents]);
 
   useEffect(() => {
     setLoading(true);
     api
       .listAgents()
-      .then(setAgents)
+      .then(syncAgents)
       .catch(() => Toast.error('Failed to load agents'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [syncAgents]);
 
   const allTags = useMemo(() => {
     const set = new Set<string>();
@@ -204,45 +237,150 @@ export function AgentMillerColumns() {
     [reload, navigate, route.agentId]
   );
 
-  /** Debounced save for inline editing — per-agent timers prevent cross-agent clobbering */
+  /** Central save seam: composes tab patches and serializes per-Agent writes. */
   const debouncedSave = useCallback(
     (id: string, patch: { name?: string; config?: any; tags?: string[] }) => {
-      const existing = saveTimersRef.current.get(id);
-      if (existing) clearTimeout(existing);
-      saveTimersRef.current.set(
-        id,
-        setTimeout(async () => {
-          saveTimersRef.current.delete(id);
-          try {
-            await api.updateAgent(id, patch);
-            reload();
-          } catch {
-            Toast.error('Save failed');
-          }
-        }, 600)
-      );
+      coordinator.update(id, patch);
     },
-    [reload]
+    [coordinator]
   );
+
+  const saveConfig = useCallback(
+    (id: string, patch: Record<string, any>) => debouncedSave(id, { config: patch }),
+    [debouncedSave]
+  );
+
+  const saveProvider = useCallback(
+    (id: string, provider: api.AgentConfig['provider'], testToken: string) =>
+      api.saveProvider(id, provider, testToken),
+    []
+  );
+
+  const handleProviderSaved = useCallback(
+    (saved: api.AgentDef) => {
+      setAgents((current) => current.map((agent) => (agent.id === saved.id ? saved : agent)));
+      coordinator.seed(saved);
+    },
+    [coordinator]
+  );
+
+  const updateProviderDraft = useCallback((id: string, draft: ProviderDraft) => {
+    providerDraftsRef.current.set(id, draft);
+  }, []);
 
   const renderSection = () => {
     if (!selectedAgent) {
       return <Empty description="Select an agent to view details" style={{ marginTop: 80 }} />;
     }
-    const props = { agent: selectedAgent, debouncedSave, reload };
+    const config = coordinator.getConfig(selectedAgent.id, selectedAgent.config);
+    const status = coordinator.getStatus(selectedAgent.id);
+    const saveStatus =
+      status.state === 'error' ? (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            marginBottom: 12,
+            color: 'var(--semi-color-danger)',
+          }}
+        >
+          <span>{status.message || 'Save failed'}</span>
+          <Button size="small" onClick={() => coordinator.retry(selectedAgent.id)}>
+            Retry
+          </Button>
+        </div>
+      ) : status.state === 'saving' || status.state === 'pending' ? (
+        <Typography.Text
+          type="tertiary"
+          size="small"
+          style={{ display: 'block', marginBottom: 12 }}
+        >
+          {status.state === 'saving' ? 'Saving…' : 'Changes pending…'}
+        </Typography.Text>
+      ) : null;
     switch (activeSection) {
       case 'general':
-        return <GeneralSection {...props} />;
+        return (
+          <>
+            {saveStatus}
+            <GeneralSection
+              agent={selectedAgent}
+              debouncedSave={debouncedSave}
+              draft={coordinator.getDraft(selectedAgent.id)}
+            />
+          </>
+        );
+      case 'provider':
+        return (
+          <>
+            {saveStatus}
+            <ProviderSection
+              agent={selectedAgent}
+              config={config}
+              drafts={providerDraftsRef.current}
+              onDraftChange={updateProviderDraft}
+              onSaved={handleProviderSaved}
+              saveConfig={(patch) => saveConfig(selectedAgent.id, patch)}
+              saveProvider={saveProvider}
+            />
+          </>
+        );
       case 'system-prompt':
-        return <SystemPromptSection {...props} />;
+        return (
+          <>
+            {saveStatus}
+            <SystemPromptSection
+              agent={selectedAgent}
+              config={config}
+              saveConfig={(patch) => saveConfig(selectedAgent.id, patch)}
+            />
+          </>
+        );
       case 'tools':
-        return <ToolsSection {...props} />;
+        return (
+          <>
+            {saveStatus}
+            <ToolsSection
+              agent={selectedAgent}
+              config={config}
+              saveConfig={(patch) => saveConfig(selectedAgent.id, patch)}
+            />
+          </>
+        );
       case 'runtime':
-        return <RuntimeSection {...props} />;
+        return (
+          <>
+            {saveStatus}
+            <RuntimeSection
+              agent={selectedAgent}
+              config={config}
+              saveConfig={(patch) => saveConfig(selectedAgent.id, patch)}
+            />
+          </>
+        );
       case 'skills':
-        return <SkillsSection {...props} />;
+        return (
+          <>
+            {saveStatus}
+            <SkillsSection
+              agent={selectedAgent}
+              config={config}
+              saveConfig={(patch) => saveConfig(selectedAgent.id, patch)}
+            />
+          </>
+        );
       case 'extensions':
-        return <ExtensionsSection {...props} />;
+        return (
+          <>
+            {saveStatus}
+            <ExtensionsSection
+              agent={selectedAgent}
+              config={config}
+              saveConfig={(patch) => saveConfig(selectedAgent.id, patch)}
+            />
+          </>
+        );
       case 'memories':
         return <MemoriesSection agent={selectedAgent} />;
       case 'sessions':
@@ -354,13 +492,7 @@ export function AgentMillerColumns() {
                         <div>
                           <div style={{ fontWeight: 500 }}>{item.name}</div>
                           <div style={{ fontSize: 12, color: 'var(--semi-color-text-2)' }}>
-                            {(() => {
-                              try {
-                                return JSON.parse(item.config)?.provider?.model || '';
-                              } catch {
-                                return '';
-                              }
-                            })()}
+                            {parseAgentConfig(item.config)?.provider?.model || ''}
                           </div>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>

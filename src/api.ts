@@ -25,6 +25,23 @@ export interface AgentConfig {
   pi_settings: Record<string, any>;
 }
 
+export interface ProviderModel {
+  id: string;
+  name?: string;
+  object?: string;
+  created?: number;
+  owned_by?: string;
+  connection_type?: string;
+  max_input_tokens?: number | null;
+  max_output_tokens?: number | null;
+  description?: string;
+  capabilities?: Record<string, boolean | number | string>;
+  builtin_tools?: Record<string, boolean | number | string>;
+  filter_ids?: string[];
+  default_feature_ids?: string[];
+  tags?: string[];
+}
+
 export interface AgentDef {
   id: string;
   name: string;
@@ -33,6 +50,17 @@ export interface AgentDef {
   tags: string; // JSON string of string[]
   created_at: string;
   updated_at: string;
+}
+
+export interface ProviderModelList {
+  models: ProviderModel[];
+  model_list_token: string;
+}
+
+export interface ProviderTestResult {
+  ok: boolean;
+  model: string;
+  test_token: string;
 }
 
 export interface AgentExecution {
@@ -170,6 +198,31 @@ export const updateAgent = (id: string, patch: { name?: string; config?: any; ta
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(patch),
+  }).then((r) => json<AgentDef>(r));
+
+export const getProviderModels = (id: string, provider: AgentConfig['provider']) =>
+  fetch(`${SERVER_URL}/agents/${id}/provider/models`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider }),
+  }).then((r) => json<ProviderModelList>(r));
+
+export const testProvider = (
+  id: string,
+  provider: AgentConfig['provider'],
+  modelListToken: string
+) =>
+  fetch(`${SERVER_URL}/agents/${id}/provider/test`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider, model_list_token: modelListToken }),
+  }).then((r) => json<ProviderTestResult>(r));
+
+export const saveProvider = (id: string, provider: AgentConfig['provider'], testToken: string) =>
+  fetch(`${SERVER_URL}/agents/${id}/provider`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider, test_token: testToken }),
   }).then((r) => json<AgentDef>(r));
 
 export const deleteAgent = (id: string) =>
