@@ -18,6 +18,16 @@ import { runAgentExecution as defaultRunAgentExecution } from "./agent-execution
 import { getAgentById } from "./agent-catalog.mjs";
 import { persistExecution } from "./execution-store.mjs";
 import { getMem0Host, getMem0ApiKey } from "./settings.mjs";
+import {
+  compileStrictSchema,
+  createStructuredOutputExtension,
+  StructuredOutputCapabilityError,
+} from "./structured-output.mjs";
+
+// API shapes that can honor the structured output contract (#248).
+// The model registry pins `api` per registered model; anything outside these
+// two shapes fails fast at session creation with a capability error.
+const STRUCTURED_OUTPUT_API_SHAPES = new Set(["openai-completions", "openai-responses"]);
 
 // AsyncLocalStorage carries the workflow_run_id from the queue-adapter
 // through the FlowGram TaskRunAPI call chain into the AgentExecutor,
@@ -101,8 +111,16 @@ export function resolveApiKey(rawValue) {
  * @param {string} agentDir - working directory for the agent
  * @param {object} [mem0] - Optional mem0 config { host, apiKey, runId }. When
  *   provided, writes mem0-config.json and activates the memory extension.
+ * @param {{ schema: object, name: string }|null} [structured] - compiled
+ *   structured output contract (compileStrictSchema result) for THIS run, or
+ *   null when the node declares no structured outputs. The contract is
+ *   captured by a request-scoped inline extension so it can never leak across
+ *   sessions (#248); sessions without a contract never inject response_format.
+ * @throws {StructuredOutputCapabilityError} when structured is set but the
+ *   provider's API shape cannot honor json_schema (fail fast, before any
+ *   provider request is sent).
  */
-export async function createAgentSessionForAgent(agent, agentDir, mem0) {
+export async function createAgentSessionForAgent(agent, agentDir, mem0, structured) {
   const { createAgentSession, ModelRuntime, SessionManager, SettingsManager, DefaultResourceLoader } =
     await import("@earendil-works/pi-coding-agent");
 
@@ -115,17 +133,31 @@ export async function createAgentSessionForAgent(agent, agentDir, mem0) {
   const model = provider.model || "gpt-4o";
   const pricing = provider.pricing ?? { input: 0, output: 0 };
 
+  // 0. Capability check (#248): the model's API shape must expose a
+  // json_schema structured output slot. Fail fast BEFORE any provider request
+  // — no fallback to json_object or plain text.
+  const modelApi = provider.api ?? "openai-completions";
+  if (structured && !STRUCTURED_OUTPUT_API_SHAPES.has(modelApi)) {
+    throw new StructuredOutputCapabilityError({
+      provider: provider.name ?? "custom",
+      model,
+      endpoint: provider.base_url,
+      apiShape: modelApi,
+      detail: "model API shape has no json_schema structured output slot",
+    });
+  }
+
   // 1. ModelRuntime — register custom provider
   const modelRuntime = await ModelRuntime.create({ modelsPath: null });
   modelRuntime.registerProvider("custom", {
     name: agent.name || "custom",
     baseUrl: provider.base_url,
     apiKey,
-    api: "openai-completions",
+    api: modelApi,
     models: [{
       id: model,
       name: model,
-      api: "openai-completions",
+      api: modelApi,
       reasoning: false,
       input: ["text"],
       cost: { input: pricing.input ?? 0, output: pricing.output ?? 0, cacheRead: pricing.cacheRead ?? 0, cacheWrite: pricing.cacheWrite ?? 0 },
@@ -158,13 +190,26 @@ export async function createAgentSessionForAgent(agent, agentDir, mem0) {
     ensureMem0Extension(agentSessionDir);
   }
 
-  // 5. ResourceLoader — inject systemPrompt + pick up skills/extensions from settings
+  // 5. ResourceLoader — inject systemPrompt + pick up skills/extensions from
+  // settings. When this run carries a structured output contract, register the
+  // request-scoped inline extension whose closure captures the schema (#243:
+  // per-run isolation via extensionFactories).
   const resourceLoader = new DefaultResourceLoader({
     cwd: agentSessionDir,
     agentDir: agentSessionDir,
     settingsManager,
     systemPrompt: config.system_prompt || undefined,
     noThemes: true,
+    extensionFactories: structured
+      ? [
+          createStructuredOutputExtension({
+            compiled: structured,
+            provider: provider.name ?? "custom",
+            model,
+            endpoint: provider.base_url,
+          }),
+        ]
+      : [],
   });
   await resourceLoader.reload();
 
@@ -192,7 +237,16 @@ export async function createAgentSessionForAgent(agent, agentDir, mem0) {
 
   // 7. Activate extension lifecycle (#218): fires session_start, enables
   //    before_agent_start (context injection) and agent_end (auto-capture).
-  await result.session.bindExtensions({ mode: "print" });
+  //    The onError binding records extension errors (e.g. an unrecognized
+  //    provider payload shape in before_provider_request) on the session so
+  //    the execution layer can classify them as capability errors instead of
+  //    silently sending an unshaped request.
+  await result.session.bindExtensions({
+    mode: "print",
+    onError: (err) => {
+      result.session._lastExtensionError = err;
+    },
+  });
 
   return result.session;
 }
@@ -271,6 +325,20 @@ class AgentExecutor {
       throw new AgentExecutionError({ kind: "agent_not_found", message: `agent not found: ${agentId}` });
     }
 
+    // Structured output contract (#248/#249): compile the node's declared
+    // outputs schema once per run and hand it to session creation. A malformed
+    // declaration (e.g. hand-edited document) fails here, before any provider
+    // request is sent, with a diagnosable structured_output_error.
+    let structured = null;
+    try {
+      structured = compileStrictSchema(context.node?.data?.outputs);
+    } catch (err) {
+      throw new AgentExecutionError({
+        kind: "structured_output_error",
+        message: `invalid structured output schema: ${err?.message ?? String(err)}`,
+      });
+    }
+
     // New interface: createSession(agent, agentDir, mem0?) — apiKey resolved internally
     // mem0 config: read from settings table + runId from workflowRunContext (#218)
     const mem0Host = this.db ? getMem0Host(this.db) : null;
@@ -279,7 +347,7 @@ class AgentExecutor {
       ? { host: mem0Host, apiKey: mem0ApiKey, runId: workflowRunContext.getStore()?.runId ?? null }
       : undefined;
     const createSessionBound = (agentCfg, dir) =>
-      this.createSession(agentCfg, dir, mem0);
+      this.createSession(agentCfg, dir, mem0, structured);
 
     // Phase 9 (#161): per-node timeout via a per-node AbortController.
     // AbortSignal.any combines the workflow signal (user cancel) with the
@@ -321,6 +389,7 @@ class AgentExecutor {
         signal: combinedSignal,
         createSession: createSessionBound,
         agentDir: this.agentDir,
+        structured,
       });
       // Single consumer. The timer's ac.abort() triggers the shared module's
       // signal.aborted path, which yields a `cancelled` terminal — the loop
@@ -394,8 +463,22 @@ class AgentExecutor {
 
     // Terminal projection — preserves #56 decision 2 (no thrown
     // CancellationError) + decision 6 (_executionDetail namespace).
+    // With a structured contract (#249) the succeeded outputs are the
+    // validated projection of declared fields only — `result` is NOT
+    // synthesized; the raw final text stays in _executionDetail.finalText.
     switch (terminal.phase) {
       case "succeeded":
+        if (terminal.outputs) {
+          return {
+            outputs: {
+              ...terminal.outputs,
+              _executionDetail: {
+                toolEvents: terminal.toolEvents,
+                finalText: terminal.finalText,
+              },
+            },
+          };
+        }
         return {
           outputs: {
             result: terminal.partialText,
