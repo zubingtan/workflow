@@ -7,8 +7,10 @@ import { createAgentExecutor, AgentExecutionError } from "../server/runtime-adap
  * #248: AgentExecutor wiring for the structured output contract.
  *
  * Verifies:
- *   - node.data.outputs is compiled per run and handed to createSession as
- *     the 4th argument (request-scoped, never persisted on the agent).
+ *   - the declared outputs schema (FlowGram puts data.outputs into
+ *     node.declare.outputs at runtime) is compiled per run and handed to
+ *     createSession as the 4th argument (request-scoped, never persisted on
+ *     the agent).
  *   - a malformed declaration fails BEFORE any provider request with
  *     kind="structured_output_error".
  *   - a capability terminal from the execution layer keeps its
@@ -54,11 +56,13 @@ describe("AgentExecutor structured output wiring", () => {
       runAgentExecution: makeFakeRunAgentExecution(captured),
     });
 
+    // FlowGram moves data.outputs into node.declare.outputs at runtime.
     await executor.execute({
       inputs: { agentId: "a1", prompt: "p" },
       signal: new AbortController().signal,
       node: {
-        data: {
+        data: { title: "Agent_Main" },
+        declare: {
           outputs: {
             type: "object",
             properties: { result: { type: "string" }, n: { type: "integer" } },
@@ -73,6 +77,31 @@ describe("AgentExecutor structured output wiring", () => {
       n: { type: "integer" },
     });
     assert.deepEqual(captured.structured.schema.required, ["result", "n"]);
+  });
+
+  test("falls back to data.outputs when declare is absent (defensive)", async () => {
+    const captured = {};
+    const executor = createAgentExecutor({
+      db: makeDb(),
+      agentDir: "/tmp/agent-dir",
+      createSession: async (agent, dir, mem0, structured) => {
+        captured.structured = structured;
+        return { dispose() {} };
+      },
+      runAgentExecution: makeFakeRunAgentExecution(captured),
+    });
+
+    await executor.execute({
+      inputs: { agentId: "a1", prompt: "p" },
+      signal: new AbortController().signal,
+      node: {
+        data: {
+          outputs: { type: "object", properties: { result: { type: "string" } } },
+        },
+      },
+    });
+    assert.ok(captured.structured);
+    assert.deepEqual(captured.structured.schema.properties, { result: { type: "string" } });
   });
 
   test("node without declared outputs passes structured=null (legacy path unchanged)", async () => {
@@ -112,7 +141,12 @@ describe("AgentExecutor structured output wiring", () => {
         executor.execute({
           inputs: { agentId: "a1", prompt: "p" },
           signal: new AbortController().signal,
-          node: { data: { outputs: { type: "object", properties: { bad: { type: "object" } } } } },
+          node: {
+            data: {},
+            declare: {
+              outputs: { type: "object", properties: { bad: { type: "object" } } },
+            },
+          },
         }),
       (err) => {
         assert.ok(err instanceof AgentExecutionError);

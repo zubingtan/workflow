@@ -5,6 +5,9 @@ const port = Number(process.env.FAKE_PROVIDER_PORT ?? 4010);
 const controls = new Map();
 let calls = 0;
 let authorizationMatched = false;
+// Last received chat completion payload — lets tests assert the structured
+// output injection (response_format.json_schema) without a network proxy.
+let lastPayload = null;
 
 function json(response, status, body) {
   response.writeHead(status, { 'content-type': 'application/json' });
@@ -130,6 +133,7 @@ async function handleCompletion(request, response) {
   }
 
   calls += 1;
+  lastPayload = payload;
   const expectedApiKey = process.env.FAKE_PROVIDER_EXPECTED_API_KEY;
   if (expectedApiKey) {
     authorizationMatched = request.headers.authorization === `Bearer ${expectedApiKey}`;
@@ -156,6 +160,62 @@ async function handleCompletion(request, response) {
   if (mode === 'empty_output') {
     if (payload.stream === false) jsonCompletion(response, '   \n');
     else streamCompletion(response, '   \n');
+    return;
+  }
+  // Structured output modes (#249/#251): rawDetail carries the exact body
+  // (JSON text, refusal text, ...). finish_reason controls incomplete.
+  if (mode === 'json_response' || mode === 'invalid_json' || mode === 'refusal' || mode === 'incomplete') {
+    const content = control?.rawDetail ?? '{"result":"ok"}';
+    if (mode === 'incomplete') {
+      const id = `chatcmpl-${randomUUID()}`;
+      const created = Math.floor(Date.now() / 1000);
+      response.writeHead(200, {
+        'cache-control': 'no-cache',
+        'content-type': 'text/event-stream',
+        connection: 'keep-alive',
+      });
+      response.write(
+        `data: ${JSON.stringify({
+          id, object: 'chat.completion.chunk', created, model: 'fake-m0',
+          choices: [{ index: 0, delta: { role: 'assistant', content }, finish_reason: null }],
+        })}\n\n`
+      );
+      response.write(
+        `data: ${JSON.stringify({
+          id, object: 'chat.completion.chunk', created, model: 'fake-m0',
+          choices: [{ index: 0, delta: {}, finish_reason: 'length' }],
+          usage: { prompt_tokens: 1, completion_tokens: 3, total_tokens: 4 },
+        })}\n\n`
+      );
+      response.end('data: [DONE]\n\n');
+      return;
+    }
+    if (mode === 'refusal') {
+      const id = `chatcmpl-${randomUUID()}`;
+      const created = Math.floor(Date.now() / 1000);
+      response.writeHead(200, {
+        'cache-control': 'no-cache',
+        'content-type': 'text/event-stream',
+        connection: 'keep-alive',
+      });
+      response.write(
+        `data: ${JSON.stringify({
+          id, object: 'chat.completion.chunk', created, model: 'fake-m0',
+          choices: [{ index: 0, delta: { role: 'assistant', content }, finish_reason: null }],
+        })}\n\n`
+      );
+      response.write(
+        `data: ${JSON.stringify({
+          id, object: 'chat.completion.chunk', created, model: 'fake-m0',
+          choices: [{ index: 0, delta: {}, finish_reason: 'refusal' }],
+          usage: { prompt_tokens: 1, completion_tokens: 3, total_tokens: 4 },
+        })}\n\n`
+      );
+      response.end('data: [DONE]\n\n');
+      return;
+    }
+    if (payload.stream === false) jsonCompletion(response, content);
+    else streamCompletion(response, content);
     return;
   }
   if (payload.stream === false) jsonCompletion(response, completionContent(payload));
@@ -197,12 +257,14 @@ createServer(async (request, response) => {
     json(response, 200, {
       calls: correlationId === null ? calls : controls.get(correlationId)?.calls ?? 0,
       authorizationMatched,
+      lastPayload,
     });
     return;
   }
   if (url.pathname === '/test/stats' && request.method === 'DELETE') {
     calls = 0;
     authorizationMatched = false;
+    lastPayload = null;
     for (const control of controls.values()) control.calls = 0;
     json(response, 200, { calls });
     return;
@@ -215,7 +277,7 @@ createServer(async (request, response) => {
       json(response, 400, { error: { message: 'Invalid request' } });
       return;
     }
-    const allowedModes = new Set(['auth_failure', 'timeout', 'empty_output', 'success']);
+    const allowedModes = new Set(['auth_failure', 'timeout', 'empty_output', 'success', 'json_response', 'invalid_json', 'refusal', 'incomplete']);
     if (typeof body?.correlationId !== 'string' || !allowedModes.has(body?.mode)) {
       json(response, 400, { error: { message: 'Invalid control' } });
       return;
