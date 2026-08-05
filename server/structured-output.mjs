@@ -142,10 +142,12 @@ export function detectApiShape(payload) {
  * @param {string} [opts.provider] - provider label for capability errors
  * @param {string} [opts.model] - model id for capability errors
  * @param {string} [opts.endpoint] - provider base_url for capability errors
- * @returns {() => (api: ExtensionAPI) => void} extension factory
+ * @returns {(api: ExtensionAPI) => void} extension factory — the resource
+ *   loader invokes it as `factory(api)` (loadExtensionFromFactory), so the
+ *   returned function must REGISTER handlers, not return another function.
  */
 export function createStructuredOutputExtension({ compiled, provider, model, endpoint }) {
-  return () => (api) => {
+  return (api) => {
     api.on("before_provider_request", (event) => {
       const payload = event.payload;
       const apiShape = detectApiShape(payload);

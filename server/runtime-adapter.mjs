@@ -326,12 +326,17 @@ class AgentExecutor {
     }
 
     // Structured output contract (#248/#249): compile the node's declared
-    // outputs schema once per run and hand it to session creation. A malformed
+    // outputs schema once per run and hand it to session creation. FlowGram's
+    // runtime moves `data.outputs` into node.declare.outputs (the `variable`
+    // bag) and leaves only the remaining data fields in node.data — read the
+    // declared schema first, fall back to data.outputs defensively. A malformed
     // declaration (e.g. hand-edited document) fails here, before any provider
     // request is sent, with a diagnosable structured_output_error.
     let structured = null;
     try {
-      structured = compileStrictSchema(context.node?.data?.outputs);
+      structured = compileStrictSchema(
+        context.node?.declare?.outputs ?? context.node?.data?.outputs,
+      );
     } catch (err) {
       throw new AgentExecutionError({
         kind: "structured_output_error",

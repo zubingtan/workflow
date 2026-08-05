@@ -162,12 +162,26 @@ export async function waitForTerminal(runID: string, timeoutMs = 20_000): Promis
 
 export async function configureFakeProvider(
   correlationId: string,
-  mode: 'success' | 'timeout' | 'auth_failure' | 'empty_output',
-  sleepMs?: number
+  mode:
+    | 'success'
+    | 'timeout'
+    | 'auth_failure'
+    | 'empty_output'
+    | 'json_response'
+    | 'invalid_json'
+    | 'refusal'
+    | 'incomplete',
+  sleepMs?: number,
+  rawDetail?: string
 ): Promise<void> {
   await fetch('http://localhost:4011/test/control', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ correlationId, mode, ...(sleepMs ? { sleepMs } : {}) }),
+    body: JSON.stringify({
+      correlationId,
+      mode,
+      ...(sleepMs ? { sleepMs } : {}),
+      ...(rawDetail !== undefined ? { rawDetail } : {}),
+    }),
   });
 }
