@@ -275,15 +275,18 @@ function LLMFormRender({ form }: FormRenderProps<FlowNodeJSON>) {
           />
         </div>
         {/* Structured Output Schema (#247): edits node.data.outputs as a flat
-            field list; only valid states are persisted. readonly on canvas
-            cards and in history view — the persisted declaration is shown. */}
-        <div style={{ marginBottom: 12 }}>
-          <StructuredOutputEditor
-            value={nodeData?.outputs}
-            onChange={(schema) => updateData({ outputs: schema })}
-            readonly={readonly}
-          />
-        </div>
+            field list; only valid states are persisted. Sidebar only — the
+            canvas card stays compact; readonly in history view (the persisted
+            declaration is shown). */}
+        {isSidebar && (
+          <div style={{ marginBottom: 12 }}>
+            <StructuredOutputEditor
+              value={nodeData?.outputs}
+              onChange={(schema) => updateData({ outputs: schema })}
+              readonly={readonly}
+            />
+          </div>
+        )}
         {isSidebar &&
           (isHistoryView ? (
             // Phase 8 (#160): history view renders the static terminal
