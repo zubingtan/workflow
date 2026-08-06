@@ -153,7 +153,7 @@ async function handleCompletion(request, response) {
     const sleepMs =
       typeof control?.sleepMs === 'number' && control.sleepMs > 0 ? control.sleepMs : 1_000;
     setTimeout(() => {
-      if (!response.destroyed) streamCompletion(response);
+      if (!response.destroyed) streamCompletion(response, control?.rawDetail);
     }, sleepMs);
     return;
   }

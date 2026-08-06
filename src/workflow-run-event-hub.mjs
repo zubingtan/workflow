@@ -199,6 +199,7 @@ export class WorkflowRunEventHub {
 
     for (const record of records) this.subscribers.add(record);
     this.syncConnection();
+    if (this.connection) this.replayCurrentState(this.connection, records);
 
     let active = true;
     return () => {
@@ -286,6 +287,8 @@ export class WorkflowRunEventHub {
       runRevisions: new Map(),
       progressRevisions: new Map(),
       progressState: new Map(),
+      activeRuns: new Map(),
+      initializedWorkflows: new Set(),
       snapshotPromise: null,
       closed: false,
     };
@@ -354,17 +357,33 @@ export class WorkflowRunEventHub {
 
     connection.terminalRuns.add(runKey);
     connection.terminalSnapshots.set(runKey, terminalRow(runID, run));
+    connection.activeRuns.delete(runKey);
     return run;
   }
 
-  /** @param {object} connection @param {string} workflowId @param {object} payload */
-  reconcileInitPayload(connection, workflowId, payload) {
+  /**
+   * @param {object} connection
+   * @param {string} workflowId
+   * @param {object} payload
+   * @param {object|null} revision
+   */
+  reconcileInitPayload(connection, workflowId, payload, revision) {
+    connection.initializedWorkflows.add(workflowId);
+    const activeRunKeys = new Set();
     const activeRuns = Array.isArray(payload.activeRuns)
       ? payload.activeRuns.flatMap((activeRun) => {
           const runID = activeRun?.runID;
           if (typeof runID !== 'string') return [];
           const runKey = `${workflowId}:${runID}`;
           if (connection.terminalRuns.has(runKey)) return [];
+
+          const previousRun = connection.activeRuns.get(runKey);
+          const previousRevision = connection.progressRevisions.get(runKey);
+          const revisionComparison = compareRevision(revision, previousRevision);
+          if (previousRun && revisionComparison !== null && revisionComparison <= 0) {
+            activeRunKeys.add(runKey);
+            return [previousRun];
+          }
 
           const previousStatus = connection.runStatuses.get(runKey);
           const status =
@@ -375,12 +394,19 @@ export class WorkflowRunEventHub {
           if (isTerminalStatus(status)) {
             connection.terminalRuns.add(runKey);
             connection.terminalSnapshots.set(runKey, terminalRow(runID, { ...activeRun, status }));
+            connection.activeRuns.delete(runKey);
             return [];
           }
+          let report = activeRun.report ?? previousRun?.report ?? null;
           if (activeRun.report) {
-            acceptReport(connection.progressState, runKey, activeRun.report);
+            const accepted = acceptReport(connection.progressState, runKey, activeRun.report);
+            if (!accepted && previousRun?.report) report = previousRun.report;
           }
-          return [{ ...activeRun, status }];
+          activeRunKeys.add(runKey);
+          const normalizedRun = { ...activeRun, status, report };
+          connection.activeRuns.set(runKey, normalizedRun);
+          if (revision) connection.progressRevisions.set(runKey, revision);
+          return [normalizedRun];
         })
       : payload.activeRuns;
     const activeRunIDs = Array.isArray(payload.activeRunIDs)
@@ -389,6 +415,21 @@ export class WorkflowRunEventHub {
             typeof runID === 'string' && !connection.terminalRuns.has(`${workflowId}:${runID}`)
         )
       : payload.activeRunIDs;
+    for (const runKey of connection.activeRuns.keys()) {
+      if (runKey.startsWith(`${workflowId}:`) && !activeRunKeys.has(runKey)) {
+        connection.activeRuns.delete(runKey);
+      }
+    }
+    for (const runID of Array.isArray(activeRunIDs) ? activeRunIDs : []) {
+      const runKey = `${workflowId}:${runID}`;
+      if (!connection.activeRuns.has(runKey) && !connection.terminalRuns.has(runKey)) {
+        connection.activeRuns.set(runKey, {
+          runID,
+          status: connection.runStatuses.get(runKey),
+          report: null,
+        });
+      }
+    }
     return { ...payload, activeRuns, activeRunIDs };
   }
 
@@ -406,11 +447,11 @@ export class WorkflowRunEventHub {
       payload.workflowId ??
       (connection.workflowIds.size === 1 ? [...connection.workflowIds][0] : null);
     if (!workflowId || !connection.workflowIds.has(workflowId)) return;
+    const revision = eventRevision(payload, message);
     if (type === 'init') {
-      payload = this.reconcileInitPayload(connection, workflowId, payload);
+      payload = this.reconcileInitPayload(connection, workflowId, payload, revision);
     }
     const runKey = runID ? `${workflowId}:${runID}` : null;
-    const revision = eventRevision(payload, message);
     if (runKey && revision) {
       const previousRevision = connection.runRevisions.get(runKey);
       const comparison = compareRevision(revision, previousRevision);
@@ -428,6 +469,13 @@ export class WorkflowRunEventHub {
       } else if (!acceptReport(connection.progressState, runKey, payload.report)) {
         return;
       }
+      const activeRun = connection.activeRuns.get(runKey);
+      connection.activeRuns.set(runKey, {
+        ...activeRun,
+        runID,
+        status: connection.runStatuses.get(runKey),
+        report: payload.report,
+      });
     }
 
     if (type === 'run_status' && runID) {
@@ -443,6 +491,15 @@ export class WorkflowRunEventHub {
           ...connection.terminalSnapshots.get(runKey),
           ...terminalRow(runID, payload),
         });
+        connection.activeRuns.delete(runKey);
+      } else {
+        const activeRun = connection.activeRuns.get(runKey);
+        connection.activeRuns.set(runKey, {
+          ...activeRun,
+          runID,
+          status,
+          report: activeRun?.report ?? null,
+        });
       }
     }
 
@@ -455,6 +512,7 @@ export class WorkflowRunEventHub {
         ...connection.terminalSnapshots.get(runKey),
         ...terminalRow(runID, payload),
       });
+      connection.activeRuns.delete(runKey);
     }
 
     this.dispatch(connection, payload);
@@ -462,7 +520,53 @@ export class WorkflowRunEventHub {
       for (const subscriber of [...this.subscribers]) {
         if (subscriber.workflowId === workflowId) this.subscribers.delete(subscriber);
       }
+      for (const runKey of connection.activeRuns.keys()) {
+        if (runKey.startsWith(`${workflowId}:`)) connection.activeRuns.delete(runKey);
+      }
       this.syncConnection();
+    }
+  }
+
+  /** @param {object} connection @param {Array<object>} records */
+  replayCurrentState(connection, records) {
+    for (const record of records) {
+      const workflowPrefix = `${record.workflowId}:`;
+      const activeRuns = [...connection.activeRuns.entries()]
+        .filter(([runKey]) => runKey.startsWith(workflowPrefix))
+        .map(([, run]) => ({ ...run }));
+      const terminalRuns = [...connection.terminalSnapshots.entries()].filter(([runKey]) =>
+        runKey.startsWith(workflowPrefix)
+      );
+      if (
+        !connection.initializedWorkflows.has(record.workflowId) &&
+        activeRuns.length === 0 &&
+        terminalRuns.length === 0
+      ) {
+        continue;
+      }
+
+      if (!record.types || record.types.has('init')) {
+        record.onEvent({
+          type: 'init',
+          workflowId: record.workflowId,
+          activeRunIDs: activeRuns.map((run) => run.runID),
+          activeRuns,
+        });
+      }
+
+      if (!record.types || record.types.has('run_terminal')) {
+        for (const [runKey, snapshot] of terminalRuns) {
+          const runID = snapshot.id ?? runKey.slice(workflowPrefix.length);
+          if (record.runID && record.runID !== runID) continue;
+          const { id, ...terminal } = snapshot;
+          record.onEvent({
+            type: 'run_terminal',
+            workflowId: record.workflowId,
+            runID,
+            ...terminal,
+          });
+        }
+      }
     }
   }
 

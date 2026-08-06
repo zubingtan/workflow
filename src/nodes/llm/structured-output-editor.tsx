@@ -34,6 +34,7 @@ interface SchemaField {
   id: string;
   name: string;
   type: 'string' | 'integer' | 'number' | 'boolean';
+  description?: string;
 }
 
 const rowBase: React.CSSProperties = {

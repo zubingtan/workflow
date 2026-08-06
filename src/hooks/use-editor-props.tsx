@@ -31,6 +31,7 @@ import { shortcuts } from '../shortcuts';
 import { CustomService, ValidateService } from '../services';
 import { GetGlobalVariableSchema } from '../plugins/variable-panel-plugin';
 import { StaticHistoryRuntimeService } from '../plugins/runtime-plugin/runtime-service/static-history';
+import { LiveHistoryRuntimeService } from '../plugins/runtime-plugin/runtime-service/live-history';
 import { WorkflowRuntimeService } from '../plugins/runtime-plugin/runtime-service';
 import {
   createRuntimePlugin,
@@ -330,6 +331,12 @@ export function useEditorProps(
         if (history?.historyReport) {
           const svc = ctx.get<StaticHistoryRuntimeService>(WorkflowRuntimeService);
           if (svc instanceof StaticHistoryRuntimeService) {
+            svc.flush();
+          }
+        }
+        if (history?.liveRunID) {
+          const svc = ctx.get<LiveHistoryRuntimeService>(WorkflowRuntimeService);
+          if (svc instanceof LiveHistoryRuntimeService) {
             svc.flush();
           }
         }

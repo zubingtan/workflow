@@ -11,7 +11,10 @@ import test from 'node:test';
  * The helper mirrors `WorkflowRuntimeService.updateReport` (index.ts:285-322)
  * but is exported standalone so it's testable without a Playground/Document.
  */
-import { applyRunProgress } from '../src/plugins/runtime-plugin/runtime-service/apply-run-progress.mjs';
+import {
+  applyRunProgress,
+  createReportBuffer,
+} from '../src/plugins/runtime-plugin/runtime-service/apply-run-progress.mjs';
 
 /**
  * Build a minimal IReport-shaped object for testing.
@@ -92,4 +95,23 @@ test('applyRunProgress: new node appearing fires for that node only', () => {
   ]);
   applyRunProgress(report, prev, (nr) => fired.push(nr.id));
   assert.deepEqual(fired, ['nodeB']);
+});
+
+test('live report buffer replays progress that arrives before node listeners', () => {
+  const fired = [];
+  const reportBuffer = createReportBuffer((nodeReport) => fired.push(nodeReport.id));
+  const prev = new Map();
+
+  applyRunProgress(makeReport([['nodeA', 'processing', 0]]), prev, (nodeReport) =>
+    reportBuffer.emit(nodeReport)
+  );
+  assert.deepEqual(fired, []);
+
+  reportBuffer.flush();
+  assert.deepEqual(fired, ['nodeA']);
+
+  applyRunProgress(makeReport([['nodeA', 'succeeded', 1]]), prev, (nodeReport) =>
+    reportBuffer.emit(nodeReport)
+  );
+  assert.deepEqual(fired, ['nodeA', 'nodeA']);
 });

@@ -24,12 +24,25 @@ interface NodeStatusRenderProps {
 const msToSeconds = (ms: number): string => (ms / 1000).toFixed(2) + 's';
 const displayCount = 6;
 
+const splitExecutionDetails = (outputs: unknown) => {
+  if (!outputs || typeof outputs !== 'object' || Array.isArray(outputs)) {
+    return { declaredOutputs: outputs, executionDetails: undefined };
+  }
+
+  const { _executionDetail: executionDetails, ...declaredOutputs } = outputs as Record<
+    string,
+    unknown
+  >;
+  return { declaredOutputs, executionDetails };
+};
+
 export const NodeStatusRender: FC<NodeStatusRenderProps> = ({ report }) => {
   const { status: nodeStatus } = report;
   const [currentSnapshotIndex, setCurrentSnapshotIndex] = useState(0);
 
   const snapshots = report.snapshots || [];
   const currentSnapshot = snapshots[currentSnapshotIndex] || snapshots[0];
+  const { declaredOutputs, executionDetails } = splitExecutionDetails(currentSnapshot?.outputs);
 
   // Node has 5 states
   const isNodePending = nodeStatus === WorkflowStatus.Pending;
@@ -178,7 +191,13 @@ export const NodeStatusRender: FC<NodeStatusRenderProps> = ({ report }) => {
         )}
         {renderSnapshotNavigation()}
         <NodeStatusGroup title="Inputs" data={currentSnapshot?.inputs} />
-        <NodeStatusGroup title="Outputs" data={currentSnapshot?.outputs} />
+        <NodeStatusGroup title="Outputs" data={declaredOutputs} />
+        <NodeStatusGroup
+          title="Execution Details"
+          data={executionDetails}
+          optional
+          defaultExpanded={false}
+        />
         <NodeStatusGroup title="Branch" data={currentSnapshot?.branch} optional />
         <NodeStatusGroup title="Data" data={currentSnapshot?.data} optional />
       </div>

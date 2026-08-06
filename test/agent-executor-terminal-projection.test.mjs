@@ -3,6 +3,10 @@ import test from 'node:test';
 
 import { createAgentExecutor, AgentExecutionError } from '../server/runtime-adapter.mjs';
 
+const STRUCTURED_NODE = {
+  data: { outputs: { type: 'object', properties: { result: { type: 'string' } } } },
+};
+
 /**
  * Injects a scripted `runAgentExecution` that yields the given terminal event
  * (plus optional non-terminal events before it). Asserts the executor's
@@ -32,7 +36,7 @@ test('task adapter projects terminal succeeded → return with _executionDetail.
       { type: 'tool_end', toolName: 'read', result: 'c', isError: false },
     ] },
   ]);
-  const out = await executor.execute({ inputs: { agentId: 'a1', prompt: 'p' } });
+  const out = await executor.execute({ inputs: { agentId: 'a1', prompt: 'p' }, node: STRUCTURED_NODE });
   assert.deepEqual(out, {
     outputs: {
       result: 'Hello',
@@ -51,7 +55,7 @@ test('task adapter projects terminal cancelled → return normally (NO throw) wi
     { type: 'content_delta', content: 'partial' },
     { type: 'terminal', phase: 'cancelled', partialText: 'partial', toolEvents: [] },
   ]);
-  const out = await executor.execute({ inputs: { agentId: 'a1', prompt: 'p' } });
+  const out = await executor.execute({ inputs: { agentId: 'a1', prompt: 'p' }, node: STRUCTURED_NODE });
   assert.deepEqual(out, {
     outputs: {
       result: 'partial',
@@ -66,7 +70,7 @@ test('task adapter projects terminal failed → throws AgentExecutionError from 
       error: { kind: 'provider_error', message: 'upstream 500' } },
   ]);
   await assert.rejects(
-    () => executor.execute({ inputs: { agentId: 'a1', prompt: 'p' } }),
+    () => executor.execute({ inputs: { agentId: 'a1', prompt: 'p' }, node: STRUCTURED_NODE }),
     (err) => {
       assert.ok(err instanceof AgentExecutionError, 'should be AgentExecutionError');
       assert.equal(err.kind, 'provider_error');
@@ -113,7 +117,7 @@ test('task adapter converts iterable-without-terminal to internal_error (defensi
     { type: 'content_delta', content: 'x' }, // no terminal follows
   ]);
   await assert.rejects(
-    () => executor.execute({ inputs: { agentId: 'a1', prompt: 'p' } }),
+    () => executor.execute({ inputs: { agentId: 'a1', prompt: 'p' }, node: STRUCTURED_NODE }),
     (err) => { assert.equal(err.kind, 'internal_error'); return true; },
   );
 });
@@ -125,7 +129,7 @@ test('task adapter converts shared-module throw (non-AgentExecutionError) to int
     runAgentExecution: async function* () { throw new Error('shared module bug'); },
   });
   await assert.rejects(
-    () => executor.execute({ inputs: { agentId: 'a1', prompt: 'p' } }),
+    () => executor.execute({ inputs: { agentId: 'a1', prompt: 'p' }, node: STRUCTURED_NODE }),
     (err) => { assert.equal(err.kind, 'internal_error'); return true; },
   );
 });

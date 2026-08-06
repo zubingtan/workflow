@@ -53,6 +53,10 @@ function makeDb() {
   return { prepare: () => ({ get: () => makeAgent() }) };
 }
 
+const STRUCTURED_NODE = {
+  data: { outputs: { type: 'object', properties: { result: { type: 'string' } } } },
+};
+
 test('node timeout fires when runAgentExecution never resolves → throws AgentExecutionError kind=timeout', async () => {
   const { fakeRunAgentExecution, aborts } = makeNeverResolvingRunAgentExecution({ trackAborts: true });
   const executor = createAgentExecutor({
@@ -67,7 +71,7 @@ test('node timeout fires when runAgentExecution never resolves → throws AgentE
     () => executor.execute({
       inputs: { agentId: 'a1', prompt: 'p' },
       signal: new AbortController().signal,
-      node: { data: {} },
+      node: STRUCTURED_NODE,
     }),
     (err) => {
       assert.ok(err instanceof AgentExecutionError, 'should be AgentExecutionError');
@@ -98,7 +102,7 @@ test('node timeout respects node.data.timeoutOverride when present', async () =>
     () => executor.execute({
       inputs: { agentId: 'a1', prompt: 'p' },
       signal: new AbortController().signal,
-      node: { data: { timeoutOverride: 30 } },
+      node: { ...STRUCTURED_NODE, data: { ...STRUCTURED_NODE.data, timeoutOverride: 30 } },
     }),
     (err) => {
       assert.equal(err.kind, 'timeout');
@@ -136,7 +140,7 @@ test('user cancel (workflow signal abort) BEFORE timeout → returns normally wi
   const execPromise = executor.execute({
     inputs: { agentId: 'a1', prompt: 'p' },
     signal: workflowSignal.signal,
-    node: { data: {} },
+    node: STRUCTURED_NODE,
   });
   // Cancel after 30ms — well before the 10s timeout.
   setTimeout(() => workflowSignal.abort(), 30);
@@ -166,7 +170,7 @@ test('node timeout=0 means no timeout (runAgentExecution may take forever — bu
   const result = await executor.execute({
     inputs: { agentId: 'a1', prompt: 'p' },
     signal: new AbortController().signal,
-    node: { data: { timeoutOverride: 0 } },
+    node: { ...STRUCTURED_NODE, data: { ...STRUCTURED_NODE.data, timeoutOverride: 0 } },
   });
   assert.equal(result.outputs.result, 'hi');
 });
@@ -205,7 +209,7 @@ test('resolveTimeoutMs precedence: node.data.timeoutOverride > settings > env > 
       const result = await executor.execute({
         inputs: { agentId: 'a1', prompt: 'p' },
         signal: new AbortController().signal,
-        node,
+        node: { ...STRUCTURED_NODE, data: { ...STRUCTURED_NODE.data, ...node.data } },
       });
       assert.equal(result.outputs.result, '');
     }

@@ -51,6 +51,11 @@ test('LLM executor aborts and disposes its Pi session when FlowGram cancels', as
   const execution = executor.execute({
     inputs: { agentId: agent.id, prompt: 'run' },
     signal: signal.signal,
+    node: {
+      data: {
+        outputs: { type: 'object', properties: { result: { type: 'string' } } },
+      },
+    },
   });
   await started;
   signal.abort();

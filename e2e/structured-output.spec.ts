@@ -137,6 +137,7 @@ test.describe('Structured output FlowGram integration (#250)', () => {
     expect(llmOutputs).toBeTruthy();
     expect(llmOutputs.result).toBe('hello world');
     expect(llmOutputs.n).toBe(42);
+    expect(llmOutputs).toHaveProperty('_executionDetail');
 
     // 3. The downstream end node read llm_main.result by node-id.field.
     const endSnapshot = nodeOutputs(report, 'end_0');

@@ -68,6 +68,16 @@ describe("compileStrictSchema", () => {
     assert.deepEqual(compiled.schema.required, ["result", "score"]);
   });
 
+  test("preserves field descriptions in the provider schema", () => {
+    const compiled = compileStrictSchema({
+      type: "object",
+      properties: { result: { type: "string", description: "The final answer" } },
+    });
+    assert.deepEqual(compiled.schema.properties, {
+      result: { type: "string", description: "The final answer" },
+    });
+  });
+
   test("returns null for undefined / null / empty declarations (no structured contract)", () => {
     assert.equal(compileStrictSchema(undefined), null);
     assert.equal(compileStrictSchema(null), null);
@@ -86,6 +96,10 @@ describe("compileStrictSchema", () => {
     // would hit the setter instead), matching how hand-edited docs arrive.
     assert.throws(
       () => compileStrictSchema(JSON.parse('{"type":"object","properties":{"__proto__":{"type":"string"}}}')),
+      /reserved name/,
+    );
+    assert.throws(
+      () => compileStrictSchema({ type: "object", properties: { _executionDetail: { type: "string" } } }),
       /reserved name/,
     );
     assert.throws(

@@ -34,3 +34,30 @@ export function applyRunProgress(report, prevNodeStatus, fireNodeReport) {
     }
   }
 }
+
+export function createReportBuffer(fireNodeReport) {
+  const pendingReports = new Map();
+  let ready = false;
+
+  return {
+    emit(nodeReport) {
+      if (ready) {
+        fireNodeReport(nodeReport);
+        return;
+      }
+      pendingReports.set(nodeReport.id, nodeReport);
+    },
+
+    flush() {
+      ready = true;
+      for (const nodeReport of pendingReports.values()) {
+        fireNodeReport(nodeReport);
+      }
+      pendingReports.clear();
+    },
+
+    clear() {
+      pendingReports.clear();
+    },
+  };
+}
