@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   Button,
@@ -13,6 +13,7 @@ import {
 } from '@douyinfe/semi-ui';
 import { IconCopy, IconDelete, IconPlus, IconHistory } from '@douyinfe/semi-icons';
 
+import { workflowRunEventHub } from './workflow-run-event-hub.mjs';
 import { useActiveRunCounts } from './use-active-run-counts';
 import { newWorkflowTemplate } from './new-workflow-template.mjs';
 import { HistoryModal } from './components/history-modal';
@@ -27,32 +28,54 @@ export function WorkflowManager({ onOpen }: { onOpen: (id: string) => void }) {
   const [newName, setNewName] = useState('');
   // Phase 7 (#159): History Modal entry from the management interface.
   const [historyFor, setHistoryFor] = useState<string | null>(null);
+  const reloadGeneration = useRef(0);
+  const deletedWorkflowIds = useRef(new Set<string>());
 
   const reload = useCallback(() => {
+    const generation = ++reloadGeneration.current;
     setLoading(true);
     api
       .listWorkflows()
-      .then(setWorkflows)
-      .finally(() => setLoading(false));
+      .then((list) => {
+        if (generation !== reloadGeneration.current) return;
+        setWorkflows(list.filter((workflow) => !deletedWorkflowIds.current.has(workflow.id)));
+      })
+      .finally(() => {
+        if (generation === reloadGeneration.current) setLoading(false);
+      });
   }, []);
 
   useEffect(() => reload(), [reload]);
 
-  // Phase 6 (#158): SSE-driven Delete-button gate. The hook opens one
-  // EventSource per visible workflow and tracks queued+running counts.
-  // Phase 7 (#159) §5: when the HistoryModal is open for a workflow, the
-  // modal's own SSE stream owns that workflow's updates — drop the id from
-  // the manager's subscription set so only one EventSource is open per
-  // workflow (spec coordination requirement).
-  const workflowIds = useMemo(
-    () => workflows.filter((w) => w.id !== historyFor).map((w) => w.id),
-    [workflows, historyFor]
-  );
+  // The manager, History Modal, Test Run and ReadonlyViewer share one
+  // page-level WorkflowRunEventHub connection.
+  const workflowIds = useMemo(() => workflows.map((w) => w.id), [workflows]);
   const activeCounts = useActiveRunCounts(workflowIds);
+
+  useEffect(() => {
+    if (workflowIds.length === 0) return undefined;
+    return workflowRunEventHub.subscribeMany(
+      workflowIds.map((workflowId) => ({
+        workflowId,
+        subscription: {
+          types: ['workflow_deleted'],
+          onEvent: (payload: any) => {
+            if (payload?.type !== 'workflow_deleted' || payload.workflowId !== workflowId) return;
+            reloadGeneration.current += 1;
+            deletedWorkflowIds.current.add(workflowId);
+            setWorkflows((current) => current.filter((workflow) => workflow.id !== workflowId));
+            setLoading(false);
+          },
+        },
+      }))
+    );
+  }, [workflowIds]);
 
   const remove = async (id: string) => {
     try {
       await api.deleteWorkflow(id);
+      deletedWorkflowIds.current.add(id);
+      setWorkflows((current) => current.filter((workflow) => workflow.id !== id));
       reload();
     } catch (err) {
       if (err instanceof ApiError && err.code === 'workflow_has_active_runs') {

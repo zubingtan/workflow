@@ -15,6 +15,7 @@
  */
 import { Hono } from 'hono';
 import { serveStatic } from '@hono/node-server/serve-static';
+import { streamSSE as honoStreamSSE } from 'hono/streaming';
 import { nanoid } from 'nanoid';
 import {
   ProviderTestError,
@@ -59,6 +60,7 @@ import {
   getAgentStats,
   parseSessionFile,
 } from './execution-store.mjs';
+import { createSseEventQueue } from './runs-events.mjs';
 
 /**
  * Translate a thrown AgentCatalogError into a 400 JSON response. Non-catalog
@@ -135,6 +137,8 @@ function providerListFingerprint(provider) {
  * @param {object} [deps.createAgentSessionForAgent] - injected for tests
  * @param {(c: object, handler: (stream: object) => Promise<void>) => Promise<void>} [deps.streamSSE]
  *   Inject a fake streamSSE for tests to bypass Hono's streaming layer.
+ * @param {(c: object, handler: (stream: object) => Promise<void>) => Response} [deps.runEventsStreamSSE]
+ *   Optional streamSSE implementation for Workflow Run event tests.
  * @param {(workflowId: string, runID: string, payload: {schema: string, inputs: object}) => void} [deps.enqueueRun]
  *   Phase 2 injects a placeholder; Phase 3 replaces it with the real
  *   per-workflow serial queue. Called when a saved-workflow run is enqueued.
@@ -156,6 +160,8 @@ function providerListFingerprint(provider) {
  * @param {object} [deps.eventBus] - Phase 5 SSE bus for run status broadcasts.
  *   Optional — if absent, the SSE endpoint returns 503 (disabled). Tests pass
  *   a fake bus to exercise the SSE endpoint without a real HTTP server.
+ * @param {number} [deps.runEventsHeartbeatMs=25000] - heartbeat interval for
+ *   Workflow Run event streams.
  * @returns {Hono}
  */
 export function createApp({
@@ -166,12 +172,14 @@ export function createApp({
   runAgentExecution,
   createAgentSessionForAgent,
   streamSSE,
+  runEventsStreamSSE = honoStreamSSE,
   enqueueRun,
   cancelQueuedRun,
   cancelRunningRun,
   getRunQueuePosition,
   getRunningReport,
   eventBus,
+  runEventsHeartbeatMs = 25_000,
   providerClient = { fetchModels: fetchProviderModels, testCompletion: testProviderCompletion },
 }) {
   const app = new Hono();
@@ -345,7 +353,7 @@ export function createApp({
     // so the History Modal / Delete button can close.
     if (eventBus) {
       try {
-        eventBus.broadcastAll({ type: 'workflow_deleted', workflowId: id });
+        eventBus.broadcast(id, { type: 'workflow_deleted', workflowId: id });
       } catch (err) {
         console.error('[app] workflow_deleted broadcast failed for', id, err);
       }
@@ -395,10 +403,7 @@ export function createApp({
         ? result.models.map(normalizeProviderModel).filter(Boolean)
         : [];
       if (models.length === 0) {
-        return c.json(
-          { error: 'Provider returned no models', code: 'provider_models_empty' },
-          502
-        );
+        return c.json({ error: 'Provider returned no models', code: 'provider_models_empty' }, 502);
       }
       const modelListToken = issueProviderToken('models', { agentId, provider, models });
       return c.json({ models, model_list_token: modelListToken });
@@ -1025,103 +1030,144 @@ export function createApp({
   });
 
   // --- Phase 5: SSE run events endpoint (multi-tab broadcast) ---
-  // GET /api/workflows/:id/runs/events opens a long-lived SSE stream that
-  // receives run_status (queued/running/terminated) and run_terminal events
-  // for the given workflow. Each browser tab opens its own EventSource so
-  // multi-tab sync works without polling.
-  //
-  // Implementation: we wrap a ReadableStream into a res-like object (with
-  // .write + .setHeader) and hand it to the bus. Hono's `streamSSE` would
-  // frame events itself, but the bus already emits SSE-formatted strings —
-  // using `streamSSE` here would double-frame. Instead we return the raw
-  // stream with the headers the bus set, and a heartbeat interval keeps the
-  // connection alive through proxies (every 25s).
-  app.get('/api/workflows/:id/runs/events', (c) => {
+  // A page-level connection can subscribe to several workflows through the
+  // query string. The legacy per-workflow path delegates to the same stream
+  // implementation so existing callers keep the same event semantics.
+  function parseSseValues(url, key) {
+    return new Set(
+      url.searchParams
+        .getAll(key)
+        .flatMap((value) => value.split(','))
+        .map((value) => value.trim())
+        .filter(Boolean)
+    );
+  }
+
+  function streamRunEvents(c, requestedWorkflowIds, { notifyMissing = false } = {}) {
     if (!eventBus) return c.json({ error: 'events disabled' }, 503);
-    const workflowId = c.req.param('id');
-    const wf = db.prepare('SELECT id FROM workflows WHERE id=?').get(workflowId);
-    if (!wf) return c.json({ error: 'workflow not found' }, 404);
 
-    const encoder = new TextEncoder();
-    let controllerRef = null;
-    const resLike = {
-      write(chunk) {
-        // controllerRef is null until ReadableStream.start runs; after
-        // stream.cancel() it may still be set but enqueues throw — the bus's
-        // own try/catch around res.write handles that. Here we just guard null.
-        if (controllerRef) {
-          controllerRef.enqueue(encoder.encode(chunk));
+    const url = new URL(c.req.url);
+    const workflowIds = [...new Set(requestedWorkflowIds)].filter(Boolean);
+    if (workflowIds.length === 0) {
+      return c.json({ error: 'workflowId is required' }, 400);
+    }
+    const existingWorkflowIds = workflowIds.filter((workflowId) =>
+      db.prepare('SELECT id FROM workflows WHERE id=?').get(workflowId)
+    );
+    const missingWorkflowIds = workflowIds.filter(
+      (workflowId) => !existingWorkflowIds.includes(workflowId)
+    );
+    if (existingWorkflowIds.length === 0 && !notifyMissing) {
+      return c.json({ error: 'workflow not found' }, 404);
+    }
+
+    c.header('X-Accel-Buffering', 'no');
+    const runIDs = parseSseValues(url, 'runID');
+    const types = parseSseValues(url, 'type');
+
+    return runEventsStreamSSE(c, async (stream) => {
+      const queue = createSseEventQueue({
+        maxPending: Math.max(64, existingWorkflowIds.length + 16),
+      });
+      let subscriptions = [];
+      let heartbeat;
+      let cleanedUp = false;
+      const lastEventID = Number(c.req.header('Last-Event-ID'));
+      let pageSequence = Number.isSafeInteger(lastEventID) && lastEventID >= 0 ? lastEventID : 0;
+      const requestSignal = c.req.raw?.signal;
+      const streamTarget = {
+        push(frame) {
+          if (frame?.kind === 'heartbeat') return queue.push(frame);
+          const sequence = ++pageSequence;
+          return queue.push({
+            ...frame,
+            id: String(sequence),
+            sequence,
+            payload: { ...frame.payload, sequence },
+          });
+        },
+      };
+
+      const cleanup = () => {
+        if (cleanedUp) return;
+        cleanedUp = true;
+        if (heartbeat) clearInterval(heartbeat);
+        requestSignal?.removeEventListener('abort', cleanup);
+        for (const subscription of subscriptions) subscription.unsubscribe();
+        subscriptions = [];
+        queue.close();
+      };
+      stream.onAbort(cleanup);
+      requestSignal?.addEventListener('abort', cleanup, { once: true });
+
+      if (stream.aborted || requestSignal?.aborted) {
+        cleanup();
+        return;
+      }
+
+      subscriptions = existingWorkflowIds.map((workflowId) =>
+        eventBus.subscribe(workflowId, streamTarget, { runIDs, types })
+      );
+
+      try {
+        await stream.write(':ping\n\n');
+        for (const workflowId of missingWorkflowIds) {
+          streamTarget.push({
+            payload: { type: 'workflow_deleted', workflowId },
+          });
         }
-      },
-      // Headers are set on the Response below; this is a no-op kept for bus compat.
-      setHeader() {},
-    };
-
-    const stream = new ReadableStream({
-      start(controller) {
-        controllerRef = controller;
-        eventBus.subscribe(workflowId, resLike);
-        // Phase 10 (#162): send an `init` event with the current active-run
-        // count so a late-subscribing tab (e.g. page loaded after a run
-        // started) immediately reflects the correct Delete-button state.
-        // Without this, the hook's count stays 0 until the next run_status
-        // event arrives — which may never come for an already-running run.
-        //
-        // #179: the init frame now also carries the latest intermediate
-        // IReport for each running run (via queue.getCurrentReport) so a late
-        // subscriber opening a ReadonlyViewer mid-run immediately sees which
-        // node is Processing — without this, the subscriber would only see
-        // FUTURE run_progress events and miss the current state. The report
-        // is null for queued runs (no per-node state yet) and for runs where
-        // the queue hasn't polled yet (first poll is 500ms after dequeue).
-        // `activeRunIDs` (string[]) is kept for backward-compat with existing
-        // consumers (useActiveRunCounts); new consumers read `activeRuns`.
-        try {
+        for (let index = 0; index < existingWorkflowIds.length; index += 1) {
+          const workflowId = existingWorkflowIds[index];
           const activeRows = db
             .prepare(
               "SELECT id, status FROM workflow_runs WHERE workflow_id=? AND status IN ('queued','running')"
             )
-            .all(workflowId);
-          const activeRunIDs = activeRows.map((r) => r.id);
-          const activeRuns = activeRows.map((r) => ({
-            runID: r.id,
-            status: r.status,
+            .all(workflowId)
+            .filter((row) => runIDs.size === 0 || runIDs.has(row.id));
+          const activeRunIDs = activeRows.map((row) => row.id);
+          const activeRuns = activeRows.map((row) => ({
+            runID: row.id,
+            status: row.status,
             report:
-              r.status === 'running' && typeof getRunningReport === 'function'
-                ? getRunningReport(r.id) ?? null
+              row.status === 'running' && typeof getRunningReport === 'function'
+                ? getRunningReport(row.id) ?? null
                 : null,
           }));
-          const initPayload = JSON.stringify({ type: 'init', activeRunIDs, activeRuns });
-          controller.enqueue(encoder.encode(`data: ${initPayload}\n\n`));
-        } catch (initErr) {
-          console.error('[runs/events] init frame failed', initErr);
+          subscriptions[index].send({ type: 'init', workflowId, activeRunIDs, activeRuns });
         }
-        // Heartbeat: write `:ping\n\n` every 25s to keep the connection alive
-        // through proxies that close idle connections.
-        const heartbeat = setInterval(() => {
-          try {
-            controller.enqueue(encoder.encode(':ping\n\n'));
-          } catch {
-            // Controller already closed — heartbeat cleanup happens in cancel.
-          }
-        }, 25_000);
-        // Store the heartbeat on the controller so cancel() can clear it.
-        controller._heartbeat = heartbeat;
-      },
-      cancel(reason) {
-        if (controllerRef?._heartbeat) clearInterval(controllerRef._heartbeat);
-        eventBus.unsubscribe(workflowId, resLike);
-      },
-    });
 
-    return new Response(stream, {
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        Connection: 'keep-alive',
-        'X-Accel-Buffering': 'no',
-      },
+        heartbeat = setInterval(() => {
+          queue.push({ kind: 'heartbeat' });
+        }, runEventsHeartbeatMs);
+
+        for await (const frame of queue) {
+          if (stream.aborted) break;
+          if (frame.kind === 'heartbeat') {
+            await stream.write(':ping\n\n');
+            continue;
+          }
+          await stream.writeSSE({
+            id: frame.id,
+            data: JSON.stringify(frame.payload),
+          });
+        }
+      } catch (err) {
+        if (!stream.aborted) {
+          console.error('[runs/events] stream failed', err);
+        }
+      } finally {
+        cleanup();
+      }
     });
+  }
+
+  app.get('/api/runs/events', (c) => {
+    const url = new URL(c.req.url);
+    return streamRunEvents(c, parseSseValues(url, 'workflowId'), { notifyMissing: true });
+  });
+
+  app.get('/api/workflows/:id/runs/events', (c) => {
+    return streamRunEvents(c, [c.req.param('id')]);
   });
 
   // --- Phase 5: REST history list (lightweight, no report/schema_snapshot) ---

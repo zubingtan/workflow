@@ -63,4 +63,38 @@ test.describe('History viewer', () => {
     await page.getByRole('button', { name: /Back/ }).click();
     await expect(page.getByText(/Run Detail/)).toHaveCount(0, { timeout: 5_000 });
   });
+
+  test('workflow deletion keeps the open history snapshot readonly', async ({ page }) => {
+    const workflowName = `E2E Deleted Viewer WF ${Date.now()}`;
+    const agentId = await createAgent();
+    const schema = buildWorkflowSchema(agentId, 'Deleted workflow snapshot');
+    const workflowId = await createWorkflow(workflowName, schema);
+    const runID = await submitRun(workflowId, await getWorkflowSchema(workflowId));
+    const terminal = await waitForTerminal(runID, 20_000);
+    expect(['succeeded', 'failed', 'terminated']).toContain(terminal.status);
+
+    await page.goto('/');
+    await page.getByText('Workflows', { exact: true }).first().click();
+    const workflowRow = page.locator('tr', { hasText: workflowName }).first();
+    await workflowRow.getByRole('button', { name: 'History' }).click();
+    await page.getByRole('button', { name: 'View Detail' }).first().click();
+    await expect(page.getByText(/Run Detail/).first()).toBeVisible({ timeout: 10_000 });
+
+    const deleteResponse = await fetch(`http://localhost:4099/workflows/${workflowId}`, {
+      method: 'DELETE',
+    });
+    expect(deleteResponse.status).toBe(200);
+
+    await expect(page.getByText('Workflow 已删除，当前内容为只读快照')).toBeVisible({
+      timeout: 5_000,
+    });
+    await expect(page.locator('tr', { hasText: workflowName })).toHaveCount(0, {
+      timeout: 5_000,
+    });
+
+    await page.getByRole('button', { name: /Back/ }).click();
+    await expect(page.getByText('Workflow 已删除。当前运行记录是只读快照。')).toBeVisible({
+      timeout: 5_000,
+    });
+  });
 });

@@ -22,8 +22,9 @@ import {
 
 import { WorkflowRuntimeClient, WorkflowRuntimeServerClient } from '../client';
 import { GetGlobalVariableSchema } from '../../variable-panel-plugin';
+import { isTerminalStatus, workflowRunEventHub } from '../../../workflow-run-event-hub.mjs';
 import { WorkflowNodeType } from '../../../nodes';
-import { cancelRun, getRunStatus, SERVER_URL } from '../../../api';
+import { cancelRun, getRun, getRunStatus } from '../../../api';
 
 const SYNC_TASK_REPORT_INTERVAL = 500;
 const SYNC_RUN_STATUS_INTERVAL = 500;
@@ -67,12 +68,10 @@ export class WorkflowRuntimeService {
 
   private syncRunStatusIntervalID?: ReturnType<typeof setInterval>;
 
-  // #180: SSE subscription for saved-workflow runs. Replaces the
-  // syncRunStatus + syncTaskReport polling loops. Undefined for draft runs
-  // (which keep the polling path as tech-debt per #179).
-  // Protected so LiveHistoryRuntimeService (#181) can reuse the same field
-  // instead of redeclaring it (avoids TS2415 "separate declarations" error).
-  protected eventSource?: EventSource;
+  // #180: subscription for saved-workflow runs. The page-level
+  // WorkflowRunEventHub owns the EventSource and ref-counts all consumers.
+  // Protected so LiveHistoryRuntimeService (#181) can reuse the same field.
+  protected eventSubscription?: () => void;
 
   private reportEmitter = new Emitter<NodeReport>();
 
@@ -233,128 +232,150 @@ export class WorkflowRuntimeService {
    *       Per-node diff — call updateReport (handles runningNodes/isFlowingLine
    *       bookkeeping + reportEmitter firing).
    *   - run_terminal {type:'run_terminal', runID, status, report, ...}
-   *       Terminal — fire resultEmitter with result/errors, close EventSource.
+   *       Terminal — fire resultEmitter with result/errors, remove subscription.
    *
-   * Decision (EventSource coordination, #180 §1): the Test Run panel opens
-   * its OWN independent EventSource here — it does NOT reuse the
-   * useActiveRunCounts / History Modal EventSource. Rationale: the editor
-   * view (where Test Run lives) and the manager view (where History Modal
-   * lives) are never mounted simultaneously (different SPA routes in
-   * app.tsx). So the two EventSources can never coexist, and the §5
-   * coordination (one EventSource per workflow) is preserved de facto.
-   * Draft runs (no workflowId) keep the polling path as tech-debt (#179).
+   * The Test Run panel subscribes to the page-level hub. Draft runs (no
+   * workflowId) keep the polling path as tech-debt (#179).
    */
   private subscribeToRunEvents(runID: string, workflowId: string): void {
-    const url = `${SERVER_URL}/api/workflows/${workflowId}/runs/events`;
-    const es = new EventSource(url);
-    this.eventSource = es;
+    let settled = false;
+    let subscription: (() => void) | undefined;
 
-    es.onmessage = (ev) => {
-      let payload: any;
-      try {
-        payload = JSON.parse(ev.data);
-      } catch {
-        return;
-      }
-      if (!payload || typeof payload !== 'object') return;
-      const { type, runID: evRunID, report, status: evStatus } = payload;
-      // Only process events for the run we started (a workflow may have
-      // multiple concurrent viewers each subscribed to the same stream).
-      if (evRunID && evRunID !== runID) return;
-
-      if (type === 'init' && Array.isArray(payload.activeRuns)) {
-        // Late-subscriber catch-up: apply our run's cached intermediate report
-        // (if any) so node status bars render immediately.
-        for (const ar of payload.activeRuns) {
-          if (ar?.runID === runID && ar.report) {
-            this.updateReport(ar.report);
-          }
-        }
-        return;
-      }
-
-      if (type === 'run_progress' && report) {
-        this.updateReport(report);
-        return;
-      }
-
-      if (type === 'run_status' && evStatus === 'terminated') {
-        // cancelQueued: the run was cancelled while queued — no TaskReport.
-        // Mirror syncRunStatus's terminated path. Clear runID so a subsequent
-        // taskRun doesn't try to cancel an already-terminal run (the backend
-        // would return 409 already_terminal).
-        this.resultEmitter.fire({ errors: ['Run cancelled'] });
-        es.close();
-        this.eventSource = undefined;
-        this.runID = undefined;
-        return;
-      }
-
-      if (type === 'run_terminal') {
-        // Terminal — fire resultEmitter with result or errors, mirroring
-        // syncTaskReport's terminal classification. Clear runID/taskID so a
-        // subsequent taskRun doesn't cancel an already-terminal run.
-        const terminalReport = report;
-        if (terminalReport) {
-          const { outputs, inputs, messages } = terminalReport;
-          if (outputs && Object.keys(outputs).length > 0) {
-            this.resultEmitter.fire({ result: { inputs, outputs } });
-          } else {
-            this.resultEmitter.fire({
-              errors: messages?.error?.map((message: any) =>
-                message.nodeID ? `${message.nodeID}: ${message.message}` : message.message
-              ),
-            });
-          }
-        } else {
-          this.resultEmitter.fire({ errors: ['Run ended with no report'] });
-        }
-        es.close();
-        this.eventSource = undefined;
-        this.runID = undefined;
-        this.taskID = undefined;
+    const removeSubscription = () => {
+      const currentSubscription = subscription;
+      if (!currentSubscription) return;
+      subscription = undefined;
+      currentSubscription();
+      if (this.eventSubscription === currentSubscription) {
+        this.eventSubscription = undefined;
       }
     };
 
-    es.onerror = () => {
-      // EventSource auto-reconnects on transient errors — leave it alone so
-      // late events (e.g. run_terminal) still arrive after a blip.
-      //
-      // BUT: if the connection drops AFTER the run went terminal, the server
-      // won't rebroadcast run_terminal to a reconnecting client (the init
-      // frame only lists non-terminal active runs). The Test Run panel's own
-      // queuePosition poll only updates queuePosition — it does NOT fire
-      // onResultChanged. So a permanent drop after terminal would leave the
-      // panel stuck on "Running...".
-      //
-      // Mitigation: on each error, poll GET /api/runs/:runID once. If it
-      // shows terminal, fire resultEmitter + close the EventSource (mirrors
-      // the run_terminal path). This is best-effort — if the network is fully
-      // down the poll also fails, but EventSource keeps retrying and the next
-      // successful reconnect's init frame will trigger a fresh status check.
-      if (!runID) return;
-      getRunStatus(runID)
-        .then((res) => {
-          if (
-            res.status === 'succeeded' ||
-            res.status === 'failed' ||
-            res.status === 'terminated'
-          ) {
-            this.resultEmitter.fire(
-              res.status === 'succeeded'
-                ? { result: { inputs: {}, outputs: {} } }
-                : { errors: [res.status === 'terminated' ? 'Run cancelled' : 'Run failed'] }
-            );
-            es.close();
-            this.eventSource = undefined;
-            this.runID = undefined;
-            this.taskID = undefined;
-          }
-        })
-        .catch(() => {
-          // Network still down — EventSource will retry. Leave as-is.
+    const finishRun = (notify: () => void) => {
+      if (settled || this.runID !== runID) return;
+      settled = true;
+      notify();
+      removeSubscription();
+      this.runID = undefined;
+      this.taskID = undefined;
+    };
+
+    const emitReportResult = (report: any) => {
+      const { outputs, inputs, messages } = report;
+      if (outputs && Object.keys(outputs).length > 0) {
+        this.resultEmitter.fire({ result: { inputs, outputs } });
+      } else {
+        this.resultEmitter.fire({
+          errors: messages?.error?.map((message: any) =>
+            message.nodeID ? `${message.nodeID}: ${message.message}` : message.message
+          ),
         });
+      }
     };
+
+    const emitSnapshotResult = (status: string, report: any) => {
+      if (report) {
+        emitReportResult(report);
+        return;
+      }
+      this.resultEmitter.fire({
+        errors: [status === 'terminated' ? 'Run cancelled' : 'Run ended with no report'],
+      });
+    };
+
+    subscription = workflowRunEventHub.subscribe(workflowId, {
+      runID,
+      onEvent: (payload: any) => {
+        const { type, report, status: eventStatus } = payload;
+
+        if (type === 'workflow_deleted') {
+          finishRun(() => this.resultEmitter.fire({ errors: ['Workflow deleted'] }));
+          return;
+        }
+
+        if (type === 'init' && Array.isArray(payload.activeRuns)) {
+          for (const activeRun of payload.activeRuns) {
+            if (activeRun?.runID === runID && activeRun.report) {
+              this.updateReport(activeRun.report);
+            }
+          }
+          return;
+        }
+
+        if (type === 'snapshot' && Array.isArray(payload.runs)) {
+          const snapshot = payload.runs.find((run: any) => run?.id === runID);
+          if (snapshot && isTerminalStatus(snapshot.status)) {
+            getRun(runID)
+              .then((detail) => {
+                if (settled || this.runID !== runID) return;
+                finishRun(() => emitSnapshotResult(detail.status, detail.report));
+              })
+              .catch(() => {
+                finishRun(() => emitSnapshotResult(snapshot.status, null));
+              });
+          }
+          return;
+        }
+
+        if (type === 'run_progress' && report) {
+          this.updateReport(report);
+          return;
+        }
+
+        if (type === 'run_status' && eventStatus === 'terminated') {
+          finishRun(() => this.resultEmitter.fire({ errors: ['Run cancelled'] }));
+          return;
+        }
+
+        if (type === 'run_terminal') {
+          const terminalReport = report;
+          finishRun(() => {
+            if (terminalReport) {
+              const { outputs, inputs, messages } = terminalReport;
+              if (outputs && Object.keys(outputs).length > 0) {
+                this.resultEmitter.fire({ result: { inputs, outputs } });
+              } else {
+                this.resultEmitter.fire({
+                  errors: messages?.error?.map((message: any) =>
+                    message.nodeID ? `${message.nodeID}: ${message.message}` : message.message
+                  ),
+                });
+              }
+            } else {
+              this.resultEmitter.fire({ errors: ['Run ended with no report'] });
+            }
+          });
+        }
+      },
+      onError: () => {
+        if (settled || this.runID !== runID) return;
+        // The hub keeps the native EventSource alive. Reconcile terminal state
+        // because a disconnect can happen after the server wrote the DB row but
+        // before the terminal event reached this subscriber.
+        getRunStatus(runID)
+          .then((res) => {
+            if (settled || this.runID !== runID) return;
+            if (
+              res.status === 'succeeded' ||
+              res.status === 'failed' ||
+              res.status === 'terminated'
+            ) {
+              finishRun(() =>
+                this.resultEmitter.fire(
+                  res.status === 'succeeded'
+                    ? { result: { inputs: {}, outputs: {} } }
+                    : { errors: [res.status === 'terminated' ? 'Run cancelled' : 'Run failed'] }
+                )
+              );
+            }
+          })
+          .catch(() => {
+            // Network still down — the hub's native EventSource will retry.
+          });
+      },
+    });
+    this.eventSubscription = subscription;
+    if (settled) removeSubscription();
   }
 
   private async validateForm(): Promise<boolean> {
@@ -376,11 +397,8 @@ export class WorkflowRuntimeService {
     if (this.syncRunStatusIntervalID) {
       clearInterval(this.syncRunStatusIntervalID);
     }
-    // #180: close the SSE subscription if active.
-    if (this.eventSource) {
-      this.eventSource.close();
-      this.eventSource = undefined;
-    }
+    this.eventSubscription?.();
+    this.eventSubscription = undefined;
     this.resetEmitter.fire({});
   }
 

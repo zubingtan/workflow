@@ -17,6 +17,10 @@ research/
 .scratch/
 handoff/
 
+# Keep the canonical SSE topology research note in the repository.
+!docs/research/
+!docs/research/sse-connection-topology.md
+
 # Tool caches
 .eslintcache
 /.codegraph/

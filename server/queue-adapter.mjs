@@ -30,9 +30,15 @@
  *   - #66/#78: signal.aborted precedence — already resolved in
  *     classifyTerminal (cancelled/interrupted → terminated).
  */
-import { TaskRunAPI, TaskReportAPI, TaskCancelAPI, workflowRunContext } from "./runtime-adapter.mjs";
+import {
+  TaskRunAPI,
+  TaskReportAPI,
+  TaskCancelAPI,
+  workflowRunContext,
+} from './runtime-adapter.mjs';
 
 const REPORT_POLL_INTERVAL_MS = 500;
+const TERMINAL_REPORT_TIMEOUT_MS = 10_000;
 
 /**
  * Map a FlowGram TaskReport's workflowStatus to the queue's terminal result
@@ -49,17 +55,17 @@ function classifyTerminal(report) {
   // StatusData.status is the string enum; StatusData.terminated is the boolean
   // "workflow is done" flag. We prefer the string for classification, but fall
   // back to terminated=true + messages for defensive handling.
-  if (s.status === "succeeded") return { status: "succeeded" };
-  if (s.status === "canceled") return { status: "terminated", reason: "cancelled" };
-  if (s.status === "failed") {
-    const reason = report?.messages?.error?.[0]?.message ?? "failed";
-    return { status: "failed", reason };
+  if (s.status === 'succeeded') return { status: 'succeeded' };
+  if (s.status === 'canceled') return { status: 'terminated', reason: 'cancelled' };
+  if (s.status === 'failed') {
+    const reason = report?.messages?.error?.[0]?.message ?? 'failed';
+    return { status: 'failed', reason };
   }
   // Defensive: if workflowStatus.terminated is true but status isn't one of the
   // known terminal values, treat as failed (shouldn't happen — poll loop only
   // resolves when terminated=true).
-  if (s.terminated) return { status: "failed", reason: "unknown_terminal" };
-  return { status: "failed", reason: "unknown_terminal" };
+  if (s.terminated) return { status: 'failed', reason: 'unknown_terminal' };
+  return { status: 'failed', reason: 'unknown_terminal' };
 }
 
 /**
@@ -92,7 +98,7 @@ function pollUntilTerminal(taskID, onProgress) {
         const report = await TaskReportAPI({ taskID });
         if (!report) {
           clearInterval(interval);
-          reject(new Error("TaskReportAPI returned null"));
+          reject(new Error('TaskReportAPI returned null'));
           return;
         }
         // StatusData.terminated is true once the workflow reaches a terminal
@@ -104,7 +110,7 @@ function pollUntilTerminal(taskID, onProgress) {
           // Carry the full report so onTerminal doesn't need to re-fetch
           // (the runtime may have GC'd it by the time onTerminal runs).
           resolve({ ...classifyTerminal(report), _report: report });
-        } else if (typeof onProgress === "function") {
+        } else if (typeof onProgress === 'function') {
           // Non-terminal tick: surface the intermediate report so the caller
           // can cache it + broadcast node progress. Errors here must NOT crash
           // the poll loop — onProgress is best-effort (SSE broadcast failure
@@ -113,7 +119,7 @@ function pollUntilTerminal(taskID, onProgress) {
             onProgress(report);
           } catch (progressErr) {
             console.error(
-              "[queue-adapter] onProgress callback failed for task",
+              '[queue-adapter] onProgress callback failed for task',
               taskID,
               progressErr
             );
@@ -144,9 +150,16 @@ function pollUntilTerminal(taskID, onProgress) {
  * @param {(taskID: string) => Promise<object|null>} [fetchTaskReport]
  *   Defaults to the real `TaskReportAPI`. Tests inject a fake.
  * @param {object} [eventBus] - Phase 5 SSE bus. If absent, no broadcast.
+ * @param {{reportTimeoutMs?: number}} [options]
+ *   Timeout for the fallback terminal report read used by zombie runs.
  * @returns {(runID: string, result: {status: string, reason?: string, taskID?: string}) => Promise<void>}
  */
-export function createCapturingOnTerminal(db, fetchTaskReport = TaskReportAPI, eventBus) {
+export function createCapturingOnTerminal(
+  db,
+  fetchTaskReport = TaskReportAPI,
+  eventBus,
+  { reportTimeoutMs = TERMINAL_REPORT_TIMEOUT_MS } = {}
+) {
   // Phase 4: single UPDATE captures status + report + schema_snapshot + ended_at.
   // Idempotent: WHERE status NOT IN (...) prevents clobbering a terminal row
   // if onTerminal is somehow called twice (defensive — the queue's runID guard
@@ -160,11 +173,9 @@ export function createCapturingOnTerminal(db, fetchTaskReport = TaskReportAPI, e
   // UPDATE (which sets ended_at=datetime('now')) so the broadcast's ended_at
   // matches what GET /api/runs/:runID returns — avoids drift between the
   // SQL server time and a JS new Date().toISOString().
-  const getRunWorkflowId = db.prepare(
-    "SELECT workflow_id, ended_at FROM workflow_runs WHERE id=?"
-  );
+  const getRunWorkflowId = db.prepare('SELECT workflow_id, ended_at FROM workflow_runs WHERE id=?');
   // Fetch the workflow data (terminal-time schema snapshot for Phase 8 readonly viewer).
-  const getWorkflowData = db.prepare("SELECT data FROM workflows WHERE id=?");
+  const getWorkflowData = db.prepare('SELECT data FROM workflows WHERE id=?');
 
   return async function onTerminal(runID, result) {
     try {
@@ -181,14 +192,25 @@ export function createCapturingOnTerminal(db, fetchTaskReport = TaskReportAPI, e
       let reportJson = null;
       let report = result._report ?? null;
       if (!report && result.taskID) {
+        let timeoutID;
         try {
-          report = await fetchTaskReport(result.taskID);
+          report = await Promise.race([
+            Promise.resolve().then(() => fetchTaskReport(result.taskID)),
+            new Promise((_, reject) => {
+              timeoutID = setTimeout(() => {
+                reject(new Error('terminal_report_timeout'));
+              }, reportTimeoutMs);
+              timeoutID?.unref?.();
+            }),
+          ]);
         } catch {
           // TaskReport fetch failed — write a minimal report with the reason.
           if (result.reason) {
             reportJson = JSON.stringify({ reason: result.reason });
           }
           report = null;
+        } finally {
+          clearTimeout(timeoutID);
         }
       }
       if (report) {
@@ -236,7 +258,7 @@ export function createCapturingOnTerminal(db, fetchTaskReport = TaskReportAPI, e
         try {
           const after = getRunWorkflowId.get(runID);
           eventBus.broadcast(runRow.workflow_id, {
-            type: "run_terminal",
+            type: 'run_terminal',
             runID,
             status,
             report: reportJson ? JSON.parse(reportJson) : null,
@@ -245,7 +267,7 @@ export function createCapturingOnTerminal(db, fetchTaskReport = TaskReportAPI, e
           });
         } catch (broadcastErr) {
           console.error(
-            "[queue-adapter] run_terminal broadcast failed for run",
+            '[queue-adapter] run_terminal broadcast failed for run',
             runID,
             broadcastErr
           );
@@ -257,11 +279,7 @@ export function createCapturingOnTerminal(db, fetchTaskReport = TaskReportAPI, e
       // visibility). A failed DB write leaves the row in its pre-terminal
       // state (running) — Phase 1's restart sweep will mark it terminated
       // on next server start if this crash takes the process down.
-      console.error(
-        "[queue-adapter] onTerminal terminal capture failed for run",
-        runID,
-        err
-      );
+      console.error('[queue-adapter] onTerminal terminal capture failed for run', runID, err);
     }
   };
 }
@@ -288,10 +306,12 @@ export function createQueueAdapter(db, eventBus) {
       // Wrap TaskRunAPI in AsyncLocalStorage so the AgentExecutor can read
       // the workflow_run_id for persistExecution without modifying FlowGram's
       // ExecutionContext interface.
-      const result = await workflowRunContext.run({ runId: runID }, () => TaskRunAPI({ schema, inputs }));
+      const result = await workflowRunContext.run({ runId: runID }, () =>
+        TaskRunAPI({ schema, inputs })
+      );
       const taskID = result?.taskID;
       if (!taskID) {
-        throw new Error("TaskRunAPI returned no taskID");
+        throw new Error('TaskRunAPI returned no taskID');
       }
       // `done` settles when the run reaches a terminal state (poll-based).
       // The queue's wall-clock guard is the backstop if this never settles.
