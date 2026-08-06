@@ -28,6 +28,10 @@ handoff/
 # IDE local data (Trae specs, agent skills)
 .trae/
 
+# IDE local data (Trae specs, agent skills)
+.trae/
+.agents/skills/playwright-cli/
+
 # Playwright E2E artifacts
 /playwright-report/
 /test-results/
