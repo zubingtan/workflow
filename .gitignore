@@ -19,6 +19,7 @@ handoff/
 
 # Tool caches
 .eslintcache
+/.codegraph/
 
 # IDE local data (Trae specs, agent skills)
 .trae/
