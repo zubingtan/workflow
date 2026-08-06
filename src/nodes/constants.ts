@@ -23,5 +23,6 @@ export enum WorkflowNodeType {
   Comment = 'comment',
   Continue = 'continue',
   Break = 'break',
+  FeishuTrigger = 'feishu-trigger',
   FeishuBot = 'feishu-bot',
 }

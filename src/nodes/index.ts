@@ -16,6 +16,7 @@ import { LoopNodeRegistry } from './loop';
 import { LLMNodeRegistry } from './llm';
 import { HTTPNodeRegistry } from './http';
 import { GroupNodeRegistry } from './group';
+import { FeishuTriggerNodeRegistry } from './feishu-trigger';
 import { FeishuBotNodeRegistry } from './feishu-bot';
 import { EndNodeRegistry } from './end';
 import { ContinueNodeRegistry } from './continue';
@@ -43,5 +44,6 @@ export const nodeRegistries: FlowNodeRegistry[] = [
   VariableNodeRegistry,
   GroupNodeRegistry,
   MultiConditionNodeRegistry,
+  FeishuTriggerNodeRegistry,
   FeishuBotNodeRegistry,
 ];

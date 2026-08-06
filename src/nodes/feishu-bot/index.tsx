@@ -37,12 +37,54 @@ export const FeishuBotNodeRegistry: FlowNodeRegistry = {
           appId: '',
           appSecret: '',
           receiveIdType: 'chat_id',
+          // Deprecated dynamic field location. Kept for older saved workflows;
+          // new edits write Receive ID into inputsValues.receiveId.
           receiveId: {
+            type: 'template',
+            content: '',
+          },
+          // Deprecated dynamic field location. Kept for older saved workflows;
+          // new edits write Reply Message ID into inputsValues.replyToMessageId.
+          replyToMessageId: {
             type: 'template',
             content: '',
           },
         },
         msgType: 'text',
+        inputsValues: {
+          receiveId: {
+            type: 'template',
+            content: '',
+          },
+          replyToMessageId: {
+            type: 'template',
+            content: '',
+          },
+          textContent: {
+            type: 'template',
+            content: '',
+          },
+          postContent: {
+            type: 'template',
+            content: '',
+          },
+          cardContent: {
+            type: 'template',
+            content: '',
+          },
+        },
+        inputs: {
+          type: 'object',
+          properties: {
+            receiveId: { type: 'string' },
+            replyToMessageId: { type: 'string' },
+            textContent: { type: 'string' },
+            postContent: { type: 'string' },
+            cardContent: { type: 'string' },
+          },
+        },
+        // Deprecated dynamic field locations. Kept for older saved workflows;
+        // new edits write message content into inputsValues.*.
         textContent: {
           type: 'template',
           content: '',

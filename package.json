@@ -36,6 +36,7 @@
     "@flowgram.ai/runtime-interface": "1.0.12",
     "@flowgram.ai/runtime-js": "1.0.12",
     "@hono/node-server": "^2.0.10",
+    "@larksuiteoapi/node-sdk": "^1.72.0",
     "better-sqlite3": "^11.0.0",
     "classnames": "^2.5.1",
     "hono": "^4.12.31",

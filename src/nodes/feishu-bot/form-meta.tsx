@@ -1,5 +1,5 @@
 import { FormMeta, FormRenderProps } from '@flowgram.ai/free-layout-editor';
-import { DisplayOutputs } from '@flowgram.ai/form-materials';
+import { createInferInputsPlugin, DisplayOutputs } from '@flowgram.ai/form-materials';
 import { Divider } from '@douyinfe/semi-ui';
 
 import { FormHeader, FormContent } from '../../form-components';
@@ -24,4 +24,6 @@ export const FormRender = ({ form }: FormRenderProps<FeishuBotNodeJSON>) => (
 export const formMeta: FormMeta = {
   render: (props) => <FormRender {...props} />,
   effect: defaultFormMeta.effect,
+  validate: defaultFormMeta.validate,
+  plugins: [createInferInputsPlugin({ sourceKey: 'inputsValues', targetKey: 'inputs' })],
 };
