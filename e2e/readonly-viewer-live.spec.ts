@@ -15,7 +15,7 @@ import {
  * #182 E2E: ReadonlyViewer live-running mode.
  *
  * Acceptance scenario from map #178:
- *   - Create a workflow where node A runs for ~20s (fake-provider timeout mode).
+ *   - Create a workflow where node A runs for ~10s (fake-provider timeout mode).
  *   - While the run is in-flight, open History → click View Detail on the running
  *     instance.
  *   - ReadonlyViewer opens in live mode, mounts the Editor with
@@ -23,7 +23,7 @@ import {
  *     "Running" (WorkflowStatus.Processing).
  *
  * Decisions (locked):
- *   - sleepMs = 30000: long enough to reliably open the viewer + assert
+ *   - sleepMs = 10000: long enough to open the viewer + assert
  *     Processing before the run terminates, even in the full suite with
  *     serial workers. The delayed response then lets the live viewer remount
  *     into static mode with execution details present.
@@ -41,14 +41,14 @@ import {
  */
 
 const CORRELATION_ID = 'READONLY_LIVE_DELAYED';
-const NODE_SLEEP_MS = 30000;
+const NODE_SLEEP_MS = 10000;
 
 test.describe('ReadonlyViewer live mode', () => {
   test('running workflow → open ReadonlyViewer → node A shows Running', async ({ page }) => {
-    // 20s node sleep + assertion waits + cleanup — extend the default 30s timeout.
+    // 10s node sleep + assertion waits + cleanup — extend the default 30s timeout.
     test.setTimeout(75_000);
 
-    // Configure fake-provider to sleep 20s for prompts containing the correlationId.
+    // Configure fake-provider to sleep 10s for prompts containing the correlationId.
     await configureFakeProvider(
       CORRELATION_ID,
       'timeout',
@@ -64,7 +64,7 @@ test.describe('ReadonlyViewer live mode', () => {
     const workflowId = await createWorkflow(uniqueName, schema);
     const freshSchema = await getWorkflowSchema(workflowId);
 
-    // Submit the run — it will sit in "running" for ~20s.
+    // Submit the run — it will sit in "running" for ~10s.
     const runID = await submitRun(workflowId, freshSchema);
 
     // Wait specifically for 'running' (not 'queued') so the viewer is opened
