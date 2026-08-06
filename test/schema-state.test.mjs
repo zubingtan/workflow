@@ -42,6 +42,18 @@ describe('schemaToFields (IJsonSchema → field list)', () => {
     );
   });
 
+  test('preserves existing field descriptions', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        result: { type: 'string', description: 'The final answer' },
+      },
+    };
+    const fields = schemaToFields(schema);
+    assert.equal(fields[0].description, 'The final answer');
+    assert.deepEqual(JSON.parse(JSON.stringify(fieldsToSchema(fields))), schema);
+  });
+
   test('unknown field types fall back to string (defensive decode)', () => {
     const fields = schemaToFields({
       type: 'object',
@@ -82,7 +94,13 @@ describe('fieldsToSchema (field list → IJsonSchema)', () => {
 
 describe('prototype-chain field names', () => {
   test('reserved/prototype keys are rejected by validateFields', () => {
-    for (const name of ['__proto__', 'constructor', 'toString', 'hasOwnProperty']) {
+    for (const name of [
+      '__proto__',
+      'constructor',
+      'toString',
+      'hasOwnProperty',
+      '_executionDetail',
+    ]) {
       const errs = validateFields([field('a', name)]);
       assert.match(errs.a, /reserved name/, `${name} must be rejected`);
     }

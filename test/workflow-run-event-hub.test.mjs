@@ -195,6 +195,149 @@ test('initial connection reconciles a REST snapshot', async () => {
   unsubscribe();
 });
 
+test('late subscribers receive the latest active run report', () => {
+  const fake = createFakeEventSources();
+  const hub = new WorkflowRunEventHub({ createEventSource: fake.create.bind(fake) });
+  const initialEvents = [];
+  const unsubscribeInitial = hub.subscribe('workflow-1', {
+    onEvent: (event) => initialEvents.push(event),
+  });
+  const report = {
+    reports: {
+      nodeA: {
+        status: 'processing',
+        snapshots: [{}],
+      },
+    },
+  };
+
+  fake.sources[0].emit({
+    type: 'init',
+    workflowId: 'workflow-1',
+    activeRunIDs: ['run-1'],
+    activeRuns: [{ runID: 'run-1', status: 'running', report }],
+  });
+  fake.sources[0].emit({
+    type: 'run_progress',
+    workflowId: 'workflow-1',
+    runID: 'run-1',
+    sequence: 2,
+    report: {
+      reports: {
+        nodeA: {
+          status: 'processing',
+          snapshots: [{}, {}],
+        },
+      },
+    },
+  });
+
+  const lateEvents = [];
+  const unsubscribeLate = hub.subscribe('workflow-1', {
+    runID: 'run-1',
+    onEvent: (event) => lateEvents.push(event),
+  });
+
+  assert.equal(initialEvents.length, 2);
+  assert.equal(lateEvents.length, 1);
+  assert.equal(lateEvents[0].type, 'init');
+  assert.deepEqual(lateEvents[0].activeRunIDs, ['run-1']);
+  assert.deepEqual(lateEvents[0].activeRuns[0].report, {
+    reports: {
+      nodeA: {
+        status: 'processing',
+        snapshots: [{}, {}],
+      },
+    },
+  });
+
+  unsubscribeLate();
+  unsubscribeInitial();
+});
+
+test('late subscribers receive a terminal event for a completed run', () => {
+  const fake = createFakeEventSources();
+  const hub = new WorkflowRunEventHub({ createEventSource: fake.create.bind(fake) });
+  const unsubscribeInitial = hub.subscribe('workflow-1', { onEvent: () => {} });
+
+  fake.sources[0].emit({
+    type: 'init',
+    workflowId: 'workflow-1',
+    activeRunIDs: ['run-1'],
+    activeRuns: [{ runID: 'run-1', status: 'running', report: null }],
+  });
+  fake.sources[0].emit({
+    type: 'run_terminal',
+    workflowId: 'workflow-1',
+    runID: 'run-1',
+    status: 'succeeded',
+  });
+
+  const lateEvents = [];
+  const unsubscribeLate = hub.subscribe('workflow-1', {
+    runID: 'run-1',
+    onEvent: (event) => lateEvents.push(event),
+  });
+
+  assert.deepEqual(
+    lateEvents.map((event) => event.type),
+    ['init', 'run_terminal'],
+  );
+  assert.equal(lateEvents[1].runID, 'run-1');
+  assert.equal(lateEvents[1].status, 'succeeded');
+
+  unsubscribeLate();
+  unsubscribeInitial();
+});
+
+test('a stale init report cannot replace newer progress', () => {
+  const fake = createFakeEventSources();
+  const hub = new WorkflowRunEventHub({ createEventSource: fake.create.bind(fake) });
+  const events = [];
+  const unsubscribe = hub.subscribe('workflow-1', {
+    runID: 'run-1',
+    onEvent: (event) => events.push(event),
+  });
+
+  fake.sources[0].emit({
+    type: 'init',
+    workflowId: 'workflow-1',
+    sequence: 1,
+    activeRunIDs: ['run-1'],
+    activeRuns: [
+      {
+        runID: 'run-1',
+        status: 'running',
+        report: { reports: { nodeA: { status: 'processing', snapshots: [{}] } } },
+      },
+    ],
+  });
+  fake.sources[0].emit({
+    type: 'run_progress',
+    workflowId: 'workflow-1',
+    runID: 'run-1',
+    sequence: 2,
+    report: { reports: { nodeA: { status: 'succeeded', snapshots: [{}] } } },
+  });
+  fake.sources[0].emit({
+    type: 'init',
+    workflowId: 'workflow-1',
+    sequence: 1,
+    activeRunIDs: ['run-1'],
+    activeRuns: [
+      {
+        runID: 'run-1',
+        status: 'running',
+        report: { reports: { nodeA: { status: 'processing', snapshots: [{}] } } },
+      },
+    ],
+  });
+
+  assert.equal(events.at(-1).type, 'init');
+  assert.equal(events.at(-1).activeRuns[0].report.reports.nodeA.status, 'succeeded');
+  unsubscribe();
+});
+
 test('a stale snapshot cannot regress a newer running status', async () => {
   const fake = createFakeEventSources();
   let resolveSnapshot;

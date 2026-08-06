@@ -241,6 +241,7 @@ describe("structured output terminal classification (#249)", () => {
     assert.equal(terminal.phase, "failed");
     assert.equal(terminal.error.kind, "provider_error");
     assert.match(terminal.error.message, /response_format/);
+    assert.match(terminal.error.message, /structured output capability may be unsupported/);
     assert.equal(session._getPromptCalls().length, 1, "provider error never corrects");
   });
 

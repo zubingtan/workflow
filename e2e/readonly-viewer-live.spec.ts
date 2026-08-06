@@ -2,13 +2,13 @@ import { expect, test } from '@playwright/test';
 
 import {
   buildWorkflowSchema,
-  cancelRun,
   configureFakeProvider,
   createAgent,
   createWorkflow,
   getRunStatus,
   getWorkflowSchema,
   submitRun,
+  waitForTerminal,
 } from './helpers';
 
 /**
@@ -23,9 +23,10 @@ import {
  *     "Running" (WorkflowStatus.Processing).
  *
  * Decisions (locked):
- *   - sleepMs = 20000: long enough to reliably open the viewer + assert
+ *   - sleepMs = 30000: long enough to reliably open the viewer + assert
  *     Processing before the run terminates, even in the full suite with
- *     serial workers. Cancellation at the end speeds up teardown.
+ *     serial workers. The delayed response then lets the live viewer remount
+ *     into static mode with execution details present.
  *   - Assertion: wait for "Run Detail" header (proves ReadonlyViewer mounted)
  *     then wait for "Running" text (proves SSE run_progress delivered a
  *     Processing NodeReport that LiveHistoryRuntimeService fired into the
@@ -39,16 +40,21 @@ import {
  * subscriptions open (one per workflow via useActiveRunCounts).
  */
 
-const CORRELATION_ID = 'READONLY_LIVE_20S';
-const NODE_SLEEP_MS = 20000;
+const CORRELATION_ID = 'READONLY_LIVE_DELAYED';
+const NODE_SLEEP_MS = 30000;
 
 test.describe('ReadonlyViewer live mode', () => {
   test('running workflow → open ReadonlyViewer → node A shows Running', async ({ page }) => {
     // 20s node sleep + assertion waits + cleanup — extend the default 30s timeout.
-    test.setTimeout(60_000);
+    test.setTimeout(75_000);
 
     // Configure fake-provider to sleep 20s for prompts containing the correlationId.
-    await configureFakeProvider(CORRELATION_ID, 'timeout', NODE_SLEEP_MS);
+    await configureFakeProvider(
+      CORRELATION_ID,
+      'timeout',
+      NODE_SLEEP_MS,
+      JSON.stringify({ result: 'live detail' })
+    );
 
     const agentId = await createAgent();
     // Prompt contains the correlationId so fake-provider matches it.
@@ -93,13 +99,39 @@ test.describe('ReadonlyViewer live mode', () => {
     // LiveHistoryRuntimeService fires the Processing NodeReport and
     // NodeStatusBar renders the "Running" desc text.
     //
-    // Wait up to 10s for the "Running" status text to appear in the
-    // node status bar. This proves the SSE → LiveHistoryRuntimeService →
-    // reportEmitter → NodeStatusBar path works end-to-end.
-    await expect(page.getByText('Running').first()).toBeVisible({ timeout: 10_000 });
+    // First select the LLM node in the readonly canvas. The History table also
+    // contains a "Running" tag, so asserting that text alone would not prove
+    // the live NodeStatusBar mounted.
+    const agentNode = page.getByText('Agent_Main', { exact: true }).last();
+    await expect(agentNode).toBeVisible({ timeout: 20_000 });
+    await agentNode.click();
 
-    // --- Cleanup: cancel the run so it doesn't leak into subsequent tests.
-    // The 20s sleep would otherwise block the next test's start.
-    await cancelRun(runID);
+    // Wait up to 10s for the "Running" status text to appear in the node
+    // status bar. This proves the SSE → LiveHistoryRuntimeService →
+    // reportEmitter → NodeStatusBar path works end-to-end.
+    const runningStatus = page
+      .locator('[class*="node-status-header-content"]')
+      .filter({ hasText: 'Running' })
+      .first();
+    await expect(runningStatus).toBeVisible({ timeout: 15_000 });
+    await runningStatus.click();
+
+    // Let the delayed provider response complete so the live viewer remounts
+    // into static mode and receives a terminal report with execution details.
+    const terminal = await waitForTerminal(runID, 40_000);
+    expect(terminal.status).toBe('succeeded');
+
+    const terminalAgentNode = page.getByText('Agent_Main', { exact: true }).last();
+    await expect(terminalAgentNode).toBeVisible({ timeout: 15_000 });
+    await terminalAgentNode.click();
+    const terminalStatus = page
+      .locator('[class*="node-status-header-content"]')
+      .filter({ hasText: /Succeed|Failed|Cancelled|Running/ })
+      .nth(1);
+    await expect(terminalStatus).toBeVisible({ timeout: 10_000 });
+    await terminalStatus.click();
+    await expect(page.getByText('Execution Details:', { exact: true }).first()).toBeVisible({
+      timeout: 10_000,
+    });
   });
 });

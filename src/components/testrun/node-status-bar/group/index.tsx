@@ -18,6 +18,7 @@ interface NodeStatusGroupProps {
   data: unknown;
   optional?: boolean;
   disableCollapse?: boolean;
+  defaultExpanded?: boolean;
 }
 
 const isObjectHasContent = (obj: any = {}): boolean => obj && Object.keys(obj).length > 0;
@@ -27,9 +28,10 @@ export const NodeStatusGroup: FC<NodeStatusGroupProps> = ({
   data,
   optional = false,
   disableCollapse = false,
+  defaultExpanded = true,
 }) => {
   const hasContent = isObjectHasContent(data);
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
 
   if (optional && !hasContent) {
     return null;

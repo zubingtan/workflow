@@ -15,7 +15,7 @@ import { createAgentExecutor, AgentExecutionError } from "../server/runtime-adap
  *     kind="structured_output_error".
  *   - a capability terminal from the execution layer keeps its
  *     kind="capability_error" when projected to AgentExecutionError.
- *   - runs WITHOUT a declared schema pass structured=null (legacy behavior).
+ *   - runs WITHOUT a declared schema fail before session creation.
  */
 
 function makeAgent() {
@@ -104,24 +104,37 @@ describe("AgentExecutor structured output wiring", () => {
     assert.deepEqual(captured.structured.schema.properties, { result: { type: "string" } });
   });
 
-  test("node without declared outputs passes structured=null (legacy path unchanged)", async () => {
-    const captured = {};
-    const executor = createAgentExecutor({
-      db: makeDb(),
-      agentDir: "/tmp/agent-dir",
-      createSession: async (agent, dir, mem0, structured) => {
-        captured.structured = structured;
-        return { dispose() {} };
-      },
-      runAgentExecution: makeFakeRunAgentExecution(captured),
-    });
+  test("node without declared or non-empty outputs fails before session creation", async () => {
+    for (const node of [
+      { data: {} },
+      { data: { outputs: { type: "object", properties: {} } } },
+    ]) {
+      let sessionCreated = false;
+      const executor = createAgentExecutor({
+        db: makeDb(),
+        agentDir: "/tmp/agent-dir",
+        createSession: async () => {
+          sessionCreated = true;
+          return { dispose() {} };
+        },
+        runAgentExecution: makeFakeRunAgentExecution({}),
+      });
 
-    await executor.execute({
-      inputs: { agentId: "a1", prompt: "p" },
-      signal: new AbortController().signal,
-      node: { data: {} },
-    });
-    assert.equal(captured.structured, null);
+      await assert.rejects(
+        () => executor.execute({
+          inputs: { agentId: "a1", prompt: "p" },
+          signal: new AbortController().signal,
+          node,
+        }),
+        (err) => {
+          assert.ok(err instanceof AgentExecutionError);
+          assert.equal(err.kind, "structured_output_error");
+          assert.match(err.message, /structured output schema is required/);
+          return true;
+        },
+      );
+      assert.equal(sessionCreated, false, "no session may be created without a schema");
+    }
   });
 
   test("malformed declaration fails before any request with structured_output_error", async () => {

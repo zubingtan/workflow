@@ -48,6 +48,7 @@ const RESERVED_FIELD_NAMES = new Set([
   "isPrototypeOf",
   "propertyIsEnumerable",
   "toLocaleString",
+  "_executionDetail",
 ]);
 
 /** @returns {string|null} an error message when the name is invalid. */
@@ -130,7 +131,10 @@ export function compileStrictSchema(outputs) {
     }
     // Integer must be a distinct primitive in the provider schema — reuse the
     // FlowGram declaration verbatim (no coercion, no extra constraints).
-    compiledProperties[key] = { type };
+    compiledProperties[key] = {
+      type,
+      ...(typeof field.description === "string" ? { description: field.description } : {}),
+    };
   }
 
   return {
@@ -344,4 +348,3 @@ export function buildCorrectionPrompt(errors) {
 }
 
 export { REFUSAL_RETRY_PROMPT };
-

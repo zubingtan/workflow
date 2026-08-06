@@ -11,7 +11,7 @@
  */
 
 /** @typedef {'string'|'integer'|'number'|'boolean'} FieldType */
-/** @typedef {{ id: string, name: string, type: FieldType }} SchemaField */
+/** @typedef {{ id: string, name: string, type: FieldType, description?: string }} SchemaField */
 
 const FIELD_TYPES = ['string', 'integer', 'number', 'boolean'];
 
@@ -31,6 +31,7 @@ export const RESERVED_FIELD_NAMES = new Set([
   'isPrototypeOf',
   'propertyIsEnumerable',
   'toLocaleString',
+  '_executionDetail',
 ]);
 
 let counter = 0;
@@ -53,6 +54,7 @@ export function schemaToFields(schema) {
       id: newFieldId(),
       name,
       type: FIELD_TYPES.includes(def.type) ? def.type : 'string',
+      ...(typeof def.description === 'string' ? { description: def.description } : {}),
     }));
 }
 
@@ -61,7 +63,7 @@ export function schemaToFields(schema) {
  * list is empty — callers must keep the previous persisted value in that
  * case (an empty declaration would silently drop the outputs contract).
  * @param {SchemaField[]} fields
- * @returns {{type: 'object', properties: Record<string, {type: string}>}|null}
+ * @returns {{type: 'object', properties: Record<string, {type: string, description?: string}>}|null}
  */
 export function fieldsToSchema(fields) {
   if (fields.length === 0) return null;
@@ -69,7 +71,10 @@ export function fieldsToSchema(fields) {
   // the object's prototype instead of an own property, silently dropping it.
   const properties = Object.create(null);
   for (const f of fields) {
-    properties[f.name] = { type: f.type };
+    properties[f.name] = {
+      type: f.type,
+      ...(f.description !== undefined ? { description: f.description } : {}),
+    };
   }
   return { type: 'object', properties };
 }

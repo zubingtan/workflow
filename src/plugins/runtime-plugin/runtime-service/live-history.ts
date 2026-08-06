@@ -11,6 +11,7 @@
  * no-ops (readonly). The event subscription is owned by the service so it can
  * be torn down on dispose.
  */
+import { NodeReport } from '@flowgram.ai/runtime-interface';
 import { WorkflowLineEntity, injectable } from '@flowgram.ai/free-layout-editor';
 
 import { isTerminalStatus, workflowRunEventHub } from '../../../workflow-run-event-hub.mjs';
@@ -18,7 +19,7 @@ import { WorkflowRuntimeService } from './index';
 // Re-export the pure helper for TypeScript callers. The implementation lives
 // in apply-run-progress.mjs so it's unit-testable from .mjs tests without TS
 // compilation. Imported locally so the SSE handler can call it.
-import { applyRunProgress } from './apply-run-progress.mjs';
+import { applyRunProgress, createReportBuffer } from './apply-run-progress.mjs';
 export { applyRunProgress };
 
 @injectable()
@@ -40,6 +41,10 @@ export class LiveHistoryRuntimeService extends WorkflowRuntimeService {
   // causing getRun fetch to hang indefinitely).
   private onTerminalCb?: () => void;
 
+  private reportBuffer = createReportBuffer((report: NodeReport) => {
+    this.fireNodeReport(report);
+  });
+
   /**
    * Register a callback to be invoked when the SSE stream delivers a
    * `run_terminal` event for this run. The callback should trigger a refetch
@@ -47,6 +52,10 @@ export class LiveHistoryRuntimeService extends WorkflowRuntimeService {
    */
   public setOnTerminal(cb: () => void): void {
     this.onTerminalCb = cb;
+  }
+
+  public flush(): void {
+    this.reportBuffer.flush();
   }
 
   /**
@@ -80,7 +89,7 @@ export class LiveHistoryRuntimeService extends WorkflowRuntimeService {
           for (const activeRun of payload.activeRuns) {
             if (activeRun?.runID === this.liveRunID && activeRun.report) {
               applyRunProgress(activeRun.report, this.prevNodeStatus, (nr) =>
-                this.fireNodeReport(nr)
+                this.reportBuffer.emit(nr)
               );
             }
           }
@@ -92,7 +101,7 @@ export class LiveHistoryRuntimeService extends WorkflowRuntimeService {
           return;
         }
         if (type === 'run_progress' && report) {
-          applyRunProgress(report, this.prevNodeStatus, (nr) => this.fireNodeReport(nr));
+          applyRunProgress(report, this.prevNodeStatus, (nr) => this.reportBuffer.emit(nr));
         }
         if (type === 'run_status' && status === 'terminated') {
           notifyTerminal();
@@ -114,6 +123,7 @@ export class LiveHistoryRuntimeService extends WorkflowRuntimeService {
   public dispose(): void {
     this.eventSubscription?.();
     this.eventSubscription = undefined;
+    this.reportBuffer.clear();
   }
 
   // --- overrides: readonly, no live execution ---

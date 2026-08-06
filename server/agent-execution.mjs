@@ -299,11 +299,16 @@ export async function* runAgentExecution({
       // rejecting response_format) — classify as provider_error, never as an
       // empty/structured failure, and never as a structured success.
       if (finalMessage.stopReason === "error") {
+        const providerMessage =
+          finalMessage.errorMessage || "provider returned an error stop reason";
+        const capabilityHint = /json_schema|response_format|structured output/i.test(providerMessage)
+          ? "; structured output capability may be unsupported"
+          : "";
         yield {
           type: "terminal", phase: "failed", partialText, toolEvents, stats, sessionFile,
           error: {
             kind: "provider_error",
-            message: finalMessage.errorMessage || "provider returned an error stop reason",
+            message: `${providerMessage}${capabilityHint}`,
           },
         };
         return;

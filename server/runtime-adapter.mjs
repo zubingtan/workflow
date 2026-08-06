@@ -366,6 +366,12 @@ class AgentExecutor {
         message: `invalid structured output schema: ${err?.message ?? String(err)}`,
       });
     }
+    if (!structured) {
+      throw new AgentExecutionError({
+        kind: "structured_output_error",
+        message: "structured output schema is required and must declare at least one field",
+      });
+    }
 
     // New interface: createSession(agent, agentDir, mem0?) — apiKey resolved internally
     // mem0 config: read from settings table + runId from workflowRunContext (#218)

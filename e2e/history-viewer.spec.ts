@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 
 import {
   buildWorkflowSchema,
+  configureFakeProvider,
   createAgent,
   createWorkflow,
   getWorkflowSchema,
@@ -21,8 +22,15 @@ test.describe('History viewer', () => {
   test('submit run → wait terminal → View Detail → readonly editor renders historical canvas', async ({
     page,
   }) => {
+    const correlationId = `HISTORY_EXECUTION_DETAIL_${Date.now()}`;
+    await configureFakeProvider(
+      correlationId,
+      'json_response',
+      undefined,
+      JSON.stringify({ result: 'history detail' })
+    );
     const agentId = await createAgent();
-    const schema = buildWorkflowSchema(agentId, 'Hello history viewer');
+    const schema = buildWorkflowSchema(agentId, `Hello history viewer ${correlationId}`);
     const workflowId = await createWorkflow(`E2E Viewer WF ${Date.now()}`, schema);
     const freshSchema = await getWorkflowSchema(workflowId);
 
@@ -58,6 +66,19 @@ test.describe('History viewer', () => {
     await expect(page.getByText(/Status:\s*(succeeded|failed|terminated)/)).toBeVisible({
       timeout: 5_000,
     });
+
+    await page.getByText('Agent_Main', { exact: true }).last().click();
+    await page.getByText('Succeed', { exact: true }).nth(1).click();
+    await expect(page.getByText('Outputs:', { exact: true }).last()).toBeVisible({
+      timeout: 5_000,
+    });
+    await expect(page.getByText('Execution Details:', { exact: true }).last()).toBeVisible({
+      timeout: 5_000,
+    });
+    await expect(page.getByText('finalText:', { exact: true })).toHaveCount(0);
+    await page.getByText('Execution Details:', { exact: true }).last().click();
+    await expect(page.getByText('finalText:', { exact: true })).toBeVisible();
+    await expect(page.getByText('_executionDetail:', { exact: true })).toHaveCount(0);
 
     // --- Click Back to close the viewer ---
     await page.getByRole('button', { name: /Back/ }).click();
