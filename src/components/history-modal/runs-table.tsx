@@ -68,11 +68,13 @@ export function RunsTable({
   onViewDetail,
   onCancelRun,
   onDeleteRun,
+  readOnly = false,
 }: {
   rows: RunRow[];
   onViewDetail: (runID: string) => void;
   onCancelRun: (runID: string) => void;
   onDeleteRun: (runID: string) => void;
+  readOnly?: boolean;
 }) {
   return (
     <Table
@@ -125,21 +127,28 @@ export function RunsTable({
                 <Button size="small" onClick={() => onViewDetail(row.id)}>
                   View Detail
                 </Button>
-                {isActive && (
-                  <Popconfirm title="Cancel this run?" onConfirm={() => onCancelRun(row.id)}>
-                    <Button size="small" type="danger" theme="light">
+                {isActive &&
+                  (readOnly ? (
+                    <Button size="small" type="danger" theme="light" disabled>
                       Cancel Run
                     </Button>
-                  </Popconfirm>
-                )}
-                {isTerminal ? (
+                  ) : (
+                    <Popconfirm title="Cancel this run?" onConfirm={() => onCancelRun(row.id)}>
+                      <Button size="small" type="danger" theme="light">
+                        Cancel Run
+                      </Button>
+                    </Popconfirm>
+                  ))}
+                {isTerminal && !readOnly ? (
                   <Popconfirm title="Delete this run record?" onConfirm={() => onDeleteRun(row.id)}>
                     <Button size="small" type="danger">
                       Delete
                     </Button>
                   </Popconfirm>
                 ) : (
-                  <Tooltip content="Available after the run finishes">
+                  <Tooltip
+                    content={readOnly ? 'Workflow 已删除' : 'Available after the run finishes'}
+                  >
                     <span>
                       <Button size="small" disabled>
                         Delete

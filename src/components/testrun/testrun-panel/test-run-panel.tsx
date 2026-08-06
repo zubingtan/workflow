@@ -14,6 +14,8 @@ import { IconClose, IconPlay, IconSpin } from '@douyinfe/semi-icons';
 import { TestRunJsonInput } from '../testrun-json-input';
 import { TestRunForm } from '../testrun-form';
 import { NodeStatusGroup } from '../node-status-bar/group';
+import { useWorkflowId } from '../../workflow-context';
+import { workflowRunEventHub } from '../../../workflow-run-event-hub.mjs';
 import { WorkflowRuntimeService } from '../../../plugins/runtime-plugin/runtime-service';
 import { useTestRunFormPanel } from '../../../plugins/panel-manager-plugin/hooks';
 import { IconCancel } from '../../../assets/icon-cancel';
@@ -26,6 +28,7 @@ export interface TestRunSidePanelProps {}
 export const TestRunSidePanel: FC<TestRunSidePanelProps> = () => {
   const runtimeService = useService(WorkflowRuntimeService);
   const { close: closePanel } = useTestRunFormPanel();
+  const workflowId = useWorkflowId();
   const [isRunning, setRunning] = useState(false);
   const [queuePosition, setQueuePosition] = useState(0);
   const [values, setValues] = useState<Record<string, unknown>>({});
@@ -37,6 +40,7 @@ export const TestRunSidePanel: FC<TestRunSidePanelProps> = () => {
       }
     | undefined
   >();
+  const [workflowDeleted, setWorkflowDeleted] = useState(false);
 
   // en - Use localStorage to persist the JSON mode state
   const [inputJSONMode, _setInputJSONMode] = useState(() => {
@@ -50,6 +54,7 @@ export const TestRunSidePanel: FC<TestRunSidePanelProps> = () => {
   };
 
   const onTestRun = async () => {
+    if (workflowDeleted) return;
     if (isRunning) {
       await runtimeService.taskCancel();
       return;
@@ -108,6 +113,7 @@ export const TestRunSidePanel: FC<TestRunSidePanelProps> = () => {
   const renderButton = (
     <Button
       onClick={onTestRun}
+      disabled={workflowDeleted}
       icon={isRunning ? <IconCancel /> : <IconPlay size="small" />}
       className={classnames(styles.button, {
         [styles.running]: isRunning,
@@ -131,6 +137,20 @@ export const TestRunSidePanel: FC<TestRunSidePanelProps> = () => {
     });
     return () => disposer.dispose();
   }, []);
+
+  useEffect(() => {
+    setWorkflowDeleted(false);
+    if (!workflowId) return undefined;
+    return workflowRunEventHub.subscribe(workflowId, {
+      types: ['workflow_deleted'],
+      onEvent: (payload: any) => {
+        if (payload?.type === 'workflow_deleted' && payload.workflowId === workflowId) {
+          setWorkflowDeleted(true);
+          setRunning(false);
+        }
+      },
+    });
+  }, [workflowId]);
 
   // Phase 3: while queued, poll GET /api/runs/:runID for queue position.
   // runtimeService exposes the current runID (if any) via a getter.
@@ -187,6 +207,9 @@ export const TestRunSidePanel: FC<TestRunSidePanelProps> = () => {
         />
       </div>
       <div className={styles['testrun-panel-content']}>
+        {workflowDeleted && (
+          <div className={styles.error}>Workflow 已删除，运行摘要保留为只读。</div>
+        )}
         {isRunning ? renderRunning : renderForm}
       </div>
       <div className={styles['testrun-panel-footer']}>{renderButton}</div>

@@ -57,9 +57,8 @@ export const createLiveHistoryRuntimePlugin = definePluginCreator<
     }
     svc.subscribe(options.runID, options.workflowId);
   },
-  onDispose() {
-    // The service's EventSource is closed by the ReadonlyViewer when it
-    // unmounts or switches to static mode. Nothing to do here — the editor
-    // disposes the DI container which drops the singleton service instance.
+  onDispose(ctx) {
+    // Remove the service subscription before the editor drops its DI scope.
+    ctx.get<LiveHistoryRuntimeService>(WorkflowRuntimeService).dispose();
   },
 });

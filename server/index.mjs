@@ -27,8 +27,8 @@ const PORT = Number(
       ? (console.warn('[deprecated] SERVER_PORT is replaced by PORT; use PORT instead.'),
         process.env.SERVER_PORT)
       : process.env.NODE_ENV === 'production'
-      ? 4000
-      : 4001)
+        ? 4000
+        : 4001),
 );
 // WORKFLOW_DATA_DIR overrides the default data dir — used by E2E tests to
 // isolate SQLite state and by Docker to mount a volume. Defaults diverge by
@@ -160,6 +160,7 @@ let server;
 function shutdown() {
   console.log('shutting down...');
   runQueue.dispose();
+  eventBus.dispose?.();
   db.close();
   server?.close();
   process.exit(0);

@@ -1,18 +1,19 @@
 /**
  * #181: read-only replacement for `WorkflowRuntimeService` used by the
  * ReadonlyViewer when rendering a live-running workflow. Subscribes to the
- * per-workflow SSE event stream and fires `reportEmitter` on per-node change
- * so NodeStatusBar / AgentOutput render the live per-node state.
+ * per-workflow event stream and fires `reportEmitter` on per-node change so
+ * NodeStatusBar / AgentOutput render the live per-node state. The page-level
+ * WorkflowRunEventHub owns the shared EventSource.
  *
  * Subclasses `WorkflowRuntimeService` so the same DI token resolves and
  * `useService(WorkflowRuntimeService)` picks it up. The base class's polling
  * machinery is never invoked — `taskRun`/`taskCancel` are overridden as
- * no-ops (readonly). The SSE subscription is owned by the service so it can
+ * no-ops (readonly). The event subscription is owned by the service so it can
  * be torn down on dispose.
  */
 import { WorkflowLineEntity, injectable } from '@flowgram.ai/free-layout-editor';
 
-import { SERVER_URL } from '../../../api';
+import { isTerminalStatus, workflowRunEventHub } from '../../../workflow-run-event-hub.mjs';
 import { WorkflowRuntimeService } from './index';
 // Re-export the pure helper for TypeScript callers. The implementation lives
 // in apply-run-progress.mjs so it's unit-testable from .mjs tests without TS
@@ -23,6 +24,8 @@ export { applyRunProgress };
 @injectable()
 export class LiveHistoryRuntimeService extends WorkflowRuntimeService {
   private liveRunID?: string;
+
+  private terminalNotified = false;
 
   private prevNodeStatus: Map<
     string,
@@ -47,7 +50,7 @@ export class LiveHistoryRuntimeService extends WorkflowRuntimeService {
   }
 
   /**
-   * Open the SSE subscription. Called by `createLiveHistoryRuntimePlugin`'s
+   * Open the event subscription. Called by `createLiveHistoryRuntimePlugin`'s
    * `onInit` (after the editor mounts). The stream delivers:
    *   - `init {activeRuns: [{runID, status, report}]}` — late-subscriber catch-up
    *   - `run_progress {runID, report}` — per-node progress
@@ -57,54 +60,60 @@ export class LiveHistoryRuntimeService extends WorkflowRuntimeService {
    */
   public subscribe(runID: string, workflowId: string): void {
     this.liveRunID = runID;
-    const url = `${SERVER_URL}/api/workflows/${workflowId}/runs/events`;
-    const es = new EventSource(url);
-    this.eventSource = es;
+    this.terminalNotified = false;
+    this.eventSubscription = workflowRunEventHub.subscribe(workflowId, {
+      runID,
+      onEvent: (payload: any) => {
+        const { type, report, status } = payload;
 
-    es.onmessage = (ev) => {
-      let payload: any;
-      try {
-        payload = JSON.parse(ev.data);
-      } catch {
-        return;
-      }
-      if (!payload || typeof payload !== 'object') return;
-      const { type, runID: evRunID, report } = payload;
-      // Only process events for the run we're viewing.
-      if (evRunID && evRunID !== this.liveRunID) return;
-      if (type === 'init' && Array.isArray(payload.activeRuns)) {
-        // Late-subscriber catch-up: find our run's cached report.
-        for (const ar of payload.activeRuns) {
-          if (ar?.runID === this.liveRunID && ar.report) {
-            applyRunProgress(ar.report, this.prevNodeStatus, (nr) => this.fireNodeReport(nr));
+        const notifyTerminal = () => {
+          if (this.terminalNotified) return;
+          this.terminalNotified = true;
+          try {
+            this.onTerminalCb?.();
+          } catch {
+            /* swallow — callback errors must not crash the event handler */
           }
+        };
+
+        if (type === 'init' && Array.isArray(payload.activeRuns)) {
+          for (const activeRun of payload.activeRuns) {
+            if (activeRun?.runID === this.liveRunID && activeRun.report) {
+              applyRunProgress(activeRun.report, this.prevNodeStatus, (nr) =>
+                this.fireNodeReport(nr)
+              );
+            }
+          }
+          return;
         }
-        return;
-      }
-      if (type === 'run_progress' && report) {
-        applyRunProgress(report, this.prevNodeStatus, (nr) => this.fireNodeReport(nr));
-      }
-      if (type === 'run_terminal') {
-        // #182: invoke the component's terminal callback instead of opening
-        // a second SSE connection in the ReadonlyViewer.
-        try {
-          this.onTerminalCb?.();
-        } catch {
-          /* swallow — callback errors must not crash the SSE handler */
+        if (type === 'snapshot' && Array.isArray(payload.runs)) {
+          const snapshot = payload.runs.find((run: any) => run?.id === this.liveRunID);
+          if (snapshot && isTerminalStatus(snapshot.status)) notifyTerminal();
+          return;
         }
-      }
-    };
+        if (type === 'run_progress' && report) {
+          applyRunProgress(report, this.prevNodeStatus, (nr) => this.fireNodeReport(nr));
+        }
+        if (type === 'run_status' && status === 'terminated') {
+          notifyTerminal();
+          return;
+        }
+        if (type === 'run_terminal') {
+          // #182: invoke the component's terminal callback without opening a
+          // second connection in the ReadonlyViewer.
+          notifyTerminal();
+        }
+      },
+    });
   }
 
   /**
-   * Close the SSE subscription. Called when the ReadonlyViewer unmounts or
+   * Close the event subscription. Called when the ReadonlyViewer unmounts or
    * switches to static mode after terminal.
    */
   public dispose(): void {
-    if (this.eventSource) {
-      this.eventSource.close();
-      this.eventSource = undefined;
-    }
+    this.eventSubscription?.();
+    this.eventSubscription = undefined;
   }
 
   // --- overrides: readonly, no live execution ---

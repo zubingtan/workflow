@@ -124,17 +124,15 @@ export function createRunQueue({
   }
 
   const updateRunning = db.prepare(
-    "UPDATE workflow_runs SET status='running', started_at=datetime('now') WHERE id=?"
+    "UPDATE workflow_runs SET status='running', started_at=datetime('now') WHERE id=?",
   );
   const updateTaskID = db.prepare(
-    "UPDATE workflow_runs SET task_id=? WHERE id=? AND task_id IS NULL"
+    'UPDATE workflow_runs SET task_id=? WHERE id=? AND task_id IS NULL',
   );
   // Phase 5: read the timestamps back for the SSE broadcast. The queue writes
   // them with datetime('now') (SQLite server time) so reading them back keeps
   // the broadcast consistent with what GET /api/runs/:runID returns.
-  const getRunTimestamps = db.prepare(
-    "SELECT queued_at, started_at FROM workflow_runs WHERE id=?"
-  );
+  const getRunTimestamps = db.prepare('SELECT queued_at, started_at FROM workflow_runs WHERE id=?');
   // cancelQueued's UPDATE is scoped to status='queued' only — NOT the broader
   // "NOT IN (succeeded,failed,terminated)" guard. The broader guard would
   // clobber a row that already transitioned to 'running' during the queued→running
@@ -142,42 +140,36 @@ export function createRunQueue({
   // queue advanced). The endpoint's re-read handles that race at the API layer,
   // but the queue method must also be safe in isolation.
   const updateTerminatedFromQueued = db.prepare(
-    "UPDATE workflow_runs SET status='terminated', ended_at=datetime('now') WHERE id=? AND status='queued'"
+    "UPDATE workflow_runs SET status='terminated', ended_at=datetime('now') WHERE id=? AND status='queued'",
   );
 
   /**
-   * Mark `current` terminal and, if there's a queued run, dequeue it. Called
-   * from both normal runTask completion and the wall-clock guard.
-   *
-   * Phase 4: onTerminal may be async (fetches TaskReport + writes DB). The
-   * queue does NOT await it — if it did, a slow TaskReport fetch would block
-   * the next dequeue. Instead, onTerminal's own try/catch swallows errors,
-   * and we attach a .catch() here as a backstop so an async rejection can't
-   * become an unhandledRejection. The queue advances immediately.
+   * Persist and publish the terminal state before starting the next run for
+   * this workflow. Keeping `current` until the await completes prevents a
+   * queued run from publishing `running` before its predecessor's terminal
+   * event.
    */
-  function finishCurrent(workflowId, result) {
+  async function finishCurrent(workflowId, result) {
     const wf = workflows.get(workflowId);
     if (!wf || !wf.current) return;
+    if (wf.current.finishing) return;
+    const current = wf.current;
     const runID = wf.current.runID;
-    wf.current = null;
-    // Notify the caller (Phase 4 writes workflow_runs.report here).
+    current.finishing = true;
+
+    // Notify the caller (Phase 4 writes workflow_runs.report here) and wait for
+    // its broadcast so the queue's observable event order is terminal → next.
     try {
-      const ret = onTerminal(runID, result);
-      // If onTerminal returned a promise (async), attach a backstop catch so
-      // a rejection can't become unhandledRejection. The adapter's own
-      // try/catch is the primary defense; this is the safety net.
-      if (ret && typeof ret.catch === "function") {
-        ret.catch((err) => {
-          console.error("[queue] onTerminal async rejection for run", runID, err);
-        });
-      }
+      await onTerminal(runID, result);
     } catch (err) {
-      // Sync throw — log and continue (don't stall the queue).
-      console.error("[queue] onTerminal threw for run", runID, err);
+      console.error('[queue] onTerminal failed for run', runID, err);
     }
+
+    if (wf.current !== current) return;
+    wf.current = null;
     // Advance to the next queued run, if any.
     if (wf.queue.length > 0) {
-      dequeue(workflowId);
+      void dequeue(workflowId);
     } else if (wf.current === null) {
       // No current and empty queue — drop the workflow entry to avoid leak.
       workflows.delete(workflowId);
@@ -203,12 +195,12 @@ export function createRunQueue({
     // Phase 5: fire run_status=running. Done after the DB write so a
     // concurrent GET /api/runs/:runID sees the new status. started_at was
     // just written by updateRunning; read it back for broadcast consistency.
-    if (typeof onEvent === "function") {
+    if (typeof onEvent === 'function') {
       const ts = getRunTimestamps.get(runID);
       onEvent(workflowId, {
-        type: "run_status",
+        type: 'run_status',
         runID,
-        status: "running",
+        status: 'running',
         started_at: ts?.started_at ?? null,
       });
     }
@@ -225,8 +217,8 @@ export function createRunQueue({
         if (!c || c.runID !== runID) return; // run already advanced/cleared
         const prev = c.lastReport;
         c.lastReport = report;
-        if (typeof onEvent === "function" && reportChanged(prev, report)) {
-          onEvent(workflowId, { type: "run_progress", runID, report });
+        if (typeof onEvent === 'function' && reportChanged(prev, report)) {
+          onEvent(workflowId, { type: 'run_progress', runID, report });
         }
       };
       started = await runTask(workflowId, runID, payload, onProgress);
@@ -237,9 +229,9 @@ export function createRunQueue({
       // finish if current is still our runID.
       const cur = workflows.get(workflowId)?.current;
       if (!cur || cur.runID !== runID) return;
-      finishCurrent(workflowId, {
-        status: "failed",
-        reason: err?.message ?? "run_start_error",
+      void finishCurrent(workflowId, {
+        status: 'failed',
+        reason: err?.message ?? 'run_start_error',
       });
       return;
     }
@@ -251,18 +243,16 @@ export function createRunQueue({
       updateTaskID.run(started.taskID, runID);
     }
 
-    // Await terminal. Use .then/.catch (not await) so dequeue stays async but
-    // doesn't block the next dequeue. The runID guard prevents double-firing:
-    // if the wall-clock guard already force-failed this run (clearing
-    // `current` and advancing the queue), a late `done` settlement must NOT
-    // clear the next run's `current`.
+    // Handle terminal settlement without blocking other workflows. The
+    // runID guard prevents a late settlement from clearing a newer current
+    // entry after the wall-clock guard has advanced the queue.
     started.done.then(
       (result) => {
         const w = workflows.get(workflowId);
         if (!w || !w.current || w.current.runID !== runID) return;
         // Phase 4: attach taskID so onTerminal can fetch the TaskReport.
-        finishCurrent(workflowId, {
-          ...(result ?? { status: "success" }),
+        void finishCurrent(workflowId, {
+          ...(result ?? { status: 'success' }),
           taskID: w.current.taskID ?? started.taskID,
         });
       },
@@ -272,13 +262,13 @@ export function createRunQueue({
         // Phase 4 (#156 spec): AgentExecutionError.kind (agent_not_found /
         // provider_error / internal_error) is the structured reason the spec
         // asks for; fall back to message for non-AgentExecutionError throws.
-        const reason = err?.kind ?? err?.message ?? "run_error";
-        finishCurrent(workflowId, {
-          status: "failed",
+        const reason = err?.kind ?? err?.message ?? 'run_error';
+        void finishCurrent(workflowId, {
+          status: 'failed',
           reason,
           taskID: w.current.taskID ?? started.taskID,
         });
-      }
+      },
     );
   }
 
@@ -290,12 +280,12 @@ export function createRunQueue({
     // dequeue broadcast fires synchronously inside dequeue if no current).
     // queued_at was written by POST /api/task/run; read it back so the
     // broadcast matches what GET /api/runs/:runID returns.
-    if (typeof onEvent === "function") {
+    if (typeof onEvent === 'function') {
       const ts = getRunTimestamps.get(runID);
       onEvent(workflowId, {
-        type: "run_status",
+        type: 'run_status',
         runID,
-        status: "queued",
+        status: 'queued',
         queued_at: ts?.queued_at ?? null,
       });
     }
@@ -334,8 +324,8 @@ export function createRunQueue({
         // terminal broadcast (with full report) is NOT fired here because
         // cancelQueued only writes status + ended_at — there's no TaskReport
         // to attach (the run never started).
-        if (typeof onEvent === "function") {
-          onEvent(workflowId, { type: "run_status", runID, status: "terminated" });
+        if (typeof onEvent === 'function') {
+          onEvent(workflowId, { type: 'run_status', runID, status: 'terminated' });
         }
         // If the queue is now empty AND no current, drop the wf entry.
         if (!wf.current && wf.queue.length === 0) workflows.delete(workflowId);
@@ -410,9 +400,9 @@ export function createRunQueue({
         }
         // Phase 4: attach taskID so onTerminal can fetch the (possibly stale)
         // TaskReport before writing the terminal row.
-        finishCurrent(workflowId, {
-          status: "failed",
-          reason: "wall_clock_zombie",
+        void finishCurrent(workflowId, {
+          status: 'failed',
+          reason: 'wall_clock_zombie',
           taskID: zombie.taskID,
         });
       }
