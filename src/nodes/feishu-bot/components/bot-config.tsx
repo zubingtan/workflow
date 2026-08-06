@@ -153,13 +153,27 @@ export function BotConfig() {
                 </Field>
               </div>
               <FormItem name="Receive ID" required vertical type="string">
-                <Field<IFlowTemplateValue> name="app.receiveId">
+                <Field<IFlowTemplateValue> name="inputsValues.receiveId">
                   {({ field }) => (
                     <PromptEditorWithVariables
                       disableMarkdownHighlight
                       readonly={readonly_}
                       style={{ flexGrow: 1 }}
                       placeholder="Recipient ID, use var by '{'"
+                      value={field.value}
+                      onChange={(v) => field.onChange(v!)}
+                    />
+                  )}
+                </Field>
+              </FormItem>
+              <FormItem name="Reply Message ID" vertical type="string">
+                <Field<IFlowTemplateValue> name="inputsValues.replyToMessageId">
+                  {({ field }) => (
+                    <PromptEditorWithVariables
+                      disableMarkdownHighlight
+                      readonly={readonly_}
+                      style={{ flexGrow: 1 }}
+                      placeholder="Original message ID, e.g. {{start_0.messageId}}"
                       value={field.value}
                       onChange={(v) => field.onChange(v!)}
                     />

@@ -28,8 +28,10 @@ export interface FeishuBotNodeJSON extends FlowNodeJSON {
       appSecret: string;
       /** receive_id_type: open_id / user_id / union_id / email / chat_id */
       receiveIdType: 'open_id' | 'user_id' | 'union_id' | 'email' | 'chat_id';
-      /** The receiver ID value */
+      /** Deprecated: dynamic receiver ID now lives in inputsValues.receiveId. */
       receiveId: IFlowTemplateValue;
+      /** Deprecated: dynamic reply target now lives in inputsValues.replyToMessageId. */
+      replyToMessageId?: IFlowTemplateValue;
     };
     /** Message type: text / post / interactive */
     msgType: 'text' | 'post' | 'interactive';
@@ -39,6 +41,11 @@ export interface FeishuBotNodeJSON extends FlowNodeJSON {
     postContent: IFlowTemplateValue;
     /** Interactive card content — JSON string of card structure (when msgType=interactive) */
     cardContent: IFlowTemplateValue;
+    inputsValues?: Record<
+      'receiveId' | 'replyToMessageId' | 'textContent' | 'postContent' | 'cardContent',
+      IFlowTemplateValue
+    >;
+    inputs?: IJsonSchema<'object'>;
     outputs: IJsonSchema<'object'>;
   };
 }

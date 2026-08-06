@@ -13,7 +13,7 @@
  * For production use, consider storing these in a separate credentials store
  * (similar to the agents table for LLM keys).
  */
-import { createHmac } from "node:crypto";
+import { createHmac } from 'node:crypto';
 
 /**
  * Generate Feishu webhook signature.
@@ -24,9 +24,9 @@ import { createHmac } from "node:crypto";
  */
 export function genWebhookSign(timestamp, secret) {
   const stringToSign = `${timestamp}\n${secret}`;
-  const hmac = createHmac("sha256", stringToSign);
-  hmac.update("");
-  return hmac.digest("base64");
+  const hmac = createHmac('sha256', stringToSign);
+  hmac.update('');
+  return hmac.digest('base64');
 }
 
 /**
@@ -35,12 +35,15 @@ export function genWebhookSign(timestamp, secret) {
  * @param {string} appSecret
  * @returns {Promise<string>} tenant_access_token
  */
-export async function getTenantAccessToken(appId, appSecret) {
-  const res = await fetch("https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ app_id: appId, app_secret: appSecret }),
-  });
+export async function getTenantAccessToken(appId, appSecret, fetchImpl = fetch) {
+  const res = await fetchImpl(
+    'https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ app_id: appId, app_secret: appSecret }),
+    }
+  );
   const data = await res.json();
   if (data.code !== 0) {
     throw new Error(`Failed to get tenant_access_token: ${data.msg} (code: ${data.code})`);
@@ -60,27 +63,34 @@ export async function getTenantAccessToken(appId, appSecret) {
  * @param {string} [opts.secret] - webhook secret (for signing)
  * @returns {object} request body object
  */
-export function buildMessageBody({ botType, msgType, textContent, postContent, cardContent, secret }) {
+export function buildMessageBody({
+  botType,
+  msgType,
+  textContent,
+  postContent,
+  cardContent,
+  secret,
+}) {
   const body = {};
 
   // Webhook mode: add signature if secret is set
-  if (botType === "webhook" && secret) {
+  if (botType === 'webhook' && secret) {
     const timestamp = Math.floor(Date.now() / 1000);
     body.timestamp = String(timestamp);
     body.sign = genWebhookSign(timestamp, secret);
   }
 
   switch (msgType) {
-    case "text":
-      body.msg_type = "text";
+    case 'text':
+      body.msg_type = 'text';
       body.content = { text: textContent };
       break;
-    case "post":
-      body.msg_type = "post";
+    case 'post':
+      body.msg_type = 'post';
       body.content = { post: JSON.parse(postContent) };
       break;
-    case "interactive":
-      body.msg_type = "interactive";
+    case 'interactive':
+      body.msg_type = 'interactive';
       body.card = JSON.parse(cardContent);
       break;
     default:
@@ -96,10 +106,14 @@ export function buildMessageBody({ botType, msgType, textContent, postContent, c
  * { type: 'constant', content: '...' } or plain string.
  */
 export function resolveTemplateValue(val) {
-  if (val == null) return "";
-  if (typeof val === "string") return val;
-  if (typeof val === "object" && val.content != null) return String(val.content);
+  if (val == null) return '';
+  if (typeof val === 'string') return val;
+  if (typeof val === 'object' && val.content != null) return String(val.content);
   return String(val);
+}
+
+function firstDefined(...values) {
+  return values.find((value) => value !== undefined && value !== null);
 }
 
 /**
@@ -111,57 +125,89 @@ export function resolveTemplateValue(val) {
  * @returns {Promise<{outputs: {success: boolean, messageId: string, response: object}}>}
  */
 export async function executeFeishuBot({ nodeData, inputs }) {
-  const botType = nodeData.botType || inputs.botType || "webhook";
-  const msgType = nodeData.msgType || inputs.msgType || "text";
+  const botType = nodeData.botType || inputs.botType || 'webhook';
+  const msgType = nodeData.msgType || inputs.msgType || 'text';
 
-  const textContent = resolveTemplateValue(inputs.textContent ?? nodeData.textContent);
-  const postContent = resolveTemplateValue(inputs.postContent ?? nodeData.postContent);
-  const cardContent = resolveTemplateValue(inputs.cardContent ?? nodeData.cardContent);
+  const textContent = resolveTemplateValue(
+    firstDefined(inputs.textContent, nodeData.inputsValues?.textContent, nodeData.textContent)
+  );
+  const postContent = resolveTemplateValue(
+    firstDefined(inputs.postContent, nodeData.inputsValues?.postContent, nodeData.postContent)
+  );
+  const cardContent = resolveTemplateValue(
+    firstDefined(inputs.cardContent, nodeData.inputsValues?.cardContent, nodeData.cardContent)
+  );
 
   let url;
-  let headers = { "Content-Type": "application/json" };
+  let headers = { 'Content-Type': 'application/json' };
   let body;
 
-  if (botType === "webhook") {
+  if (botType === 'webhook') {
     // Custom bot webhook: URL is the full webhook endpoint
-    const webhookUrl = resolveTemplateValue(inputs.webhook?.url ?? nodeData.webhook?.url);
+    const webhookUrl = resolveTemplateValue(firstDefined(inputs.webhookUrl, nodeData.webhook?.url));
     if (!webhookUrl) {
-      throw new Error("Webhook URL is required");
+      throw new Error('Webhook URL is required');
     }
     url = webhookUrl;
     const secret = nodeData.webhook?.secret || inputs.webhook?.secret;
     body = buildMessageBody({ botType, msgType, textContent, postContent, cardContent, secret });
-  } else if (botType === "app") {
+  } else if (botType === 'app') {
     // App bot: get tenant_access_token then call /im/v1/messages
     const appId = nodeData.app?.appId || inputs.app?.appId;
     const appSecret = nodeData.app?.appSecret || inputs.app?.appSecret;
-    const receiveIdType = nodeData.app?.receiveIdType || inputs.app?.receiveIdType || "chat_id";
-    const receiveId = resolveTemplateValue(inputs.app?.receiveId ?? nodeData.app?.receiveId);
+    const receiveIdType = nodeData.app?.receiveIdType || inputs.app?.receiveIdType || 'chat_id';
+    const receiveId = resolveTemplateValue(
+      firstDefined(
+        inputs.receiveId,
+        inputs.app?.receiveId,
+        nodeData.inputsValues?.receiveId,
+        nodeData.app?.receiveId
+      )
+    );
+    const replyToMessageId = resolveTemplateValue(
+      firstDefined(
+        inputs.replyToMessageId,
+        inputs.app?.replyToMessageId,
+        nodeData.inputsValues?.replyToMessageId,
+        nodeData.app?.replyToMessageId
+      )
+    );
 
     if (!appId || !appSecret) {
-      throw new Error("App ID and App Secret are required for app bot mode");
+      throw new Error('App ID and App Secret are required for app bot mode');
     }
-    if (!receiveId) {
-      throw new Error("Receive ID is required for app bot mode");
+    if (!receiveId && !replyToMessageId) {
+      throw new Error('Receive ID or Reply Message ID is required for app bot mode');
     }
 
     const token = await getTenantAccessToken(appId, appSecret);
-    headers["Authorization"] = `Bearer ${token}`;
-    url = `https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=${receiveIdType}`;
+    headers['Authorization'] = `Bearer ${token}`;
 
     const msgBody = buildMessageBody({ botType, msgType, textContent, postContent, cardContent });
-    // App bot API requires receive_id + content as JSON string
-    body = {
-      receive_id: receiveId,
-      msg_type: msgType === "interactive" ? "interactive" : msgType,
-      content: JSON.stringify(msgType === "interactive" ? msgBody.card : msgBody.content),
+    const appMessageBody = {
+      msg_type: msgType === 'interactive' ? 'interactive' : msgType,
+      content: JSON.stringify(msgType === 'interactive' ? msgBody.card : msgBody.content),
     };
+
+    if (replyToMessageId) {
+      url = `https://open.feishu.cn/open-apis/im/v1/messages/${encodeURIComponent(
+        replyToMessageId
+      )}/reply`;
+      body = appMessageBody;
+    } else {
+      url = `https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=${receiveIdType}`;
+      // App bot send API requires receive_id + content as JSON string.
+      body = {
+        receive_id: receiveId,
+        ...appMessageBody,
+      };
+    }
   } else {
     throw new Error(`Unsupported bot type: ${botType}`);
   }
 
   const res = await fetch(url, {
-    method: "POST",
+    method: 'POST',
     headers,
     body: JSON.stringify(body),
   });
@@ -170,16 +216,18 @@ export async function executeFeishuBot({ nodeData, inputs }) {
 
   // Feishu success: code=0 (app bot) or StatusCode=0 (webhook)
   const success = responseJson.code === 0 || responseJson.StatusCode === 0;
-  const messageId = responseJson.data?.message_id ?? "";
-  const errorMsg = responseJson.msg || responseJson.StatusMessage || "";
+  const messageId = responseJson.data?.message_id ?? '';
+  const errorMsg = responseJson.msg || responseJson.StatusMessage || '';
 
   if (!success) {
     return {
       outputs: {
         success: false,
-        messageId: "",
+        messageId: '',
         response: responseJson,
-        _error: `Feishu API error: ${errorMsg} (code: ${responseJson.code ?? responseJson.StatusCode})`,
+        _error: `Feishu API error: ${errorMsg} (code: ${
+          responseJson.code ?? responseJson.StatusCode
+        })`,
       },
     };
   }

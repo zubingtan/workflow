@@ -8,11 +8,13 @@ import { initRuntime, createAgentSessionForAgent } from './runtime-adapter.mjs';
 import { runAgentExecution } from './agent-execution.mjs';
 import { seedAgentIfEmpty } from './agent-catalog.mjs';
 import { createApp } from './app.mjs';
+import { enqueueSavedWorkflowRun } from './app.mjs';
 import { ensureSchema, markInflightRunsInterrupted } from './db-schema.mjs';
 import { createRunQueue } from './queue.mjs';
 import { createQueueAdapter } from './queue-adapter.mjs';
 import { createRunsEventBus } from './runs-events.mjs';
 import { getNodeTimeoutDefaultMs } from './settings.mjs';
+import { maybeStartFeishuLongConnectionManager } from './feishu-long-connection.mjs';
 
 // --- Config ---
 // PORT (cloud-native standard) replaces SERVER_PORT. The legacy name is
@@ -132,6 +134,18 @@ const runQueue = createRunQueue({
   onEvent: (workflowId, event) => eventBus.broadcast(workflowId, event),
 });
 
+const feishuLongConnectionManager = await maybeStartFeishuLongConnectionManager({
+  db,
+  enqueueSavedWorkflowRun: ({ workflowId, schema, inputs }) =>
+    enqueueSavedWorkflowRun({
+      db,
+      enqueueRun: (wfId, runID, payload) => runQueue.enqueue(wfId, runID, payload),
+      workflowId,
+      schema,
+      inputs,
+    }),
+});
+
 const app = createApp({
   db,
   agentDir: AGENT_DIR,
@@ -149,6 +163,7 @@ const app = createApp({
   getRunQueuePosition: (workflowId, runID) => runQueue.getQueuePosition(workflowId, runID),
   getRunningReport: (runID) => runQueue.getCurrentReport(runID),
   eventBus,
+  feishuLongConnectionManager,
 });
 
 // --- Start ---
@@ -159,6 +174,7 @@ const app = createApp({
 let server;
 function shutdown() {
   console.log('shutting down...');
+  feishuLongConnectionManager?.close();
   runQueue.dispose();
   eventBus.dispose?.();
   db.close();
@@ -208,6 +224,7 @@ if (IS_PROD) {
     '/api/workflows',
     '/api/settings',
     '/api/mem0',
+    '/api/feishu',
   ];
   const apiGate = (req, res, next) => {
     const path = (req.url ?? '').split('?')[0];

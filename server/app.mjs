@@ -61,6 +61,8 @@ import {
   parseSessionFile,
 } from './execution-store.mjs';
 import { createSseEventQueue } from './runs-events.mjs';
+import { FeishuEventError, parseFeishuEventBody } from './feishu-events.mjs';
+import { handleFeishuReceiveMessage } from './feishu-trigger-handler.mjs';
 
 /**
  * Translate a thrown AgentCatalogError into a 400 JSON response. Non-catalog
@@ -127,6 +129,21 @@ function providerListFingerprint(provider) {
   });
 }
 
+export function enqueueSavedWorkflowRun({ db, enqueueRun, workflowId, schema, inputs }) {
+  const wf = db.prepare('SELECT id, data FROM workflows WHERE id=?').get(workflowId);
+  if (!wf) return null;
+
+  const runID = nanoid(12);
+  const workflowSchema = schema === undefined ? wf.data : JSON.stringify(schema);
+  db.prepare(
+    "INSERT INTO workflow_runs (id, workflow_id, status, queued_at) VALUES (?, ?, 'queued', datetime('now'))"
+  ).run(runID, workflowId);
+  if (typeof enqueueRun === 'function') {
+    enqueueRun(workflowId, runID, { schema: workflowSchema, inputs });
+  }
+  return { runID, schema: workflowSchema };
+}
+
 /**
  * @param {object} deps
  * @param {import("better-sqlite3").Database} deps.db
@@ -162,6 +179,8 @@ function providerListFingerprint(provider) {
  *   a fake bus to exercise the SSE endpoint without a real HTTP server.
  * @param {number} [deps.runEventsHeartbeatMs=25000] - heartbeat interval for
  *   Workflow Run event streams.
+ * @param {object} [deps.feishuLongConnectionManager]
+ *   Refreshes long-connection clients after workflow trigger config changes.
  * @returns {Hono}
  */
 export function createApp({
@@ -181,8 +200,17 @@ export function createApp({
   eventBus,
   runEventsHeartbeatMs = 25_000,
   providerClient = { fetchModels: fetchProviderModels, testCompletion: testProviderCompletion },
+  feishuLongConnectionManager,
 }) {
   const app = new Hono();
+
+  async function refreshFeishuLongConnections() {
+    try {
+      await feishuLongConnectionManager?.refresh?.();
+    } catch (err) {
+      console.error('[feishu] failed to refresh long connections', err);
+    }
+  }
 
   // Provider tests run against unsaved drafts. Keep their short-lived proofs
   // in process memory so the save route can enforce the same test gate without
@@ -279,6 +307,40 @@ export function createApp({
 
   app.get('/health/live', (c) => c.json({ status: 'live' }));
 
+  app.post('/api/feishu/events', async (c) => {
+    let body;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: 'invalid JSON' }, 400);
+    }
+
+    let parsed;
+    try {
+      parsed = parseFeishuEventBody(body, {
+        verificationToken: process.env.FEISHU_EVENT_VERIFICATION_TOKEN ?? '',
+        encryptKey: process.env.FEISHU_EVENT_ENCRYPT_KEY ?? '',
+      });
+    } catch (err) {
+      if (err instanceof FeishuEventError)
+        return c.json({ error: err.code, message: err.message }, 400);
+      throw err;
+    }
+
+    if (parsed.kind === 'challenge') {
+      return c.json({ challenge: parsed.challenge });
+    }
+
+    const result = await handleFeishuReceiveMessage({
+      db,
+      payload: parsed.payload,
+      enqueueSavedWorkflowRun: ({ workflowId, schema, inputs }) =>
+        enqueueSavedWorkflowRun({ db, enqueueRun, workflowId, schema, inputs }),
+    });
+    if (result.statusCode) return c.json(result, result.statusCode);
+    return c.json(result);
+  });
+
   // --- Workflow CRUD ---
   app.get('/workflows', (c) => {
     const rows = db
@@ -308,6 +370,7 @@ export function createApp({
       body.name,
       JSON.stringify(body.data ?? {})
     );
+    await refreshFeishuLongConnections();
     const row = db.prepare('SELECT * FROM workflows WHERE id = ?').get(id);
     return c.json({ ...row, data: JSON.parse(row.data) }, 201);
   });
@@ -328,11 +391,12 @@ export function createApp({
     db.prepare(
       "UPDATE workflows SET name = ?, data = ?, updated_at = datetime('now') WHERE id = ?"
     ).run(name, data, id);
+    await refreshFeishuLongConnections();
     const row = db.prepare('SELECT * FROM workflows WHERE id = ?').get(id);
     return c.json({ ...row, data: JSON.parse(row.data) });
   });
 
-  app.delete('/workflows/:id', (c) => {
+  app.delete('/workflows/:id', async (c) => {
     const id = c.req.param('id');
     // Phase 6 (#158): refuse to delete a workflow that still has queued or
     // running runs. The user must cancel (or wait for) them first — no bulk
@@ -358,10 +422,11 @@ export function createApp({
         console.error('[app] workflow_deleted broadcast failed for', id, err);
       }
     }
+    await refreshFeishuLongConnections();
     return c.json({ ok: true });
   });
 
-  app.post('/workflows/:id/copy', (c) => {
+  app.post('/workflows/:id/copy', async (c) => {
     const src = db.prepare('SELECT * FROM workflows WHERE id = ?').get(c.req.param('id'));
     if (!src) return c.json({ error: 'not found' }, 404);
     const id = nanoid(10);
@@ -370,6 +435,7 @@ export function createApp({
       `${src.name} (copy)`,
       src.data
     );
+    await refreshFeishuLongConnections();
     const row = db.prepare('SELECT * FROM workflows WHERE id = ?').get(id);
     return c.json({ ...row, data: JSON.parse(row.data) }, 201);
   });
@@ -862,27 +928,19 @@ export function createApp({
 
     // --- Saved-workflow path: enqueue (Phase 3 drives the queue) ---
     if (body.workflowId) {
-      // FK guard: refuse unknown workflowId (also catches FK violations at
-      // insert time — gives a clean 404 instead of a 500 from SQLite).
-      const wf = db.prepare('SELECT id FROM workflows WHERE id=?').get(body.workflowId);
-      if (!wf) return c.json({ error: 'workflow not found', workflowId: body.workflowId }, 404);
-
-      const runID = nanoid(12);
-      db.prepare(
-        "INSERT INTO workflow_runs (id, workflow_id, status, queued_at) VALUES (?, ?, 'queued', datetime('now'))"
-      ).run(runID, body.workflowId);
-
-      // Hand off to the queue. Phase 2's placeholder just records the enqueue;
-      // Phase 3 replaces `enqueueRun` with the real serial-queue driver that
-      // dequeues + calls TaskRunAPI + captures terminal (Phase 4).
-      if (typeof enqueueRun === 'function') {
-        enqueueRun(body.workflowId, runID, { schema, inputs });
-      }
+      const result = enqueueSavedWorkflowRun({
+        db,
+        enqueueRun,
+        workflowId: body.workflowId,
+        schema,
+        inputs,
+      });
+      if (!result) return c.json({ error: 'workflow not found', workflowId: body.workflowId }, 404);
 
       // Return the runID (NOT the runtime taskID — that's filled when the
       // queue dequeues). status='queued' signals the Test Run panel to show
       // the queued state (Phase 7 owns the full history UI).
-      return c.json({ runID, status: 'queued' });
+      return c.json({ runID: result.runID, status: 'queued' });
     }
 
     // --- Draft path (no workflowId): immediate execution, minimal lock ---

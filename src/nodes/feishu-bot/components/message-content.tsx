@@ -30,7 +30,7 @@ export function MessageContent() {
     switch (msgType) {
       case 'text':
         return (
-          <Field<IFlowTemplateValue> name="textContent">
+          <Field<IFlowTemplateValue> name="inputsValues.textContent">
             {({ field }) => (
               <PromptEditorWithVariables
                 readonly={readonly_}
@@ -44,7 +44,7 @@ export function MessageContent() {
         );
       case 'post':
         return (
-          <Field<IFlowTemplateValue> name="postContent">
+          <Field<IFlowTemplateValue> name="inputsValues.postContent">
             {({ field }) => (
               <JsonEditorWithVariables
                 value={field.value?.content}
@@ -59,7 +59,7 @@ export function MessageContent() {
         );
       case 'interactive':
         return (
-          <Field<IFlowTemplateValue> name="cardContent">
+          <Field<IFlowTemplateValue> name="inputsValues.cardContent">
             {({ field }) => (
               <JsonEditorWithVariables
                 value={field.value?.content}

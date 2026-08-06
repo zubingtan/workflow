@@ -75,6 +75,13 @@ const SCHEMA_SQL = `
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS feishu_event_dedup (
+    message_id TEXT PRIMARY KEY,
+    run_id TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (run_id) REFERENCES workflow_runs(id) ON DELETE SET NULL
+  );
 `;
 
 /**
@@ -82,7 +89,7 @@ const SCHEMA_SQL = `
  * Idempotent — safe to call on every startup.
  */
 export function ensureSchema(db) {
-  db.pragma("foreign_keys = ON");
+  db.pragma('foreign_keys = ON');
   migrateAgentsTableIfNeeded(db);
   db.exec(SCHEMA_SQL);
 }
@@ -93,12 +100,12 @@ export function ensureSchema(db) {
  * column. Irreversible.
  */
 function migrateAgentsTableIfNeeded(db) {
-  const cols = db.prepare("PRAGMA table_info(agents)").all();
+  const cols = db.prepare('PRAGMA table_info(agents)').all();
   if (!cols.length) return; // table doesn't exist yet — schema SQL will create it
-  const hasOldCol = cols.some((c) => c.name === "provider_base_url");
+  const hasOldCol = cols.some((c) => c.name === 'provider_base_url');
   if (!hasOldCol) return; // already migrated
 
-  const rows = db.prepare("SELECT * FROM agents").all();
+  const rows = db.prepare('SELECT * FROM agents').all();
   db.exec(`
     CREATE TABLE agents_new (
       id TEXT PRIMARY KEY,
@@ -111,7 +118,7 @@ function migrateAgentsTableIfNeeded(db) {
     );
   `);
   const insert = db.prepare(
-    "INSERT INTO agents_new (id, name, config, created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
+    'INSERT INTO agents_new (id, name, config, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
   );
   for (const row of rows) {
     const config = JSON.stringify({
@@ -120,9 +127,9 @@ function migrateAgentsTableIfNeeded(db) {
         api_key: row.provider_api_key,
         model: row.model,
       },
-      system_prompt: row.system_prompt || "",
+      system_prompt: row.system_prompt || '',
       session_options: {},
-      pi_settings: { defaultProjectTrust: "always" },
+      pi_settings: { defaultProjectTrust: 'always' },
     });
     insert.run(row.id, row.name, config, row.created_at, row.updated_at);
   }
@@ -146,12 +153,14 @@ function migrateAgentsTableIfNeeded(db) {
  * Returns the number of rows swept (for startup logging).
  */
 export function markInflightRunsInterrupted(db) {
-  const info = db.prepare(
-    `UPDATE workflow_runs
+  const info = db
+    .prepare(
+      `UPDATE workflow_runs
        SET status='terminated',
            ended_at=datetime('now'),
            report=json_set(coalesce(report,'{}'), '$.reason', 'server_restart_interrupt')
      WHERE status IN ('queued','running')`
-  ).run();
+    )
+    .run();
   return info.changes;
 }
