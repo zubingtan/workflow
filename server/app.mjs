@@ -134,7 +134,8 @@ export function enqueueSavedWorkflowRun({ db, enqueueRun, workflowId, schema, in
   if (!wf) return null;
 
   const runID = nanoid(12);
-  const workflowSchema = schema === undefined ? wf.data : JSON.stringify(schema);
+  const workflowSchema =
+    schema === undefined ? wf.data : typeof schema === 'string' ? schema : JSON.stringify(schema);
   db.prepare(
     "INSERT INTO workflow_runs (id, workflow_id, status, queued_at) VALUES (?, ?, 'queued', datetime('now'))"
   ).run(runID, workflowId);
