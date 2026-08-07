@@ -193,7 +193,10 @@ export async function executeFeishuBot({ nodeData, inputs }) {
       url = `https://open.feishu.cn/open-apis/im/v1/messages/${encodeURIComponent(
         replyToMessageId
       )}/reply`;
-      body = appMessageBody;
+      body = {
+        ...appMessageBody,
+        reply_in_thread: true,
+      };
     } else {
       url = `https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=${receiveIdType}`;
       // App bot send API requires receive_id + content as JSON string.

@@ -247,6 +247,7 @@ describe('executeFeishuBot', () => {
       assert.match(calls[1].url, /\/im\/v1\/messages\/om_original_message\/reply$/);
       const messageBody = JSON.parse(calls[1].init.body);
       assert.equal(messageBody.receive_id, undefined);
+      assert.equal(messageBody.reply_in_thread, true);
       assert.equal(messageBody.msg_type, 'text');
       assert.deepEqual(JSON.parse(messageBody.content), { text: 'LLM reply text' });
     } finally {
