@@ -23,25 +23,40 @@ function makeEnv({ stored = null, prefersDark = false } = {}) {
     setAttribute: (k, v) => bodyAttrs.set(k, String(v)),
     removeAttribute: (k) => bodyAttrs.delete(k),
   };
+  const htmlAttrs = new Map();
+  const htmlClasses = new Set();
+  const html = {
+    getAttribute: (k) => htmlAttrs.get(k) ?? null,
+    setAttribute: (k, v) => htmlAttrs.set(k, String(v)),
+    classList: {
+      add: (name) => htmlClasses.add(name),
+      remove: (name) => htmlClasses.delete(name),
+      contains: (name) => htmlClasses.has(name),
+    },
+  };
   const localStorage = {
     getItem: (k) => (store.has(k) ? store.get(k) : null),
   };
   const matchMedia = (q) => ({
     matches: q === '(prefers-color-scheme: dark)' ? !!prefersDark : false,
   });
-  return { store, body, localStorage, matchMedia };
+  return { store, body, html, localStorage, matchMedia };
 }
 
 test('FOUC: stored "dark" → body[theme-mode="dark"]', () => {
   const env = makeEnv({ stored: 'dark', prefersDark: false });
   applyInitialTheme(env);
   assert.equal(env.body.getAttribute('theme-mode'), 'dark');
+  assert.equal(env.html.getAttribute('data-theme'), 'dark');
+  assert.equal(env.html.classList.contains('dark'), true);
 });
 
 test('FOUC: stored "light" → body[theme-mode="light"]', () => {
   const env = makeEnv({ stored: 'light', prefersDark: true });
   applyInitialTheme(env);
   assert.equal(env.body.getAttribute('theme-mode'), 'light');
+  assert.equal(env.html.getAttribute('data-theme'), 'light');
+  assert.equal(env.html.classList.contains('dark'), false);
 });
 
 test('FOUC: stored "auto" + prefers-color-scheme=dark → body[theme-mode="dark"]', () => {

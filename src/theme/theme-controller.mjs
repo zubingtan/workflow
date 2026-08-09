@@ -2,7 +2,7 @@
  * Pure theme controller — the React-free core of useTheme.
  *
  * Owns the theme state machine: localStorage read/write, matchMedia
- * subscription, body[theme-mode] application. The hook (use-theme.ts) wraps
+ * subscription, body[theme-mode] and html[data-theme]/.dark application. The hook (use-theme.ts) wraps
  * this with React state; tests drive this directly with fakes (#54 pattern,
  * mirrored from src/agent-execution/execute-agent-run.mjs).
  *
@@ -14,9 +14,11 @@
  *
  * Contract:
  *   - On creation: reads localStorage, resolves the initial theme, applies
- *     `body[theme-mode]`, and subscribes to matchMedia (so 'auto' mode
+ *     `html[data-theme]`, `html.dark`, and the compatibility `body[theme-mode]`
+ *     attribute, then subscribes to matchMedia (so 'auto' mode
  *     follows OS preference changes in real time).
- *   - `setThemeMode(mode)`: writes localStorage, re-resolves, applies to body.
+ *   - `setThemeMode(mode)`: writes localStorage, re-resolves, and applies to
+ *     both the new html contract and the legacy body contract.
  *   - `toggleTheme()`: flips light↔dark. When themeMode is 'auto', toggles
  *     to the opposite of the current resolvedTheme.
  *   - `dispose()`: removes the matchMedia listener.
@@ -48,6 +50,7 @@ export function resolveThemeMode(stored, prefersDark) {
  * @param {Storage} env.localStorage
  * @param {(query: string) => { matches: boolean, addEventListener?: (e: string, fn: (e: any) => void) => void, removeEventListener?: (e: string, fn: (e: any) => void) => void, addListener?: (fn: (e: any) => void) => void, removeListener?: (fn: (e: any) => void) => void }} env.matchMedia
  * @param {{ getAttribute: (k: string) => string | null, setAttribute: (k: string, v: string) => void, removeAttribute?: (k: string) => void }} env.body
+ * @param {{ setAttribute?: (k: string, v: string) => void, classList?: { add?: (name: string) => void, remove?: (name: string) => void } }} [env.html]
  * @param {(resolved: 'light' | 'dark') => void} [env.onChange]  Optional subscriber; invoked whenever the resolved theme changes (from setThemeMode, toggleTheme, or OS preference flip while in 'auto' mode). The hook uses this to trigger React re-renders without re-subscribing to matchMedia.
  * @returns {{
  *   themeMode: 'light' | 'dark' | 'auto',
@@ -58,7 +61,7 @@ export function resolveThemeMode(stored, prefersDark) {
  * }}
  */
 export function createThemeController(env) {
-  const { localStorage, matchMedia, body, onChange: userOnChange } = env;
+  const { localStorage, matchMedia, body, html, onChange: userOnChange } = env;
   const media = matchMedia(MEDIA_QUERY);
 
   let stored = localStorage.getItem(STORAGE_KEY);
@@ -72,6 +75,9 @@ export function createThemeController(env) {
   const apply = () => {
     const resolved = resolveThemeMode(themeMode, readPrefers());
     body.setAttribute('theme-mode', resolved);
+    html?.setAttribute?.('data-theme', resolved);
+    if (resolved === 'dark') html?.classList?.add?.('dark');
+    else html?.classList?.remove?.('dark');
     return resolved;
   };
 

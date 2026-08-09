@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { createRoot } from 'react-dom/client';
+import { ArrowLeft, LoaderCircle, Moon, Pencil, Save, Sun, Monitor } from 'lucide-react';
 import { unstableSetCreateRoot } from '@flowgram.ai/form-materials';
 // Semi CSS must load before semi-bridge.css so the bridge overrides win.
 // D6 pitfall 1: bare '@douyinfe/semi-ui/dist/css/semi.min.css' import path is
@@ -9,8 +10,7 @@ import { unstableSetCreateRoot } from '@flowgram.ai/form-materials';
 // If this breaks in a future Semi upgrade, switch to a relative path.
 import '@douyinfe/semi-ui/dist/css/semi.min.css';
 import en_US from '@douyinfe/semi-ui/lib/es/locale/source/en_US';
-import { Button, Typography, Spin, Toast, Modal, Input, LocaleProvider } from '@douyinfe/semi-ui';
-import { IconArrowLeft, IconEdit, IconMoon, IconSave, IconSun } from '@douyinfe/semi-icons';
+import { Typography, Spin, Toast, LocaleProvider } from '@douyinfe/semi-ui';
 
 // Theme CSS files — order matters (ADR-0002):
 //   semi.min.css → semi-bridge.css → tokens.css → theme-dark.css
@@ -28,6 +28,22 @@ import { GetGlobalVariableSchema } from './plugins/variable-panel-plugin';
 import { WorkflowManager } from './manage';
 import { initialData } from './initial-data';
 import { Editor } from './editor';
+import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Field,
+  FieldLabel,
+  Input,
+  Popover,
+  PopoverContent,
+  PopoverTitle,
+  PopoverTrigger,
+} from './components/ui';
 import { AgentMillerColumns } from './components/agent-miller';
 import { AdminSettings } from './components/admin-settings';
 import * as api from './api';
@@ -65,6 +81,7 @@ function App() {
   // `renaming` toggles the input; `renameDraft` holds the in-flight value.
   const [renaming, setRenaming] = useState(false);
   const [renameDraft, setRenameDraft] = useState('');
+  const [themeMenuOpen, setThemeMenuOpen] = useState(false);
   const [confirmNav, setConfirmNav] = useState<{
     visible: boolean;
     action: (() => void) | null;
@@ -75,7 +92,7 @@ function App() {
   // LayoutDirectionProvider syncs it to the loaded workflow's direction on
   // mount and updates it on every toggle.
   const directionRef = useRef<LayoutDirection>('LR');
-  const { resolvedTheme, toggleTheme } = useTheme();
+  const { resolvedTheme, themeMode, setThemeMode } = useTheme();
 
   // Seed a default workflow on first launch + restore hash-based route
   useEffect(() => {
@@ -281,13 +298,39 @@ function App() {
         {/* Spacer pushes the theme toggle to the sidebar bottom. */}
         <div style={{ flex: 1 }} />
         <div style={{ padding: '0 var(--app-space-3)' }}>
-          <Button
-            icon={resolvedTheme === 'dark' ? <IconSun /> : <IconMoon />}
-            theme="borderless"
-            size="small"
-            onClick={toggleTheme}
-            aria-label={resolvedTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-          />
+          <Popover open={themeMenuOpen} onOpenChange={setThemeMenuOpen}>
+            <PopoverTrigger
+              render={
+                <Button variant="ghost" size="icon" aria-label="Choose theme">
+                  {resolvedTheme === 'dark' ? <Sun /> : <Moon />}
+                </Button>
+              }
+            />
+            <PopoverContent align="start" className="w-40 p-1">
+              <PopoverTitle className="sr-only">Theme</PopoverTitle>
+              <div className="flex flex-col gap-1">
+                {[
+                  { mode: 'light' as const, label: 'Light', icon: Sun },
+                  { mode: 'dark' as const, label: 'Dark', icon: Moon },
+                  { mode: 'auto' as const, label: 'System', icon: Monitor },
+                ].map(({ mode, label, icon: Icon }) => (
+                  <Button
+                    key={mode}
+                    variant={themeMode === mode ? 'secondary' : 'ghost'}
+                    size="sm"
+                    className="justify-start"
+                    onClick={() => {
+                      setThemeMode(mode);
+                      setThemeMenuOpen(false);
+                    }}
+                  >
+                    <Icon />
+                    {label}
+                  </Button>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
 
@@ -329,30 +372,30 @@ function App() {
                 background: 'var(--app-color-canvas)',
               }}
             >
-              <Button
-                icon={<IconArrowLeft />}
-                theme="borderless"
-                size="small"
-                onClick={() => requestNavigation(backToList)}
-              >
+              <Button variant="ghost" size="sm" onClick={() => requestNavigation(backToList)}>
+                <ArrowLeft />
                 Back
               </Button>
               {renaming ? (
-                <Input
-                  value={renameDraft}
-                  onChange={setRenameDraft}
-                  onBlur={commitRename}
-                  onEnterPress={commitRename}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Escape') {
-                      e.preventDefault();
-                      cancelRename();
-                    }
-                  }}
-                  autoFocus
-                  size="small"
-                  style={{ width: 220 }}
-                />
+                <Field className="w-[220px]">
+                  <FieldLabel className="sr-only">Workflow name</FieldLabel>
+                  <Input
+                    value={renameDraft}
+                    onChange={(e) => setRenameDraft(e.target.value)}
+                    onBlur={commitRename}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        void commitRename();
+                      }
+                      if (e.key === 'Escape') {
+                        e.preventDefault();
+                        cancelRename();
+                      }
+                    }}
+                    autoFocus
+                  />
+                </Field>
               ) : (
                 <span
                   onClick={startRename}
@@ -366,19 +409,13 @@ function App() {
                   }}
                 >
                   <Typography.Text strong>{workflowName}</Typography.Text>
-                  <IconEdit size="small" style={{ opacity: 0.5, flexShrink: 0 }} />
+                  <Pencil size={14} style={{ opacity: 0.5, flexShrink: 0 }} />
                 </span>
               )}
               <div style={{ marginLeft: 'auto' }}>
-                <Button
-                  icon={<IconSave />}
-                  size="small"
-                  theme="solid"
-                  loading={saving}
-                  disabled={!dirty}
-                  onClick={saveWorkflow}
-                >
-                  Save
+                <Button size="sm" disabled={!dirty || saving} onClick={saveWorkflow}>
+                  {saving ? <LoaderCircle className="animate-spin" /> : <Save />}
+                  {saving ? 'Saving...' : 'Save'}
                 </Button>
               </div>
             </div>
@@ -411,28 +448,30 @@ function App() {
       </div>
 
       {/* Unsaved changes confirmation */}
-      <Modal
-        title="Unsaved Changes"
-        visible={confirmNav.visible}
-        onCancel={handleNavCancel}
-        closable
-        closeOnEsc
-        footer={
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <Button theme="borderless" onClick={handleNavCancel}>
+      <Dialog
+        open={confirmNav.visible}
+        onOpenChange={(open) => {
+          if (!open) handleNavCancel();
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Unsaved Changes</DialogTitle>
+            <DialogDescription>
+              You have unsaved changes. Do you want to save before leaving?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="ghost" onClick={handleNavCancel}>
               Cancel
             </Button>
-            <Button theme="light" type="danger" onClick={handleNavDiscard}>
+            <Button variant="destructive" onClick={handleNavDiscard}>
               Discard
             </Button>
-            <Button theme="solid" onClick={handleNavSave}>
-              Save & Leave
-            </Button>
-          </div>
-        }
-      >
-        You have unsaved changes. Do you want to save before leaving?
-      </Modal>
+            <Button onClick={handleNavSave}>Save &amp; Leave</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

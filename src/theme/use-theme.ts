@@ -65,6 +65,7 @@ function getSingleton(): SingletonState {
     localStorage: window.localStorage,
     matchMedia: (q: string) => window.matchMedia(q),
     body: document.body,
+    html: document.documentElement,
     onChange: () => notifyAll(),
   });
   singleton = { controller, subscribers };

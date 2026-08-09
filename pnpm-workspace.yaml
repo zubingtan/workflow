@@ -7,5 +7,7 @@ allowBuilds:
   esbuild: true
   protobufjs: true
   unrs-resolver: true
+minimumReleaseAgeExclude:
+  - lucide-react@1.31.0
 patchedDependencies:
   '@flowgram.ai/runtime-js@1.0.12': patches/@flowgram.ai__runtime-js@1.0.12.patch
