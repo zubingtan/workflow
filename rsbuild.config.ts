@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { pluginReact } from '@rsbuild/plugin-react';
 import { pluginLess } from '@rsbuild/plugin-less';
 import { defineConfig } from '@rsbuild/core';
+import tailwindcss from '@tailwindcss/postcss';
 
 const __dirname = resolve(fileURLToPath(import.meta.url), '..');
 
@@ -40,7 +41,10 @@ export default defineConfig({
     decorators: {
       version: 'legacy',
     },
+  },
+  resolve: {
     alias: {
+      '@': resolve(__dirname, 'src'),
       // D6 pitfall 1: @douyinfe/semi-ui 2.101.1's `exports` field doesn't
       // expose `./dist/css/semi.min.css`, but the prebuilt CSS file physically
       // exists at that path. Mapping the bare specifier to the absolute file
@@ -69,11 +73,14 @@ export default defineConfig({
         head: false,
         append: false,
         attrs: { type: 'text/javascript' },
-        children: `(function(){var s=null;try{s=localStorage.getItem('workflow-theme')}catch(e){s=null}var r;if(s==='light'||s==='dark'){r=s}else{var p=false;try{p=window.matchMedia('(prefers-color-scheme: dark)').matches}catch(e){p=false}r=p?'dark':'light'}document.body.setAttribute('theme-mode',r)})();`,
+        children: `(function(){var s=null;try{s=localStorage.getItem('workflow-theme')}catch(e){s=null}var r;if(s==='light'||s==='dark'){r=s}else{var p=false;try{p=window.matchMedia('(prefers-color-scheme: dark)').matches}catch(e){p=false}r=p?'dark':'light'}document.documentElement.setAttribute('data-theme',r);document.documentElement.classList.toggle('dark',r==='dark');document.body.setAttribute('theme-mode',r)})();`,
       },
     ],
   },
   tools: {
+    postcss: (_config, { addPlugins }) => {
+      addPlugins(tailwindcss());
+    },
     rspack: {
       /**
        * ignore warnings from @coze-editor/editor/language-typescript

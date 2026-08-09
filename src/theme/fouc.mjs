@@ -15,17 +15,19 @@ const STORAGE_KEY = 'workflow-theme';
 const MEDIA_QUERY = '(prefers-color-scheme: dark)';
 
 /**
- * Apply the initial theme to `body[theme-mode]` based on stored preference
- * and OS color scheme. Returns the resolved theme ('light' | 'dark').
+ * Apply the initial theme to `html[data-theme]`, `html.dark`, and the
+ * compatibility `body[theme-mode]` based on stored preference and OS color
+ * scheme. Returns the resolved theme ('light' | 'dark').
  *
  * @param {object} env
  * @param {Storage} env.localStorage
  * @param {(query: string) => { matches: boolean }} env.matchMedia
  * @param {{ setAttribute: (k: string, v: string) => void }} env.body
+ * @param {{ setAttribute?: (k: string, v: string) => void, classList?: { add?: (name: string) => void, remove?: (name: string) => void } }} [env.html]
  * @returns {'light' | 'dark'}
  */
 export function applyInitialTheme(env) {
-  const { localStorage, matchMedia, body } = env;
+  const { localStorage, matchMedia, body, html } = env;
   let stored = null;
   try {
     stored = localStorage.getItem(STORAGE_KEY);
@@ -47,5 +49,8 @@ export function applyInitialTheme(env) {
     resolved = prefersDark ? 'dark' : 'light';
   }
   body.setAttribute('theme-mode', resolved);
+  html?.setAttribute?.('data-theme', resolved);
+  if (resolved === 'dark') html?.classList?.add?.('dark');
+  else html?.classList?.remove?.('dark');
   return resolved;
 }
