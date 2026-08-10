@@ -17,6 +17,7 @@
  */
 
 @import 'tailwindcss/theme.css';
+@import 'tailwindcss/preflight.css';
 @import 'tailwindcss/utilities.css';
 /* stylelint-disable at-rule-no-unknown -- Tailwind v4 at-rules are handled by the PostCSS plugin. */
 @source '../';
