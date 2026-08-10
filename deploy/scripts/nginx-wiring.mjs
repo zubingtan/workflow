@@ -166,9 +166,11 @@ if (isMain) {
   if (cmd === '--check-conflicts') {
     const dir = a;
     const incomingFile = b;
+    const incomingBase = incomingFile.split('/').pop();
     const incomingText = readFileSync(incomingFile, 'utf8');
+    // compare against every conf.d file EXCEPT the incoming one itself
     const all = readdirSync(dir)
-      .filter((f) => f.endsWith('.conf') && !f.endsWith('.disabled'))
+      .filter((f) => f.endsWith('.conf') && !f.endsWith('.disabled') && f !== incomingBase)
       .map((f) => ({ file: f, text: readFileSync(join(dir, f), 'utf8') }));
     const conflicts = all.flatMap(({ file, text }) =>
       findServerNameConflicts(text, incomingText).map((conf) => ({ file, ...conf }))
