@@ -1,36 +1,42 @@
 #!/usr/bin/env bash
-# #293: one-time w8 bootstrap — idempotent, safe to re-run.
+# #293: one-time server bootstrap — idempotent, safe to re-run.
 #
 # 1. Toolchain: nvm Node 22 + corepack pnpm
-# 2. Repo: clone/pull ~/projects/workflow (main)
-# 3. Old stack: stop the legacy dev trio (3000/4010/8888) — #293/#295
-# 4. nginx: migrate the live /tmp/workflow-nginx.conf into
-#    /etc/nginx/conf.d/zubingtan-w8.conf and serve /workflow from it
-#    (the running instance loads /tmp config today, conf.d is dead config)
+# 2. Repo: clone/pull <WF_DIR> (main)
+# 3. Old stack: stop the legacy dev trio (3000/4010) — #293/#295
+# 4. nginx: wire deploy/nginx/workflow-location.conf into the server block
+#    that serves <host> (conf.d fragment; conflicts detected, not auto-fixed)
 # 5. supervisord: install workflow + fake-provider programs
 #
-# Run: bash deploy/bootstrap.sh   (on w8; sudo is passwordless)
+# Generic by default; environment-specific bits are overridable env vars
+# (see Config block). Run: bash deploy/bootstrap.sh (sudo must be available)
 set -euo pipefail
 
 # --- Config (override via env) ---
-WF_USER="${WF_USER:-zubingtan}"
-WF_HOME="${WF_HOME:-/home/$WF_USER}"
+WF_USER="${WF_USER:-$(whoami)}"
+WF_HOME="${WF_HOME:-$HOME}"
 WF_DIR="${WF_DIR:-$WF_HOME/projects/workflow}"
-NODE_BIN="${NODE_BIN:-$WF_HOME/.nvm/versions/node/v22.23.1/bin/node}"
+NODE_BIN="${NODE_BIN:-$(command -v node || true)}"
 NGINX_MAIN="${NGINX_MAIN:-/etc/nginx/nginx.conf}"
-NGINX_SITE="${NGINX_SITE:-/etc/nginx/conf.d/zubingtan-w8.conf}"
-NGINX_OLD="${NGINX_OLD:-/tmp/workflow-nginx.conf}"
+NGINX_SITE="${NGINX_SITE:-/etc/nginx/conf.d/workflow.conf}"
+# Optional source of a standalone legacy config (full events/http layout) to
+# convert into the conf.d fragment; ignored when empty or missing.
+NGINX_SRC="${NGINX_SRC:-}"
+# server_name of the server block that should host the /workflow location;
+# empty = first server block in the fragment.
+SERVER_NAME="${SERVER_NAME:-}"
 SUPERVISOR_DIR="${SUPERVISOR_DIR:-/etc/supervisor/conf.d}"
 BASE_PATH="${BASE_PATH:-/workflow}"
 PORT="${PORT:-4000}"
 FAKE_PROVIDER_PORT="${FAKE_PROVIDER_PORT:-4010}"
+WORKFLOW_LOCATION="$WF_DIR/deploy/nginx/workflow-location.conf"
 
 say() { printf '\n==> %s\n' "$*"; }
 
 # --- 1. Toolchain ---
 say "1/5 toolchain: Node 22 via nvm + pnpm via corepack"
 if [ ! -x "$NODE_BIN" ]; then
-  say "node $NODE_BIN missing — install via nvm first (nvm install 22)"
+  say "node missing — install Node 22 first (e.g. nvm install 22), or set NODE_BIN"
   exit 1
 fi
 export PATH="$(dirname "$NODE_BIN"):$PATH"
@@ -54,7 +60,7 @@ pnpm install --frozen-lockfile
 # Only kill node processes that look like the legacy dev stack, so re-runs of
 # this script never touch unrelated listeners (incl. the supervisord-managed
 # fake-provider once this script has been run before).
-say "3/5 stop legacy dev stack (3000 old workflow backend / 4010 old fake-provider / 8888 proxy)"
+say "3/5 stop legacy dev stack (3000 old workflow backend / 4010 old fake-provider)"
 for port in 3000 4010; do
   pids="$(ss -ltnp 2>/dev/null | grep ":$port " | grep -oP '(?<=pid=)\d+' | sort -u || true)"
   for pid in $pids; do
@@ -70,64 +76,41 @@ for port in 3000 4010; do
     esac
   done
 done
-# 8888 is served by the same nginx instance; the migration below drops that
-# server block, so no separate kill is needed.
 
-# --- 4. nginx migration: /tmp config → conf.d, serve /workflow ---
-say "4/5 nginx: migrate $NGINX_OLD into $NGINX_SITE + include workflow location"
-mkdir -p /etc/nginx/conf.d
-if [ ! -f "$NGINX_SITE" ]; then
-  if [ -f "$NGINX_OLD" ]; then
-    cp "$NGINX_OLD" "$NGINX_SITE"
-    say "copied legacy config to $NGINX_SITE"
-  else
-    say "WARN: $NGINX_OLD not found — writing an empty site file; add server blocks manually"
-    : > "$NGINX_SITE"
-  fi
+# --- 4. nginx: wire the workflow location into the site fragment ---
+# Generic flow:
+#   - NGINX_SITE missing + NGINX_SRC set: convert the standalone legacy config
+#     into a conf.d fragment (http-context only, legacy listeners dropped).
+#   - NGINX_SITE existing: check server_name collisions against other conf.d
+#     files (nginx silently ignores the later duplicate — fail loudly instead).
+#   - Insert `include <workflow-location.conf>;` into the target server block
+#     (idempotent). All writes go through sudo (conf.d is root-owned).
+say "4/5 nginx: wire $WORKFLOW_LOCATION into $NGINX_SITE"
+sudo mkdir -p "$(dirname "$NGINX_SITE")"
+if [ ! -f "$NGINX_SITE" ] && [ -n "$NGINX_SRC" ] && [ -f "$NGINX_SRC" ]; then
+  say "converting standalone config $NGINX_SRC -> $NGINX_SITE"
+  sudo "$NODE_BIN" "$WF_DIR/deploy/scripts/nginx-wiring.mjs" "$NGINX_SRC" "$NGINX_SITE" "$WORKFLOW_LOCATION" ${SERVER_NAME:+--server-name "$SERVER_NAME"}
 fi
-python3 - "$NGINX_SITE" "$WF_DIR/deploy/nginx/workflow-location.conf" <<'PY'
-import re, sys
-path, loc = sys.argv[1], sys.argv[2]
-text = open(path).read()
+if [ ! -f "$NGINX_SITE" ]; then
+  say "ERROR: no nginx site fragment at $NGINX_SITE and no NGINX_SRC to convert."
+  say "  Point NGINX_SRC at an existing standalone nginx config, or create"
+  say "  $NGINX_SITE with a server block for your host first."
+  exit 1
+fi
 
-# 1) Drop server blocks listening on :8888 (legacy workflow proxy, #293).
-blocks = re.split(r'(?=^\s*server\s*\{)', text, flags=re.M)
-kept = [b for b in blocks if not re.search(r'listen\s+8888', b)]
-text = ''.join(kept)
+say "checking server_name collisions in $(dirname "$NGINX_SITE")"
+sudo "$NODE_BIN" "$WF_DIR/deploy/scripts/nginx-wiring.mjs" --check-conflicts "$(dirname "$NGINX_SITE")" "$NGINX_SITE" \
+  || { say "ERROR: disable the conflicting conf.d file(s) above, then re-run bootstrap"; exit 1; }
 
-# 2) Insert `include <workflow-location.conf>;` before the closing brace of the
-#    zubingtan-w8.corp.pony.ai server block (brace-depth aware, so nested
-#    location blocks are not mistaken for the server's closing brace).
-inserted = False
-if 'workflow-location.conf' not in text:
-    m = re.search(r'^\s*server\s*\{', text, flags=re.M)
-    while m:
-        start = m.start()
-        depth, i = 0, text.index('{', start)
-        while i < len(text):
-            if text[i] == '{': depth += 1
-            elif text[i] == '}':
-                depth -= 1
-                if depth == 0: break
-            i += 1
-        block = text[start:i + 1]
-        if re.search(r'server_name\s+zubingtan-w8\.corp\.pony\.ai', block):
-            indent = re.match(r'(\s*)', block).group(1)
-            text = text[:i] + f'\n{indent}    include {loc};' + text[i:]
-            inserted = True
-            break
-        m = re.search(r'^\s*server\s*\{', text[m.end():], flags=re.M)
-if not inserted and 'workflow-location.conf' not in text:
-    print('ERROR: no zubingtan-w8.corp.pony.ai server block found to host /workflow')
-    sys.exit(1)
-open(path, 'w').write(text)
-print('nginx site migrated: 8888 block dropped, workflow include inserted')
-PY
+if grep -q "workflow-location.conf" "$NGINX_SITE"; then
+  say "workflow include already present in $NGINX_SITE"
+else
+  say "inserting workflow include into $NGINX_SITE"
+  sudo "$NODE_BIN" "$WF_DIR/deploy/scripts/nginx-wiring.mjs" "$NGINX_SITE" "$NGINX_SITE" "$WORKFLOW_LOCATION" ${SERVER_NAME:+--server-name "$SERVER_NAME"}
+fi
 
-# 3) Validate + activate. The legacy instance may have been started with
-#    `-c /tmp/workflow-nginx.conf`; in that case reload cannot reach its
-#    master (different pid/prefix), so restart against the main config.
-if ! sudo nginx -t -c "$NGINX_MAIN" 2>/dev/null; then
+say "validating $NGINX_MAIN"
+if ! sudo nginx -t -c "$NGINX_MAIN"; then
   say "nginx config invalid — inspect $NGINX_SITE manually; bootstrap aborted"
   exit 1
 fi
@@ -142,11 +125,9 @@ fi
 
 # --- 5. supervisord ---
 say "5/5 supervisord: install workflow + fake-provider programs"
-mkdir -p "$SUPERVISOR_DIR"
+sudo mkdir -p "$SUPERVISOR_DIR"
 mkdir -p "$WF_HOME/.config/workflow/logs"   # supervisord logfile targets (workflow.conf)
-sed -e "s|/home/zubingtan|$WF_HOME|g" \
-    -e "s|NODE_ENV=\"production\",|NODE_ENV=\"production\",|" \
-    deploy/supervisord/workflow.conf > "$SUPERVISOR_DIR/workflow.conf"
+sed -e "s|/home/zubingtan|$WF_HOME|g" deploy/supervisord/workflow.conf | sudo tee "$SUPERVISOR_DIR/workflow.conf" > /dev/null
 supervisorctl reread || sudo supervisorctl reread
 supervisorctl update || sudo supervisorctl update
 
