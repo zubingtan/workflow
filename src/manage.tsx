@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
+  ArrowRight as IconArrowRight,
   Copy as IconCopy,
   Trash2 as IconDelete,
   Plus as IconPlus,
@@ -12,11 +13,9 @@ import { useActiveRunCounts } from './use-active-run-counts';
 import { newWorkflowTemplate } from './new-workflow-template.mjs';
 import {
   Button,
-  Table,
   Modal,
   Input,
   Typography,
-  Space,
   Popconfirm,
   Toast,
   Tooltip,
@@ -119,61 +118,149 @@ export function WorkflowManager({ onOpen }: { onOpen: (id: string) => void }) {
   };
 
   return (
-    <div style={{ padding: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Typography.Title heading={4} style={{ margin: 0 }}>
-          Workflows
-        </Typography.Title>
+    <div
+      style={{
+        minHeight: '100%',
+        maxWidth: 1120,
+        margin: '0 auto',
+        padding: '28px 24px 40px',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'space-between',
+          gap: 20,
+          marginBottom: 24,
+        }}
+      >
+        <div>
+          <Typography.Title heading={3} style={{ margin: 0 }}>
+            Workflows
+          </Typography.Title>
+          <Typography.Paragraph type="tertiary" style={{ margin: '6px 0 0' }}>
+            Build, test and monitor reusable agent workflows.
+          </Typography.Paragraph>
+        </div>
         <Button icon={<IconPlus />} theme="solid" onClick={() => setCreating(true)}>
-          New Workflow
+          New workflow
         </Button>
       </div>
-      <Table
-        dataSource={workflows}
-        loading={loading}
-        rowKey="id"
-        pagination={false}
-        columns={[
-          {
-            title: 'Name',
-            dataIndex: 'name',
-            render: (name: string, record: api.WorkflowMeta) => (
+
+      <div
+        aria-label="Workflow list"
+        style={{
+          overflow: 'hidden',
+          border: '1px solid var(--border)',
+          borderRadius: 14,
+          background: 'var(--card)',
+        }}
+      >
+        {loading ? (
+          <div style={{ padding: 48, textAlign: 'center' }}>
+            <Typography.Text type="tertiary">Loading workflows…</Typography.Text>
+          </div>
+        ) : workflows.length === 0 ? (
+          <div style={{ padding: 48, textAlign: 'center' }}>
+            <Typography.Text type="tertiary">No workflows yet.</Typography.Text>
+          </div>
+        ) : (
+          workflows.map((record) => {
+            const active = activeCounts[record.id] ?? 0;
+            const deleteDisabled = active > 0;
+            const updated = new Date(record.updated_at).toLocaleString(undefined, {
+              month: 'short',
+              day: 'numeric',
+              hour: 'numeric',
+              minute: '2-digit',
+            });
+            const deleteBtn = (
               <Button
-                theme="borderless"
-                onClick={() => onOpen(record.id)}
-                style={{ fontWeight: 600 }}
+                size="small"
+                type="danger"
+                icon={<IconDelete />}
+                disabled={deleteDisabled}
+                aria-label={`Delete ${record.name}`}
+              />
+            );
+            return (
+              <div
+                key={record.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 14,
+                  minHeight: 84,
+                  padding: '14px 16px',
+                  borderBottom: '1px solid var(--border)',
+                }}
               >
-                {name}
-              </Button>
-            ),
-          },
-          { title: 'Updated', dataIndex: 'updated_at' },
-          {
-            title: 'Actions',
-            render: (_, record: api.WorkflowMeta) => {
-              const active = activeCounts[record.id] ?? 0;
-              const deleteDisabled = active > 0;
-              const deleteBtn = (
-                <Button size="small" type="danger" icon={<IconDelete />} disabled={deleteDisabled}>
-                  Delete
-                </Button>
-              );
-              return (
-                <Space>
+                <div
+                  aria-hidden="true"
+                  style={{
+                    width: 10,
+                    height: 10,
+                    flexShrink: 0,
+                    borderRadius: '50%',
+                    background: 'var(--app-color-primary)',
+                  }}
+                />
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <Button
+                    theme="borderless"
+                    onClick={() => onOpen(record.id)}
+                    style={{
+                      height: 'auto',
+                      padding: 0,
+                      fontWeight: 600,
+                      color: 'var(--foreground)',
+                    }}
+                  >
+                    {record.name}
+                  </Button>
+                  <Typography.Text
+                    type="tertiary"
+                    size="small"
+                    style={{ display: 'block', marginTop: 5 }}
+                  >
+                    Draft · Updated {updated}
+                  </Typography.Text>
+                </div>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    flexShrink: 0,
+                  }}
+                >
+                  <span
+                    style={{
+                      border: '1px solid var(--border)',
+                      borderRadius: 999,
+                      padding: '3px 8px',
+                      color: 'var(--muted-foreground)',
+                      fontSize: 12,
+                    }}
+                  >
+                    {active > 0 ? `${active} active` : 'Ready'}
+                  </span>
                   <Button size="small" onClick={() => onOpen(record.id)}>
-                    Open
+                    Open <IconArrowRight />
                   </Button>
-                  <Button size="small" icon={<IconCopy />} onClick={() => copy(record.id)}>
-                    Copy
-                  </Button>
-                  {/* Phase 7 (#159): History entry — placed BEFORE Delete per spec. */}
+                  <Button
+                    size="small"
+                    icon={<IconCopy />}
+                    onClick={() => copy(record.id)}
+                    aria-label={`Copy ${record.name}`}
+                  />
                   <Button
                     size="small"
                     icon={<IconHistory />}
                     onClick={() => setHistoryFor(record.id)}
-                  >
-                    History
-                  </Button>
+                    aria-label={`History for ${record.name}`}
+                  />
                   {deleteDisabled ? (
                     <Tooltip content="This workflow has running or queued runs — cancel them first">
                       <span>{deleteBtn}</span>
@@ -183,12 +270,12 @@ export function WorkflowManager({ onOpen }: { onOpen: (id: string) => void }) {
                       {deleteBtn}
                     </Popconfirm>
                   )}
-                </Space>
-              );
-            },
-          },
-        ]}
-      />
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
       <Modal
         title="New Workflow"
         visible={creating}

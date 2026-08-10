@@ -45,3 +45,23 @@ test('the application shell mounts the shared management feedback surface', () =
   assert.match(source, /ToastViewport/);
   assert.match(source, /data-testid="app-shell"/);
 });
+
+test('management surfaces expose the prototype-aligned collection and detail seams', () => {
+  const workflowSource = fs.readFileSync(path.join(ROOT, 'src/manage.tsx'), 'utf8');
+  const agentSource = fs.readFileSync(
+    path.join(ROOT, 'src/components/agent-miller/index.tsx'),
+    'utf8'
+  );
+  const settingsSource = fs.readFileSync(
+    path.join(ROOT, 'src/components/admin-settings/index.tsx'),
+    'utf8'
+  );
+
+  assert.doesNotMatch(workflowSource, /<Table/);
+  assert.match(workflowSource, /Build, test and monitor reusable agent workflows/);
+  assert.match(agentSource, /aria-label="Agent sections"/);
+  assert.doesNotMatch(agentSource, /<ResizeGroup/);
+  assert.match(settingsSource, /aria-label="Settings sections"/);
+  assert.match(settingsSource, /Memory \(mem0\)/);
+  assert.match(settingsSource, /Save settings/);
+});

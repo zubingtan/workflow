@@ -598,48 +598,6 @@ export function Card({
   );
 }
 
-export function ResizeGroup({
-  children,
-  direction = 'horizontal',
-}: {
-  children?: React.ReactNode;
-  direction?: 'horizontal' | 'vertical';
-}) {
-  return (
-    <div
-      className={cn(
-        'flex h-full min-h-0 min-w-0',
-        direction === 'vertical' ? 'flex-col' : 'flex-row'
-      )}
-    >
-      {children}
-    </div>
-  );
-}
-export function ResizeItem({
-  children,
-  defaultSize,
-  min,
-  max,
-}: {
-  children?: React.ReactNode;
-  defaultSize?: string;
-  min?: string;
-  max?: string;
-}) {
-  return (
-    <div
-      className="min-h-0 min-w-0 shrink-0"
-      style={{ flexBasis: defaultSize, width: defaultSize, minWidth: min, maxWidth: max }}
-    >
-      {children}
-    </div>
-  );
-}
-export function ResizeHandler() {
-  return <div className="w-px shrink-0 bg-border" />;
-}
-
 type SelectProps = Omit<React.SelectHTMLAttributes<HTMLSelectElement>, 'onChange' | 'size'> & {
   onChange?: (value: string) => void;
   size?: 'small' | 'default';
