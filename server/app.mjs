@@ -63,6 +63,16 @@ import {
 import { createSseEventQueue } from './runs-events.mjs';
 import { FeishuEventError, parseFeishuEventBody } from './feishu-events.mjs';
 import { handleFeishuReceiveMessage } from './feishu-trigger-handler.mjs';
+import {
+  SkillError,
+  listSkills,
+  readSkillTree,
+  writeSkillTree,
+  renameSkill,
+  deleteSkillDir,
+  skillReferences,
+  resolveSkillPaths,
+} from './skills.mjs';
 
 /**
  * Translate a thrown AgentCatalogError into a 400 JSON response. Non-catalog
@@ -76,6 +86,38 @@ function catalogErrorResponse(err) {
     return { body: { error: err.message, code: err.code }, status };
   }
   return null;
+}
+
+/** Translate a thrown SkillError into its HTTP response (400/404/409/413). */
+function skillsErrorResponse(err) {
+  if (err instanceof SkillError) {
+    return { body: { error: err.message, code: err.code }, status: err.status };
+  }
+  return null;
+}
+
+/**
+ * Collect skill names referenced by imported agents that do not exist in the
+ * global library (pi-agent would skip them at load). Existing absolute paths
+ * pass through — they are not "missing". Returns a sorted de-duplicated list.
+ */
+function collectMissingSkills(agents, skillsDir) {
+  if (!skillsDir) return [];
+  const all = [];
+  for (const item of agents) {
+    let config;
+    try {
+      config = typeof item.config === 'string' ? JSON.parse(item.config) : item.config;
+    } catch {
+      continue;
+    }
+    const skills = config?.pi_settings?.skills;
+    if (Array.isArray(skills)) {
+      all.push(...skills.filter((s) => typeof s === 'string' && s.length > 0));
+    }
+  }
+  const { skipped } = resolveSkillPaths(skillsDir, all);
+  return [...new Set(skipped)].sort();
 }
 
 function providerErrorResponse(err) {
@@ -190,6 +232,7 @@ export function enqueueSavedWorkflowRun({ db, enqueueRun, workflowId, schema, in
 export function createApp({
   db,
   agentDir,
+  skillsDir = null,
   staticEnabled = false,
   staticDir,
   basePath = '',
@@ -746,6 +789,7 @@ export function createApp({
       total: body.length,
       conflicts: conflicts.map((a) => a.name),
       importable: body.length - conflicts.length,
+      missing_skills: collectMissingSkills(body, skillsDir),
     });
   });
 
@@ -803,6 +847,90 @@ export function createApp({
       created++;
     }
     return c.json({ created, skipped, overwritten });
+  });
+
+  // --- Skills (global skill library) ---
+  // Each skill is a directory under skillsDir containing SKILL.md. All routes
+  // 404 when the library is not configured (unit-test harnesses omit it).
+  const library = skillsDir;
+  const libraryUnavailable = (c) =>
+    c.json({ error: 'skills library not configured' }, 404);
+  const withSkillErrors = (handler) => (c) => {
+    try {
+      return handler(c);
+    } catch (err) {
+      const t = skillsErrorResponse(err);
+      if (t) return c.json(t.body, t.status);
+      throw err;
+    }
+  };
+
+  app.get('/skills', (c) => {
+    if (!library) return libraryUnavailable(c);
+    return c.json(listSkills(library));
+  });
+
+  app.get('/skills/:name', (c) => {
+    if (!library) return libraryUnavailable(c);
+    return withSkillErrors(() => c.json(readSkillTree(library, c.req.param('name'))))(c);
+  });
+
+  // Save / create — whole-tree submit (upsert). Body: { files: [{path, content, encoding?}] }.
+  app.put('/skills/:name', async (c) => {
+    if (!library) return libraryUnavailable(c);
+    let body;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: 'invalid JSON' }, 400);
+    }
+    return withSkillErrors(() => c.json(writeSkillTree(library, c.req.param('name'), body?.files)))(c);
+  });
+
+  // Import — upload a folder as a skill (override when the name exists).
+  // Body: { name, files }. Frontend does the SKILL.md check + override confirm;
+  // the backend enforces SKILL.md as the source of truth.
+  app.post('/skills/import', async (c) => {
+    if (!library) return libraryUnavailable(c);
+    let body;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: 'invalid JSON' }, 400);
+    }
+    return withSkillErrors(() => c.json(writeSkillTree(library, body?.name, body?.files)))(c);
+  });
+
+  app.post('/skills/:name/rename', async (c) => {
+    if (!library) return libraryUnavailable(c);
+    let body;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json({ error: 'invalid JSON' }, 400);
+    }
+    return withSkillErrors(() => c.json(renameSkill(library, c.req.param('name'), body?.new_name)))(c);
+  });
+
+  app.get('/skills/:name/references', (c) => {
+    if (!library) return libraryUnavailable(c);
+    return c.json({ referencedBy: skillReferences(db, c.req.param('name')).map((r) => r.name) });
+  });
+
+  app.delete('/skills/:name', (c) => {
+    if (!library) return libraryUnavailable(c);
+    const refs = skillReferences(db, c.req.param('name'));
+    if (refs.length > 0) {
+      return c.json(
+        {
+          error: `skill is referenced by: ${refs.map((r) => r.name).join(', ')}`,
+          code: 'referenced',
+          referencedBy: refs.map((r) => r.name),
+        },
+        409
+      );
+    }
+    return withSkillErrors(() => c.json(deleteSkillDir(library, c.req.param('name'))))(c);
   });
 
   // --- Phase 9 (#161): global settings (node timeout default, etc.) ---

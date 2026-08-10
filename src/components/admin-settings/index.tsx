@@ -5,12 +5,29 @@ import {
   CheckCircle2 as IconTickCircle,
   Clock3,
   Database,
+  Layers,
+  Pencil as IconEdit,
+  Plus as IconPlus,
   RefreshCw,
+  Trash2 as IconDelete,
   X as IconClose,
 } from 'lucide-react';
 
-import { Button, Card, Input, InputNumber, Typography, Spin, Toast, Tag } from '../ui/management';
+import {
+  Button,
+  Card,
+  Empty,
+  Input,
+  InputNumber,
+  List,
+  Modal,
+  Typography,
+  Spin,
+  Toast,
+  Tag,
+} from '../ui/management';
 import * as api from '../../api';
+import { SkillEditor } from './skill-editor';
 
 /**
  * Phase 9 (#161): Admin settings page.
@@ -46,6 +63,12 @@ const SETTINGS_NAV = [
     description: 'Storage location and access.',
     icon: Archive,
   },
+  {
+    id: 'skills',
+    label: 'Skills',
+    description: 'Global skill library (SKILL.md folders agents can enable).',
+    icon: Layers,
+  },
 ];
 
 export function AdminSettings() {
@@ -62,6 +85,12 @@ export function AdminSettings() {
   const [embeddingDims, setEmbeddingDims] = useState<number | null>(null);
   const [testResult, setTestResult] = useState<api.Mem0TestResponse | null>(null);
   const [activeSection, setActiveSection] = useState('execution');
+  const [skills, setSkills] = useState<api.SkillSummary[]>([]);
+  const [editorState, setEditorState] = useState<
+    { mode: 'new' } | { mode: 'edit'; name: string } | null
+  >(null);
+  const [deleteTarget, setDeleteTarget] = useState<api.SkillSummary | null>(null);
+  const [deleteBlockedBy, setDeleteBlockedBy] = useState<string[] | null>(null);
 
   const reload = useCallback(() => {
     setLoading(true);
@@ -81,6 +110,10 @@ export function AdminSettings() {
         Toast.error(err instanceof Error ? err.message : 'Failed to load settings');
       })
       .finally(() => setLoading(false));
+    api
+      .listSkills()
+      .then(setSkills)
+      .catch(() => setSkills([]));
   }, []);
 
   useEffect(() => reload(), [reload]);
@@ -164,6 +197,29 @@ export function AdminSettings() {
       Toast.error(err?.message || 'Test failed');
     } finally {
       setTesting(false);
+    }
+  };
+
+  const handleDeleteSkill = async (skill: api.SkillSummary) => {
+    try {
+      const refs = await api.getSkillReferences(skill.name);
+      setDeleteBlockedBy(refs.referencedBy.length > 0 ? refs.referencedBy : null);
+      setDeleteTarget(skill);
+    } catch (err: any) {
+      Toast.error(err?.message || 'Failed to check skill references');
+    }
+  };
+
+  const confirmDeleteSkill = async () => {
+    if (!deleteTarget) return;
+    try {
+      await api.deleteSkill(deleteTarget.name);
+      Toast.success(`Deleted "${deleteTarget.name}"`);
+      setDeleteTarget(null);
+      setDeleteBlockedBy(null);
+      reload();
+    } catch (err: any) {
+      Toast.error(err?.message || 'Delete failed');
     }
   };
 
@@ -505,8 +561,161 @@ export function AdminSettings() {
               </div>
             </Card>
           )}
+          {activeSection === 'skills' && (
+            <Card style={{ overflow: 'hidden', boxShadow: 'none' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 12,
+                  padding: '16px 18px',
+                  borderBottom: '1px solid var(--border)',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'grid',
+                    placeItems: 'center',
+                    width: 32,
+                    height: 32,
+                    borderRadius: 10,
+                    background: 'var(--muted)',
+                    color: 'var(--primary)',
+                  }}
+                >
+                  <Layers size={17} />
+                </div>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 12,
+                    flex: 1,
+                    justifyContent: 'space-between',
+                  }}
+                >
+                  <div>
+                    <Typography.Title heading={5} style={{ margin: 0 }}>
+                      Skills
+                    </Typography.Title>
+                    <Typography.Paragraph type="tertiary" size="small" style={{ margin: '4px 0 0' }}>
+                      Global skill library. Each skill is a folder containing SKILL.md. Agents
+                      enable skills via their own Skills section.
+                    </Typography.Paragraph>
+                  </div>
+                  <Button
+                    icon={<IconPlus />}
+                    theme="solid"
+                    size="small"
+                    onClick={() => setEditorState({ mode: 'new' })}
+                  >
+                    New Skill
+                  </Button>
+                </div>
+              </div>
+              <div style={{ padding: 18 }}>
+                {skills.length === 0 ? (
+                  <Empty description="No skills yet — create one or import a folder" />
+                ) : (
+                  <List
+                    dataSource={skills}
+                    renderItem={(skill) => (
+                      <List.Item
+                        key={skill.name}
+                        style={{ padding: '8px 0' }}
+                        className="justify-between gap-3"
+                      >
+                        <div style={{ minWidth: 0 }}>
+                          <Typography.Text strong>
+                            <code>{skill.name}</code>
+                          </Typography.Text>
+                          <Typography.Text
+                            type="tertiary"
+                            style={{
+                              display: 'block',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {skill.description || '(no description)'}
+                          </Typography.Text>
+                        </div>
+                        <div style={{ display: 'flex', gap: 4 }} className="shrink-0">
+                          <Button
+                            icon={<IconEdit />}
+                            size="small"
+                            theme="borderless"
+                            onClick={() => setEditorState({ mode: 'edit', name: skill.name })}
+                          />
+                          <Button
+                            icon={<IconDelete />}
+                            size="small"
+                            theme="borderless"
+                            type="danger"
+                            onClick={() => handleDeleteSkill(skill)}
+                          />
+                        </div>
+                      </List.Item>
+                    )}
+                  />
+                )}
+              </div>
+            </Card>
+          )}
         </div>
       </div>
+
+      {editorState && (
+        <SkillEditor
+          initialName={editorState.mode === 'edit' ? editorState.name : null}
+          existingNames={skills.map((s) => s.name)}
+          onClose={() => setEditorState(null)}
+          onSaved={() => reload()}
+        />
+      )}
+
+      {deleteTarget && (
+        <Modal
+          visible
+          title={deleteBlockedBy ? 'Skill is in use' : 'Delete skill'}
+          onCancel={() => {
+            setDeleteTarget(null);
+            setDeleteBlockedBy(null);
+          }}
+          footer={
+            deleteBlockedBy ? null : (
+              <>
+                <Button
+                  theme="borderless"
+                  onClick={() => {
+                    setDeleteTarget(null);
+                    setDeleteBlockedBy(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button type="danger" onClick={() => void confirmDeleteSkill()}>
+                  Delete
+                </Button>
+              </>
+            )
+          }
+        >
+          {deleteBlockedBy ? (
+            <>
+              <Typography.Text>
+                &quot;{deleteTarget.name}&quot; is enabled for:{' '}
+                {deleteBlockedBy.join(', ')}. Disable it in those agents first.
+              </Typography.Text>
+            </>
+          ) : (
+            <Typography.Text>
+              Delete &quot;{deleteTarget.name}&quot;? This cannot be undone.
+            </Typography.Text>
+          )}
+        </Modal>
+      )}
     </div>
   );
 }

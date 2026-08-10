@@ -18,6 +18,9 @@
   ],
   "dependencies": {
     "@base-ui/react": "1.7.0",
+    "@codemirror/lang-javascript": "^6.2.5",
+    "@codemirror/lang-json": "^6.0.2",
+    "@codemirror/lang-markdown": "^6.5.2",
     "@douyinfe/semi-icons": "^2.80.0",
     "@douyinfe/semi-ui": "^2.80.0",
     "@earendil-works/pi-agent-core": "^0.81.0",
@@ -40,6 +43,7 @@
     "@flowgram.ai/runtime-js": "1.0.12",
     "@hono/node-server": "^2.0.10",
     "@larksuiteoapi/node-sdk": "^1.72.0",
+    "@uiw/react-codemirror": "^4.25.11",
     "better-sqlite3": "^11.0.0",
     "classnames": "^2.5.1",
     "hono": "^4.12.31",

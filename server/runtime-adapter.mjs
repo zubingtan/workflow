@@ -31,6 +31,7 @@ import {
   StructuredOutputCapabilityError,
 } from './structured-output.mjs';
 import { executeFeishuBot } from './feishu-executor.mjs';
+import { resolveSkillPaths } from './skills.mjs';
 
 // API shapes that can honor the structured output contract (#248).
 // The model registry pins `api` per registered model; anything outside these
@@ -186,9 +187,23 @@ export async function createAgentSessionForAgent(agent, agentDir, mem0, structur
     ],
   });
 
-  // 2. SettingsManager — inject pi_settings (transparent passthrough)
+  // 2. SettingsManager — inject pi_settings (transparent passthrough). Skill
+  // entries are library names in the agent config; resolve them to absolute
+  // paths here so pi-agent keeps working on paths untouched (#307). Existing
+  // absolute paths pass through; unknown names are skipped with a warning.
+  const skillsDir = join(dirname(agentDir), 'skills');
+  const { paths: resolvedSkillPaths, skipped: skippedSkills } = resolveSkillPaths(
+    skillsDir,
+    piSettings.skills
+  );
+  if (skippedSkills.length > 0) {
+    console.warn(
+      `[skills] agent ${agent.id} references missing skill(s), skipped: ${skippedSkills.join(', ')}`
+    );
+  }
   const settingsManager = SettingsManager.inMemory({
     ...piSettings,
+    skills: resolvedSkillPaths,
     defaultProjectTrust: 'always', // forced for headless
   });
 

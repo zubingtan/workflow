@@ -62,9 +62,10 @@ export function AgentMillerColumns() {
   const [importState, setImportState] = useState<{
     visible: boolean;
     conflicts: string[];
+    missingSkills: string[];
     agents: any[];
     total: number;
-  }>({ visible: false, conflicts: [], agents: [], total: 0 });
+  }>({ visible: false, conflicts: [], missingSkills: [], agents: [], total: 0 });
   const { route, navigate } = useHashRoute();
   const providerDraftsRef = useRef<Map<string, ProviderDraft>>(new Map());
   const coordinatorRef = useRef<AgentSaveCoordinator | null>(null);
@@ -193,10 +194,11 @@ export function AgentMillerColumns() {
         const agentsData = JSON.parse(text);
         if (!Array.isArray(agentsData)) throw new Error('Expected JSON array');
         const result = await api.importAgentsPrecheck(agentsData);
-        if (result.conflicts.length > 0) {
+        if (result.conflicts.length > 0 || (result.missing_skills ?? []).length > 0) {
           setImportState({
             visible: true,
             conflicts: result.conflicts,
+            missingSkills: result.missing_skills ?? [],
             agents: agentsData,
             total: result.total,
           });
@@ -212,20 +214,46 @@ export function AgentMillerColumns() {
     input.click();
   }, [reload]);
 
+  /**
+   * Confirm the import. `missingStrategy` decides what happens to skill names
+   * that do not exist in the library: 'keep' imports them as-is (the skills
+   * stay referenced but will not load until created), 'remove' strips them
+   * from the imported agent configs (#307).
+   */
   const handleImportConfirm = useCallback(
-    async (strategy: 'skip' | 'overwrite' | 'rename') => {
+    async (
+      strategy: 'skip' | 'overwrite' | 'rename',
+      missingStrategy: 'keep' | 'remove' = 'keep'
+    ) => {
       try {
-        const result = await api.importAgentsConfirm(importState.agents, strategy);
+        let agents = importState.agents;
+        if (missingStrategy === 'remove' && importState.missingSkills.length > 0) {
+          const missing = new Set(importState.missingSkills);
+          agents = agents.map((item) => {
+            const config =
+              typeof item.config === 'string' ? JSON.parse(item.config) : { ...item.config };
+            const skills = config?.pi_settings?.skills;
+            if (Array.isArray(skills)) {
+              const kept = skills.filter((s) => !missing.has(s));
+              if (kept.length !== skills.length) {
+                config.pi_settings = { ...(config.pi_settings || {}), skills: kept };
+                return { ...item, config };
+              }
+            }
+            return item;
+          });
+        }
+        const result = await api.importAgentsConfirm(agents, strategy);
         Toast.success(
           `Created: ${result.created}, Skipped: ${result.skipped}, Overwritten: ${result.overwritten}`
         );
-        setImportState({ visible: false, conflicts: [], agents: [], total: 0 });
+        setImportState({ visible: false, conflicts: [], missingSkills: [], agents: [], total: 0 });
         reload();
       } catch (err: any) {
         Toast.error(err?.message || 'Import confirm failed');
       }
     },
-    [importState.agents, reload]
+    [importState.agents, importState.missingSkills, reload]
   );
 
   const handleDelete = useCallback(
@@ -681,25 +709,58 @@ export function AgentMillerColumns() {
       <Modal
         title="Import Conflicts"
         visible={importState.visible}
-        onCancel={() => setImportState({ visible: false, conflicts: [], agents: [], total: 0 })}
+        onCancel={() =>
+          setImportState({ visible: false, conflicts: [], missingSkills: [], agents: [], total: 0 })
+        }
         footer={null}
       >
-        <p>
-          {importState.conflicts.length} of {importState.total} agents have name conflicts:
-        </p>
-        <div style={{ marginBottom: 16 }}>
-          {importState.conflicts.map((name) => (
-            <Tag key={name} color="orange" style={{ margin: 2 }}>
-              {name}
-            </Tag>
-          ))}
-        </div>
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <Button onClick={() => handleImportConfirm('skip')}>Skip conflicts</Button>
-          <Button onClick={() => handleImportConfirm('overwrite')}>Overwrite existing</Button>
-          <Button theme="solid" onClick={() => handleImportConfirm('rename')}>
-            Rename new
-          </Button>
+        {importState.conflicts.length > 0 && (
+          <>
+            <p>
+              {importState.conflicts.length} of {importState.total} agents have name conflicts:
+            </p>
+            <div style={{ marginBottom: 16 }}>
+              {importState.conflicts.map((name) => (
+                <Tag key={name} color="orange" style={{ margin: 2 }}>
+                  {name}
+                </Tag>
+              ))}
+            </div>
+          </>
+        )}
+        {importState.missingSkills.length > 0 && (
+          <>
+            <p>
+              These skills are referenced by the imported agents but missing from the library (they
+              will not load until created in Settings):
+            </p>
+            <div style={{ marginBottom: 16 }}>
+              {importState.missingSkills.map((name) => (
+                <Tag key={name} color="red" style={{ margin: 2 }}>
+                  {name}
+                </Tag>
+              ))}
+            </div>
+          </>
+        )}
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+          {importState.conflicts.length > 0 && (
+            <>
+              <Button onClick={() => handleImportConfirm('skip')}>Skip conflicts</Button>
+              <Button onClick={() => handleImportConfirm('overwrite')}>Overwrite existing</Button>
+              <Button theme="solid" onClick={() => handleImportConfirm('rename')}>
+                Rename new
+              </Button>
+            </>
+          )}
+          {importState.missingSkills.length > 0 && importState.conflicts.length === 0 && (
+            <>
+              <Button onClick={() => handleImportConfirm('skip', 'keep')}>Keep references</Button>
+              <Button theme="solid" onClick={() => handleImportConfirm('skip', 'remove')}>
+                Remove missing skill refs
+              </Button>
+            </>
+          )}
         </div>
       </Modal>
     </div>

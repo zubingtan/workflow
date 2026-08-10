@@ -42,6 +42,7 @@ const DATA_DIR = process.env.WORKFLOW_DATA_DIR
   : join(homedir(), '.config', process.env.NODE_ENV === 'production' ? 'workflow' : 'workflow-dev');
 const DB_PATH = join(DATA_DIR, 'workflow.db');
 const AGENT_DIR = join(DATA_DIR, 'agents');
+const SKILLS_DIR = join(DATA_DIR, 'skills');
 
 // --- Static serving config (prod only; dev mode uses rsbuild middlewareMode) ---
 // STATIC_DIR lets Docker / custom deployments point at a non-default dist path.
@@ -58,6 +59,7 @@ const BASE_PATH = (process.env.BASE_PATH ?? '').replace(/\/+$/, '');
 // --- SQLite init ---
 mkdirSync(DATA_DIR, { recursive: true });
 mkdirSync(AGENT_DIR, { recursive: true });
+mkdirSync(SKILLS_DIR, { recursive: true });
 
 const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
@@ -152,6 +154,7 @@ const feishuLongConnectionManager = await maybeStartFeishuLongConnectionManager(
 const app = createApp({
   db,
   agentDir: AGENT_DIR,
+  skillsDir: SKILLS_DIR,
   staticEnabled: STATIC_ENABLED,
   staticDir: STATIC_DIR,
   basePath: BASE_PATH,
@@ -229,6 +232,7 @@ if (IS_PROD) {
     '/api/settings',
     '/api/mem0',
     '/api/feishu',
+    '/skills',
   ];
   const apiGate = (req, res, next) => {
     // #297: under a basePath mount, incoming paths carry the prefix (nginx
