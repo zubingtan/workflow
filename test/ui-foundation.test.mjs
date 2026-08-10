@@ -60,6 +60,17 @@ test('representative production wrappers use Base UI primitives and semantic uti
   assert.match(sources.popover, /@base-ui\/react\/popover/);
   assert.match(sources.dialog, /@base-ui\/react\/dialog/);
   assert.match(sources.button, /bg-primary/);
+  assert.match(
+    sources.button,
+    /ghost:\s*['"]hover:bg-accent hover:text-accent-foreground/,
+    'ghost buttons must use the shared semantic accent hover'
+  );
+  assert.match(
+    sources.button,
+    /outline:[\s\S]*hover:bg-accent hover:text-accent-foreground/,
+    'outline buttons must use the shared semantic accent hover'
+  );
+  assert.doesNotMatch(sources.button, /ghost-primary/, 'do not add a one-off button variant');
   assert.match(sources.input, /border-input/);
   assert.match(sources.button, /dark:/);
   assert.match(sources.input, /dark:/);
@@ -98,4 +109,6 @@ test('the app consumes the foundation for theme, rename field, and confirmation 
   assert.match(app, /<Popover/);
   assert.match(app, /<Dialog/);
   assert.match(app, /<Field/);
+  assert.match(app, /<Button variant="ghost" size="sm"/);
+  assert.doesNotMatch(app, /ghost-primary/, 'page code must use the standard ghost variant');
 });
