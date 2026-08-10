@@ -3,6 +3,15 @@ import {
   handleFeishuReceiveMessage,
   listEnabledFeishuTriggerCandidates,
 } from './feishu-trigger-handler.mjs';
+import { err, log } from './log.mjs';
+
+// Default logger carries timestamps (supervisord log files have none). Tests
+// inject a silent logger to keep output clean — the timestamped default only
+// applies in production.
+const timestampedLogger = {
+  info: (message, data) => log('feishu', message, data),
+  error: (message, error) => err('feishu', message, error),
+};
 
 async function loadFeishuSdk() {
   try {
@@ -35,7 +44,7 @@ export function createFeishuLongConnection({
   db,
   enqueueSavedWorkflowRun,
   fetchImpl = fetch,
-  logger = console,
+  logger = timestampedLogger,
   sdk,
 }) {
   if (!appId || !appSecret) {
@@ -60,6 +69,16 @@ export function createFeishuLongConnection({
   const eventDispatcher = new sdk.EventDispatcher({}).register({
     [FEISHU_RECEIVE_MESSAGE_EVENT]: async (event) => {
       try {
+        // Arrival trace point: every inbound event is logged with its identity
+        // BEFORE any matching/parsing — a message with no follow-up log lines
+        // never reached the trigger handler (connection issue, not a match
+        // issue).
+        log('feishu', 'event received', {
+          messageId: event?.message?.message_id ?? '',
+          chatId: event?.message?.chat_id ?? '',
+          messageType: event?.message?.message_type ?? '',
+          eventId: event?.event_id ?? event?.eventId ?? '',
+        });
         const result = await handleFeishuReceiveMessage({
           db,
           enqueueSavedWorkflowRun,
@@ -67,9 +86,9 @@ export function createFeishuLongConnection({
           appId,
           fetchImpl,
         });
-        logger.info?.('[feishu] receive-message handled', result);
-      } catch (err) {
-        logger.error?.('[feishu] receive-message failed', err);
+        logger.info?.('receive-message handled', result);
+      } catch (catchErr) {
+        logger.error?.('receive-message failed', catchErr);
       }
     },
   });
@@ -80,14 +99,14 @@ export function createFeishuLongConnection({
       if (started) return;
       started = true;
       wsClient.start({ eventDispatcher });
-      logger.info?.('[feishu] long connection started');
+      logger.info?.('long connection started');
     },
     close() {
       if (!started) return;
       started = false;
       if (typeof wsClient.close === 'function') wsClient.close();
       else if (typeof wsClient.stop === 'function') wsClient.stop();
-      logger.info?.('[feishu] long connection stopped');
+      logger.info?.('long connection stopped');
     },
   };
 }

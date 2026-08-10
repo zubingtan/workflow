@@ -1,5 +1,6 @@
 import { fetchFeishuContext } from './feishu-context.mjs';
 import { normalizeReceiveMessageEvent } from './feishu-events.mjs';
+import { err, log } from './log.mjs';
 
 function parseWorkflowData(data) {
   if (!data) return null;
@@ -116,10 +117,31 @@ export async function handleFeishuReceiveMessage({
   fetchImpl = fetch,
 }) {
   const event = normalizeReceiveMessageEvent(payload, { requireBotMention: false });
-  if (!event.ok) return { ignored: true, reason: event.reason };
+  if (!event.ok) {
+    // Rejection trace point: the event reached the handler but failed
+    // parsing/validation — paired with "event received" this distinguishes
+    // "never arrived" from "arrived but rejected" in one glance.
+    log('feishu', 'event rejected', {
+      messageId: event.messageId ?? payload?.event?.message?.message_id ?? '',
+      chatId: event.chatId ?? payload?.event?.message?.chat_id ?? '',
+      reason: event.reason,
+    });
+    return { ignored: true, reason: event.reason };
+  }
 
   const trigger = findFeishuTriggerMatch(db, event, appId);
-  if (!trigger) return { ignored: true, reason: 'no_matching_feishu_trigger' };
+  if (!trigger) {
+    // No candidate matched: allowlist, appId or bot-mention gate failed.
+    // Candidates count helps distinguish "no triggers at all" (config gone)
+    // from "trigger exists but gates rejected this message".
+    log('feishu', 'no matching trigger', {
+      messageId: event.messageId,
+      chatId: event.chatId,
+      appId,
+      triggerCandidates: listEnabledFeishuTriggerCandidates(db).length,
+    });
+    return { ignored: true, reason: 'no_matching_feishu_trigger' };
+  }
 
   const inserted = db
     .prepare('INSERT OR IGNORE INTO feishu_event_dedup (message_id) VALUES (?)')
@@ -128,6 +150,7 @@ export async function handleFeishuReceiveMessage({
     const row = db
       .prepare('SELECT run_id FROM feishu_event_dedup WHERE message_id=?')
       .get(event.messageId);
+    log('feishu', 'duplicate event', { messageId: event.messageId, runID: row?.run_id ?? null });
     return { duplicate: true, runID: row?.run_id ?? null };
   }
 
@@ -146,12 +169,26 @@ export async function handleFeishuReceiveMessage({
     schema: withFeishuStartOutputs(trigger.schema),
     inputs,
   });
-  if (!result)
+  if (!result) {
+    err('feishu', 'workflow not found while enqueuing run', {
+      workflowId: trigger.workflowId,
+      messageId: event.messageId,
+    });
     return { error: 'workflow not found', workflowId: trigger.workflowId, statusCode: 404 };
+  }
 
   db.prepare('UPDATE feishu_event_dedup SET run_id=? WHERE message_id=?').run(
     result.runID,
     event.messageId
   );
+  // Enqueue trace point: this runID is what the queue + history viewer will
+  // show — grep it in the logs to follow the run through execution.
+  log('feishu', 'run enqueued', {
+    runId: result.runID,
+    workflowId: trigger.workflowId,
+    messageId: event.messageId,
+    chatId: event.chatId,
+    query: (event.query ?? '').slice(0, 80),
+  });
   return { runID: result.runID, status: 'queued', workflowId: trigger.workflowId };
 }
