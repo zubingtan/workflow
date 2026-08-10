@@ -40,8 +40,10 @@ if [ ! -x "$NODE_BIN" ]; then
   exit 1
 fi
 export PATH="$(dirname "$NODE_BIN"):$PATH"
-corepack enable pnpm >/dev/null 2>&1 || true
+NODE_MAJOR="$("$NODE_BIN" --version | sed 's/^v\([0-9]*\).*/\1/')"
+[ "$NODE_MAJOR" -ge 22 ] || { say "Node $("$NODE_BIN" --version) detected — workflow requires Node 22 (better-sqlite3 binding); set NODE_BIN"; exit 1; }
 node --version
+corepack enable pnpm >/dev/null 2>&1 || true
 
 # --- 2. Repo ---
 say "2/5 repo at $WF_DIR (main)"
@@ -93,8 +95,9 @@ if [ ! -f "$NGINX_SITE" ] && [ -n "$NGINX_SRC" ] && [ -f "$NGINX_SRC" ]; then
 fi
 if [ ! -f "$NGINX_SITE" ]; then
   say "ERROR: no nginx site fragment at $NGINX_SITE and no NGINX_SRC to convert."
-  say "  Point NGINX_SRC at an existing standalone nginx config, or create"
-  say "  $NGINX_SITE with a server block for your host first."
+  say "  Fresh install? Run ./install.sh instead (it generates a server block"
+  say "  for you). Or point NGINX_SRC at an existing standalone nginx config,"
+  say "  or create $NGINX_SITE with a server block for your host first."
   exit 1
 fi
 
@@ -127,7 +130,13 @@ fi
 say "5/5 supervisord: install workflow + fake-provider programs"
 sudo mkdir -p "$SUPERVISOR_DIR"
 mkdir -p "$WF_HOME/.config/workflow/logs"   # supervisord logfile targets (workflow.conf)
-sed -e "s|/home/zubingtan|$WF_HOME|g" deploy/supervisord/workflow.conf | sudo tee "$SUPERVISOR_DIR/workflow.conf" > /dev/null
+sed -e "s|{{WF_DIR}}|$WF_DIR|g" \
+    -e "s|{{NODE_BIN}}|$NODE_BIN|g" \
+    -e "s|{{PORT}}|$PORT|g" \
+    -e "s|{{BASE_PATH}}|$BASE_PATH|g" \
+    -e "s|{{DATA_DIR}}|$WF_HOME/.config/workflow|g" \
+    -e "s|{{FAKE_PROVIDER_PORT}}|$FAKE_PROVIDER_PORT|g" \
+    deploy/supervisord/workflow.conf | sudo tee "$SUPERVISOR_DIR/workflow.conf" > /dev/null
 supervisorctl reread || sudo supervisorctl reread
 supervisorctl update || sudo supervisorctl update
 

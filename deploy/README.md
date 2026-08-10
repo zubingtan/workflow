@@ -1,18 +1,15 @@
-# workflow 部署 runbook（通用版）
+# workflow 部署 runbook
 
 把 workflow 部署到**你自己的服务器**并用飞书 bot 验证闭环。**单实例**生产构建
-（#295），挂载 `/workflow` 子路径（#297 base path），supervisord 管进程，nginx
-保前缀反代。所有环境相关值用环境变量覆盖（见下方「可配置项」），下文用
-`<占位符>` 表示需要你收集/决定的值。
+（#295），挂载 `/workflow` 子路径（#297 base path），supervisord/systemd 管进程，
+nginx 保前缀反代。
 
-## 拓扑
+**快速开始**（clone 之后）：
 
-```
-浏览器 ── https://<host>/workflow ──▶ nginx (80)
-                                     └─▶ :4000 workflow (NODE_ENV=production, BASE_PATH=/workflow)
-supervisord: [program:workflow] + [program:fake-provider] (:4010, 验证期 LLM 替身)
-数据: <data-dir>/（SQLite + agents，默认 ~/.config/workflow）
-飞书: 长连接（事件订阅 im.message.receive_v1）→ 唯一自建应用（#295 单连接）
+```bash
+./install.sh                      # 交互式：按提示填域名等
+# 或全自动：
+./install.sh --yes --host app.example.com
 ```
 
 ## 部署前收集（你的环境值）
@@ -26,68 +23,59 @@ supervisord: [program:workflow] + [program:fake-provider] (:4010, 验证期 LLM 
 | `<bot-open-id>`             | 被 @ 的 bot open_id                      | `ou_xxx`               |
 | `<data-dir>`                | 数据目录                                 | `~/.config/workflow`   |
 
-> 历史实例参考值（作者部署的 w8）：不再维护在文档中；按上表自行收集即可。
-
-## 一次性部署（bootstrap）
-
-在服务器上：
+## 一键部署（install.sh）
 
 ```bash
-git clone https://github.com/zubingtan/workflow.git
-cd workflow
-bash deploy/bootstrap.sh
+./install.sh [选项]
 ```
 
-bootstrap 依次做（幂等，可重跑）：
+**选项**：
 
-1. **工具链**：校验 Node 22（`NODE_BIN`）+ corepack pnpm
-2. **仓库**：`WF_DIR` 拉 main + `pnpm install --frozen-lockfile`
-3. **旧栈下线**：停掉端口 3000/4010 上像 workflow 的遗留进程（按 cmdline 匹配，不误杀）
-4. **nginx 接入**：把 `deploy/nginx/workflow-location.conf` 接进 `NGINX_SITE`
-   （conf.d 片段）里匹配 `SERVER_NAME` 的 server 块（默认第一个）：
-   - `NGINX_SITE` 不存在且 `NGINX_SRC` 指向一个独立完整 nginx 配置时，先转换成
-     conf.d 片段（自动剔除 `listen 8888` 等遗留监听、保留 map 指令）
-   - **server_name 冲突检测**：与 conf.d 其他文件的同名 server 会静默遮蔽，
-     脚本检测到会报错并要求你处理（不自动禁用）
-   - `sudo nginx -t` 验证后 reload（检测到旧 master 则重启）
-5. **supervisord**：安装 `deploy/supervisord/workflow.conf`（workflow + fake-provider）
-   并 reread/update
+| 选项               | 默认值               | 说明                                     |
+| ------------------ | -------------------- | ---------------------------------------- |
+| `--host <域名/IP>` | 交互询问             | nginx server_name（`--yes` 时取本机 IP） |
+| `--port <n>`       | `4000`               | workflow 端口                            |
+| `--base-path <p>`  | `/workflow`          | 子路径（构建与 nginx 一致）              |
+| `--data-dir <d>`   | `~/.config/workflow` | 数据目录（SQLite + agents + logs）       |
+| `--yes` / `-y`     | 关                   | 跳过交互，全部用默认值                   |
+| `--skip-nginx`     | 关                   | 不动 nginx                               |
+| `--skip-process`   | 关                   | 不注册进程管理器（nohup 手动启动）       |
+| `--help` / `-h`    | —                    | 帮助                                     |
 
-### 可配置项（全部可用环境变量覆盖）
+**它做什么**（每步有日志，缺依赖会提示怎么装）：
 
-| 变量                  | 默认值                            | 说明                                                                            |
-| --------------------- | --------------------------------- | ------------------------------------------------------------------------------- |
-| `WF_USER` / `WF_HOME` | 当前用户 / `$HOME`                | 部署用户                                                                        |
-| `WF_DIR`              | `$WF_HOME/projects/workflow`      | 仓库位置                                                                        |
-| `NODE_BIN`            | `command -v node`                 | Node 22 可执行文件（nvm 环境建议显式指定绝对路径）                              |
-| `NGINX_SITE`          | `/etc/nginx/conf.d/workflow.conf` | 写入的 conf.d 片段                                                              |
-| `NGINX_SRC`           | 空                                | 可选：独立完整 nginx 配置（如历史遗留 `/tmp/*.conf`），存在则转换为 conf.d 片段 |
-| `SERVER_NAME`         | 空（第一个 server 块）            | 承载 /workflow 的 server 块 server_name                                         |
-| `SUPERVISOR_DIR`      | `/etc/supervisor/conf.d`          | supervisord 配置目录                                                            |
-| `BASE_PATH`           | `/workflow`                       | 子路径（与构建时一致）                                                          |
-| `PORT`                | `4000`                            | workflow 端口                                                                   |
-| `FAKE_PROVIDER_PORT`  | `4010`                            | fake-provider 端口                                                              |
+1. **检测工具链**：Node 22（版本校验）、pnpm（corepack 自动启用）、nginx、
+   进程管理器（supervisord → systemd → nohup 兜底）
+2. **安装 + 构建**：`pnpm install --frozen-lockfile` → `BASE_PATH=... pnpm build`
+3. **注册进程**：
+   - supervisord：渲染 `deploy/supervisord/workflow.conf`（workflow + fake-provider）
+   - systemd：渲染 `deploy/systemd/workflow.service.example`（无 supervisord 时）
+   - nohup：直接启动（警告：不会自动重启）
+4. **接入 nginx**：
+   - 无配置时：从 `deploy/nginx/workflow-server.conf.example` 生成完整 server 块
+     （`server_name <host>` + `/workflow` location，含 SSE 调优）
+   - 已有配置时：server_name 冲突检测（nginx 会静默遮蔽后加载者，这里失败即报错）
+   - `nginx -t` 验证 → reload
+5. **导入模板**：Feishu Echo Reply workflow（幂等）
+6. **健康检查 + 下一步指引**（填凭证、验证命令）
 
-> w8 迁移示例：`NGINX_SRC=/tmp/workflow-nginx.conf SERVER_NAME=zubingtan-w8.corp.pony.ai bash deploy/bootstrap.sh`
+> 手动接入 nginx（不想用 install.sh 的 nginx 部分）：把
+> `deploy/nginx/workflow-location.conf`（location 片段）include 进你的 server 块，
+> 或直接参考 `deploy/nginx/workflow-server.conf.example` 写一个完整的 server 块。
 
 ## 配置（UI 操作）
 
 打开 `https://<host>/workflow`：
 
-1. **导入模板**（服务器上）：
-   ```bash
-   node deploy/import-template.mjs --base http://localhost:4000/workflow
-   # 已存在则跳过；--update 覆盖。--base 需带 /workflow 前缀（#297：根路径 404）
-   ```
-   导入后 Dashboard 出现 workflow「Feishu Echo Reply」：Trigger → LLM → Feishu Bot → End。
-2. **填凭证**（三处，同一自建应用）：
+1. **填凭证**（三处，同一自建应用）：
    - Feishu Trigger 节点：App ID / App Secret（填了才建长连接；#295 单连接纪律：只有一个环境填）
    - Feishu Bot 节点：App ID / App Secret（app 模式发消息）
    - LLM 节点：选 agent——验证期指向 fake-provider 的 agent（base_url
-     `http://127.0.0.1:4010/v1`，任意 api_key/model）；验收后换真实供应商，模板不用改（#294）
-3. **飞书应用侧**（#298）：事件订阅方式为长连接；已订阅 `im.message.receive_v1`；
+     `http://127.0.0.1:<fake-provider-port>/v1`，任意 api_key/model）；验收后换真实供应商，
+     模板不用改（#294）
+2. **飞书应用侧**（#298）：事件订阅方式为长连接；已订阅 `im.message.receive_v1`；
    权限含"接收群聊中 @机器人消息事件"；bot 已在验证群（`<chat-id>`）；权限变更需发布版本
-4. 保存 trigger 后确认日志出现长连接建立（`<data-dir>/logs/`）
+3. 保存 trigger 后确认日志出现长连接建立（`<data-dir>/logs/`）
 
 ## 验证闭环（#296）
 
@@ -119,8 +107,8 @@ CHAT_ID=<chat-id> BOT_OPEN_ID=<bot-open-id> \
   （凭证/权限/allowlist）；run 失败 = 看 LLM/Feishu Bot 节点报错
 - `curl https://<host>/workflow/health/live` 应返回 JSON
 - 长连接数哨兵（可选）：`event/v1/connection` 接口断言 App 级连接数 == 1
-- supervisord 反复重启 + `EADDRINUSE`：端口被遗留进程占用——`ss -ltnp | grep :4000`
-  找到占用者停掉后 `sudo supervisorctl restart workflow`
+- 进程反复重启 + `EADDRINUSE`：端口被遗留进程占用——`ss -ltnp | grep :4000`
+  找到占用者停掉后重启服务
 
 ## 更新部署
 
@@ -128,6 +116,31 @@ CHAT_ID=<chat-id> BOT_OPEN_ID=<bot-open-id> \
 # 服务器上
 bash deploy/deploy.sh    # git reset main → install → build(BASE_PATH=/workflow) → supervisorctl restart → 健康检查
 ```
+
+## 高级：bootstrap（幂等初始化 / 历史迁移）
+
+`deploy/bootstrap.sh` 是 install.sh 的前身，面向"已有一台在跑服务的服务器"（幂等重跑、
+旧栈清理、历史 nginx 配置迁移）。新部署请直接用 install.sh；有历史遗留
+（如独立完整 nginx 配置 `/tmp/workflow-nginx.conf` 需要正式化）时：
+
+```bash
+NGINX_SRC=/tmp/workflow-nginx.conf SERVER_NAME=<host> bash deploy/bootstrap.sh
+```
+
+**可配置项**（install.sh 与 bootstrap.sh 通用，环境变量覆盖）：
+
+| 变量                  | 默认值                            | 说明                                                                            |
+| --------------------- | --------------------------------- | ------------------------------------------------------------------------------- |
+| `WF_USER` / `WF_HOME` | 当前用户 / `$HOME`                | 部署用户                                                                        |
+| `WF_DIR`              | `$WF_HOME/projects/workflow`      | 仓库位置                                                                        |
+| `NODE_BIN`            | `command -v node`                 | Node 22 可执行文件（nvm 环境建议显式指定绝对路径）                              |
+| `NGINX_SITE`          | `/etc/nginx/conf.d/workflow.conf` | 写入的 conf.d 片段                                                              |
+| `NGINX_SRC`           | 空                                | 可选：独立完整 nginx 配置（如历史遗留 `/tmp/*.conf`），存在则转换为 conf.d 片段 |
+| `SERVER_NAME`         | 空（第一个 server 块）            | 承载 /workflow 的 server 块 server_name                                         |
+| `SUPERVISOR_DIR`      | `/etc/supervisor/conf.d`          | supervisord 配置目录                                                            |
+| `BASE_PATH`           | `/workflow`                       | 子路径（与构建时一致）                                                          |
+| `PORT`                | `4000`                            | workflow 端口                                                                   |
+| `FAKE_PROVIDER_PORT`  | `4010`                            | fake-provider 端口                                                              |
 
 ## 关键决策索引
 
