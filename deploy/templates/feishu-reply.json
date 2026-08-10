@@ -1,0 +1,146 @@
+{
+  "nodes": [
+    {
+      "id": "feishu_trigger_0",
+      "type": "feishu-trigger",
+      "meta": { "position": { "x": -420, "y": 300 } },
+      "data": {
+        "title": "FeishuTrigger_AtBot",
+        "enabled": true,
+        "appId": "",
+        "appSecret": "",
+        "onlyWhenMentioned": true,
+        "chatIdAllowlist": "oc_0da8b36e7656ca1768a04e720c190c15",
+        "contextMode": "auto",
+        "maxMessages": 20,
+        "windowMinutes": 30,
+        "outputs": {
+          "type": "object",
+          "properties": {
+            "query": { "type": "string" },
+            "rawText": { "type": "string" },
+            "contextText": { "type": "string" },
+            "contextMessages": { "type": "array" },
+            "chatId": { "type": "string" },
+            "chatType": { "type": "string" },
+            "threadId": { "type": "string" },
+            "messageId": { "type": "string" },
+            "rootId": { "type": "string" },
+            "parentId": { "type": "string" },
+            "senderOpenId": { "type": "string" },
+            "senderUserId": { "type": "string" },
+            "senderUnionId": { "type": "string" },
+            "tenantKey": { "type": "string" },
+            "contextFetchError": { "type": "string" }
+          }
+        }
+      }
+    },
+    {
+      "id": "start_0",
+      "type": "start",
+      "meta": { "position": { "x": 100, "y": 300 } },
+      "data": {
+        "title": "Start",
+        "outputs": {
+          "type": "object",
+          "properties": {
+            "query": { "type": "string" },
+            "contextText": { "type": "string" },
+            "chatId": { "type": "string" },
+            "messageId": { "type": "string" }
+          }
+        }
+      }
+    },
+    {
+      "id": "llm_main",
+      "type": "llm",
+      "meta": { "position": { "x": 540, "y": 300 } },
+      "data": {
+        "title": "Agent_Main",
+        "inputsValues": {
+          "agentId": { "type": "constant", "content": "" },
+          "prompt": { "type": "template", "content": "{{start_0.query}}" }
+        },
+        "inputs": {
+          "type": "object",
+          "required": ["agentId", "prompt"],
+          "properties": {
+            "agentId": { "type": "string", "extra": { "formComponent": "agent-select" } },
+            "prompt": { "type": "string", "extra": { "formComponent": "prompt-editor" } }
+          }
+        },
+        "outputs": {
+          "type": "object",
+          "properties": { "result": { "type": "string" } }
+        }
+      }
+    },
+    {
+      "id": "feishu_bot_0",
+      "type": "feishu-bot",
+      "meta": { "position": { "x": 980, "y": 300 } },
+      "data": {
+        "title": "FeishuBot_Reply",
+        "botType": "app",
+        "app": {
+          "appId": "",
+          "appSecret": "",
+          "receiveIdType": "chat_id",
+          "receiveId": { "type": "template", "content": "{{start_0.chatId}}" },
+          "replyToMessageId": { "type": "template", "content": "{{start_0.messageId}}" }
+        },
+        "msgType": "text",
+        "inputsValues": {
+          "receiveId": { "type": "template", "content": "{{start_0.chatId}}" },
+          "replyToMessageId": { "type": "template", "content": "{{start_0.messageId}}" },
+          "textContent": { "type": "template", "content": "{{llm_main.result}}" },
+          "postContent": { "type": "template", "content": "" },
+          "cardContent": { "type": "template", "content": "" }
+        },
+        "inputs": {
+          "type": "object",
+          "properties": {
+            "receiveId": { "type": "string" },
+            "replyToMessageId": { "type": "string" },
+            "textContent": { "type": "string" },
+            "postContent": { "type": "string" },
+            "cardContent": { "type": "string" }
+          }
+        },
+        "textContent": { "type": "template", "content": "{{llm_main.result}}" },
+        "postContent": { "type": "template", "content": "" },
+        "cardContent": { "type": "template", "content": "" },
+        "outputs": {
+          "type": "object",
+          "properties": {
+            "success": { "type": "boolean" },
+            "messageId": { "type": "string" },
+            "response": { "type": "object" }
+          }
+        }
+      }
+    },
+    {
+      "id": "end_0",
+      "type": "end",
+      "meta": { "position": { "x": 1420, "y": 300 } },
+      "data": {
+        "title": "End",
+        "inputsValues": {
+          "result": { "type": "ref", "content": ["feishu_bot_0", "success"] }
+        },
+        "inputs": {
+          "type": "object",
+          "properties": { "result": { "type": "boolean" } }
+        }
+      }
+    }
+  ],
+  "edges": [
+    { "sourceNodeID": "start_0", "targetNodeID": "llm_main" },
+    { "sourceNodeID": "llm_main", "targetNodeID": "feishu_bot_0" },
+    { "sourceNodeID": "feishu_bot_0", "targetNodeID": "end_0" }
+  ]
+}
