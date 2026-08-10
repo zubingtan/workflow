@@ -46,7 +46,17 @@ export function createFeishuLongConnection({
   }
 
   const loggerLevel = sdk.LoggerLevel?.info ?? sdk.LoggerLevel?.debug;
-  const wsClient = new sdk.WSClient({ appId, appSecret, loggerLevel });
+  // #302: enable the SDK's pong watchdog — without wsConfig.pingTimeout the
+  // watchdog is a no-op (pingTimeoutSec = 0), so a silently-dead connection
+  // (e.g. NAT mapping expired, TCP still ESTAB) is never detected and events
+  // stop arriving forever. With a 30s watchdog (< 120s ping interval) a ping
+  // with no pong terminates the socket and triggers the standard reconnect.
+  const wsClient = new sdk.WSClient({
+    appId,
+    appSecret,
+    loggerLevel,
+    wsConfig: { pingTimeout: 30 },
+  });
   const eventDispatcher = new sdk.EventDispatcher({}).register({
     [FEISHU_RECEIVE_MESSAGE_EVENT]: async (event) => {
       try {
