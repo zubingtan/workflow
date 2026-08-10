@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react';
 
-import { Checkbox, CheckboxGroup, Typography, Select, Radio, RadioGroup } from '@douyinfe/semi-ui';
-
+import {
+  Checkbox,
+  CheckboxGroup,
+  Typography,
+  Select,
+  Radio,
+  RadioGroup,
+} from '../../ui/management';
 import type { AgentDef } from '../../../api';
 
 const BUILTIN_TOOLS = ['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls'];

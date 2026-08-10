@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 
-import { Spin, Empty, Typography, Tag, Button } from '@douyinfe/semi-ui';
-
+import { Spin, Empty, Typography, Tag, Button } from '../../ui/management';
 import * as api from '../../../api';
 import type { AgentDef, Mem0Memory } from '../../../api';
 
@@ -74,8 +73,8 @@ export function MemoriesSection({ agent }: Props) {
               style={{
                 padding: 12,
                 borderRadius: 8,
-                border: '1px solid var(--semi-color-border)',
-                background: 'var(--semi-color-bg-0)',
+                border: '1px solid var(--border)',
+                background: 'var(--background)',
               }}
             >
               <Typography.Text>{m.memory}</Typography.Text>

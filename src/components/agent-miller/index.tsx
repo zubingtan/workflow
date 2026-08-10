@@ -1,6 +1,14 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 
 import {
+  Search as IconSearch,
+  Plus as IconPlus,
+  Download as IconDownload,
+  Upload as IconUpload,
+  Trash2 as IconDelete,
+} from 'lucide-react';
+
+import {
   ResizeGroup,
   ResizeItem,
   ResizeHandler,
@@ -15,9 +23,7 @@ import {
   Select,
   Modal,
   Popconfirm,
-} from '@douyinfe/semi-ui';
-import { IconSearch, IconPlus, IconDownload, IconUpload, IconDelete } from '@douyinfe/semi-icons';
-
+} from '../ui/management';
 import * as api from '../../api';
 import { useHashRoute } from './use-hash-route';
 import { SessionDetailPanel } from './session-detail';
@@ -282,7 +288,7 @@ export function AgentMillerColumns() {
             alignItems: 'center',
             gap: 8,
             marginBottom: 12,
-            color: 'var(--semi-color-danger)',
+            color: 'var(--destructive)',
           }}
         >
           <span>{status.message || 'Save failed'}</span>
@@ -413,7 +419,7 @@ export function AgentMillerColumns() {
             <div
               style={{
                 padding: 12,
-                borderBottom: '1px solid var(--semi-color-border)',
+                borderBottom: '1px solid var(--border)',
                 flexShrink: 0,
               }}
             >
@@ -471,13 +477,10 @@ export function AgentMillerColumns() {
                       style={{
                         cursor: 'pointer',
                         padding: '8px 12px',
-                        background:
-                          selectedAgent?.id === item.id
-                            ? 'var(--semi-color-fill-0)'
-                            : 'transparent',
+                        background: selectedAgent?.id === item.id ? 'var(--muted)' : 'transparent',
                         borderLeft:
                           selectedAgent?.id === item.id
-                            ? '3px solid var(--semi-color-primary)'
+                            ? '3px solid var(--primary)'
                             : '3px solid transparent',
                       }}
                     >
@@ -491,7 +494,7 @@ export function AgentMillerColumns() {
                       >
                         <div>
                           <div style={{ fontWeight: 500 }}>{item.name}</div>
-                          <div style={{ fontSize: 12, color: 'var(--semi-color-text-2)' }}>
+                          <div style={{ fontSize: 12, color: 'var(--muted-foreground)' }}>
                             {parseAgentConfig(item.config)?.provider?.model || ''}
                           </div>
                         </div>
@@ -546,9 +549,7 @@ export function AgentMillerColumns() {
                       padding: '8px 16px',
                       opacity: selectedAgent ? 1 : 0.4,
                       background:
-                        activeSection === s.key && selectedAgent
-                          ? 'var(--semi-color-fill-0)'
-                          : 'transparent',
+                        activeSection === s.key && selectedAgent ? 'var(--muted)' : 'transparent',
                       fontWeight: activeSection === s.key && selectedAgent ? 600 : 400,
                     }}
                   >

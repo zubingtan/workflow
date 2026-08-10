@@ -1,7 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { createRoot } from 'react-dom/client';
-import { ArrowLeft, LoaderCircle, Moon, Pencil, Save, Sun, Monitor } from 'lucide-react';
+import {
+  ArrowLeft,
+  Bot,
+  ChevronLeft,
+  ChevronRight,
+  LoaderCircle,
+  Moon,
+  Pencil,
+  Save,
+  Settings,
+  Sun,
+  Monitor,
+  Workflow,
+} from 'lucide-react';
 
 import { unstableSetCreateRoot } from '@/form-semantics/legacy-adapter';
 import { preserveWorkflowDocumentFields } from '@/form-semantics';
@@ -12,12 +25,10 @@ import { preserveWorkflowDocumentFields } from '@/form-semantics';
 // physically exists at that path — rsbuild resolves it via the filesystem.
 // If this breaks in a future Semi upgrade, switch to a relative path.
 import '@douyinfe/semi-ui/dist/css/semi.min.css';
-import en_US from '@douyinfe/semi-ui/lib/es/locale/source/en_US';
-import { Typography, Spin, Toast, LocaleProvider } from '@douyinfe/semi-ui';
 
 // Theme CSS files — order matters (ADR-0002):
-//   semi.min.css → semi-bridge.css → tokens.css → theme-dark.css
-//   → flowgram-bridge.css → ./styles/index.css → app code
+//   semi.min.css → semi-bridge.css → tokens.css → theme-dark.css → flowgram-bridge.css → styles/index.css
+import '@douyinfe/semi-ui/dist/css/semi.min.css';
 import './theme/semi-bridge.css';
 import './theme/tokens.css';
 import './theme/theme-dark.css';
@@ -31,6 +42,7 @@ import { GetGlobalVariableSchema } from './plugins/variable-panel-plugin';
 import { WorkflowManager } from './manage';
 import { initialData } from './initial-data';
 import { Editor } from './editor';
+import { Spin, Toast, ToastViewport, Typography } from './components/ui/management';
 import {
   Button,
   Dialog,
@@ -55,10 +67,10 @@ unstableSetCreateRoot(createRoot);
 
 type View = 'workflows' | 'agents' | 'settings' | 'editor';
 
-const NAV_ITEMS: { key: View; label: string }[] = [
-  { key: 'workflows', label: 'Workflows' },
-  { key: 'agents', label: 'Agents' },
-  { key: 'settings', label: 'Settings' },
+const NAV_ITEMS: { key: View; label: string; icon: typeof Workflow }[] = [
+  { key: 'workflows', label: 'Workflows', icon: Workflow },
+  { key: 'agents', label: 'Agents', icon: Bot },
+  { key: 'settings', label: 'Settings', icon: Settings },
 ];
 
 /** Parse top-level hash route → view + optional workflowId */
@@ -85,6 +97,7 @@ function App() {
   const [renaming, setRenaming] = useState(false);
   const [renameDraft, setRenameDraft] = useState('');
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
+  const [railCollapsed, setRailCollapsed] = useState(false);
   const [confirmNav, setConfirmNav] = useState<{
     visible: boolean;
     action: (() => void) | null;
@@ -131,8 +144,9 @@ function App() {
       const wf = await api.getWorkflow(id);
       setWorkflowName(wf.name);
       setWorkflowData(wf.data as FlowDocumentJSON);
-    } catch {
+    } catch (err) {
       setWorkflowData(null);
+      Toast.error(err instanceof Error ? err.message : 'Failed to load workflow');
     } finally {
       setEditorLoading(false);
     }
@@ -271,37 +285,104 @@ function App() {
   }, [view, currentWorkflowId, openWorkflow]);
 
   return (
-    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
-      {/* Left sidebar */}
-      <div
+    <div
+      data-testid="app-shell"
+      style={{
+        display: 'flex',
+        gap: 8,
+        height: '100vh',
+        overflow: 'hidden',
+        padding: 8,
+        background: 'color-mix(in oklch, var(--muted) 55%, transparent)',
+        color: 'var(--foreground)',
+      }}
+    >
+      <aside
         style={{
-          width: 200,
+          width: railCollapsed ? 56 : 212,
           flexShrink: 0,
-          borderRight: '1px solid var(--app-color-border)',
-          background: 'var(--app-color-canvas)',
           display: 'flex',
           flexDirection: 'column',
-          padding: 'var(--app-space-4) 0',
+          overflow: 'hidden',
+          border: '1px solid var(--border)',
+          borderRadius: 16,
+          background: 'var(--sidebar)',
+          transition: 'width 160ms ease',
         }}
       >
-        {NAV_ITEMS.map((item) => (
-          <div
-            key={item.key}
-            onClick={() => requestNavigation(() => navigateTo(item.key))}
-            style={{
-              padding: 'var(--app-space-2) var(--app-space-4)',
-              cursor: 'pointer',
-              fontWeight: view === item.key ? 700 : 400,
-              background: view === item.key ? 'var(--app-color-fill-0)' : 'transparent',
-              color: view === item.key ? 'var(--app-color-primary)' : 'var(--app-color-text-1)',
-            }}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: railCollapsed ? 'center' : 'flex-end',
+            height: 44,
+            padding: '0 8px',
+          }}
+        >
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={railCollapsed ? 'Expand navigation' : 'Collapse navigation'}
+            onClick={() => setRailCollapsed((collapsed) => !collapsed)}
           >
-            {item.label}
+            {railCollapsed ? <ChevronRight /> : <ChevronLeft />}
+          </Button>
+        </div>
+        {!railCollapsed && (
+          <div style={{ padding: '0 12px 12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 4px 16px' }}>
+              <div
+                style={{
+                  display: 'grid',
+                  width: 28,
+                  height: 28,
+                  placeItems: 'center',
+                  borderRadius: 8,
+                  background: 'var(--foreground)',
+                  color: 'var(--background)',
+                }}
+              >
+                <Workflow size={16} />
+              </div>
+              <div>
+                <Typography.Text strong>Workflow</Typography.Text>
+                <Typography.Text type="tertiary" size="small" style={{ display: 'block' }}>
+                  Agent orchestration
+                </Typography.Text>
+              </div>
+            </div>
           </div>
-        ))}
-        {/* Spacer pushes the theme toggle to the sidebar bottom. */}
+        )}
+        <nav
+          aria-label="Primary navigation"
+          style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '0 8px' }}
+        >
+          {NAV_ITEMS.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Button
+                key={item.key}
+                variant={view === item.key ? 'secondary' : 'ghost'}
+                size={railCollapsed ? 'icon' : 'default'}
+                aria-current={view === item.key ? 'page' : undefined}
+                aria-label={railCollapsed ? item.label : undefined}
+                className={railCollapsed ? undefined : 'justify-start'}
+                onClick={() => requestNavigation(() => navigateTo(item.key))}
+              >
+                <Icon />
+                {!railCollapsed && item.label}
+              </Button>
+            );
+          })}
+        </nav>
         <div style={{ flex: 1 }} />
-        <div style={{ padding: '0 var(--app-space-3)' }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: railCollapsed ? 'center' : 'flex-end',
+            padding: 8,
+          }}
+        >
           <Popover open={themeMenuOpen} onOpenChange={setThemeMenuOpen}>
             <PopoverTrigger
               render={
@@ -336,15 +417,18 @@ function App() {
             </PopoverContent>
           </Popover>
         </div>
-      </div>
+      </aside>
 
       {/* Main area */}
       <div
         style={{
           flex: 1,
+          minWidth: 0,
           overflow: 'auto',
           position: 'relative',
-          background: 'var(--app-color-canvas)',
+          border: '1px solid var(--border)',
+          borderRadius: 16,
+          background: 'var(--background)',
         }}
       >
         {!booted ? (
@@ -476,13 +560,10 @@ function App() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ToastViewport />
     </div>
   );
 }
 
 const app = createRoot(document.getElementById('root')!);
-app.render(
-  <LocaleProvider locale={en_US}>
-    <App />
-  </LocaleProvider>
-);
+app.render(<App />);

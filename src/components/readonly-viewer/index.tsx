@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { ArrowLeft as IconArrowLeft } from 'lucide-react';
 import { IReport } from '@flowgram.ai/runtime-interface';
-import { Spin, Button, Typography, Empty } from '@douyinfe/semi-ui';
-import { IconArrowLeft } from '@douyinfe/semi-icons';
 
+import { Spin, Button, Typography, Empty } from '../ui/management';
 import { workflowRunEventHub } from '../../workflow-run-event-hub.mjs';
 import { FlowDocumentJSON } from '../../typings';
 import { Editor } from '../../editor';
@@ -138,7 +138,7 @@ export function ReadonlyViewer({
         position: 'fixed',
         inset: 0,
         zIndex: 1100,
-        background: 'var(--semi-color-bg-0)',
+        background: 'var(--background)',
         display: 'flex',
         flexDirection: 'column',
       }}
@@ -149,7 +149,7 @@ export function ReadonlyViewer({
           alignItems: 'center',
           gap: 12,
           padding: '8px 16px',
-          borderBottom: '1px solid var(--semi-color-border)',
+          borderBottom: '1px solid var(--border)',
           flexShrink: 0,
         }}
       >

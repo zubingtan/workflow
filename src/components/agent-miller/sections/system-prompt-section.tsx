@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 
-import { TextArea } from '@douyinfe/semi-ui';
-
+import { TextArea } from '../../ui/management';
 import type { AgentDef } from '../../../api';
 
 interface Props {

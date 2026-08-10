@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 
-import { Button, Empty, Spin, Tag, Toast, Modal, TextArea } from '@douyinfe/semi-ui';
-import { IconClose, IconPlay } from '@douyinfe/semi-icons';
+import { X as IconClose, Play as IconPlay } from 'lucide-react';
 
+import { Button, Empty, Spin, Tag, Toast, Modal, TextArea } from '../ui/management';
 import * as api from '../../api';
 import type { AgentDef, AgentExecutionDetail } from '../../api';
 
@@ -75,7 +75,7 @@ export function SessionDetailPanel({ agent, executionId, onClose, onRerun }: Pro
       <div
         style={{
           padding: '8px 12px',
-          borderBottom: '1px solid var(--semi-color-border)',
+          borderBottom: '1px solid var(--border)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -90,7 +90,7 @@ export function SessionDetailPanel({ agent, executionId, onClose, onRerun }: Pro
           >
             {detail.status}
           </Tag>
-          <span style={{ fontSize: 12, color: 'var(--semi-color-text-2)' }}>
+          <span style={{ fontSize: 12, color: 'var(--muted-foreground)' }}>
             {new Date(detail.started_at).toLocaleString()}
           </span>
         </div>
@@ -119,7 +119,7 @@ export function SessionDetailPanel({ agent, executionId, onClose, onRerun }: Pro
                   {msg.role}
                 </Tag>
                 {msg.timestamp && (
-                  <span style={{ fontSize: 11, color: 'var(--semi-color-text-2)', marginLeft: 8 }}>
+                  <span style={{ fontSize: 11, color: 'var(--muted-foreground)', marginLeft: 8 }}>
                     {new Date(msg.timestamp).toLocaleTimeString()}
                   </span>
                 )}
@@ -127,7 +127,7 @@ export function SessionDetailPanel({ agent, executionId, onClose, onRerun }: Pro
               <div
                 style={{
                   padding: '8px 12px',
-                  background: 'var(--semi-color-fill-0)',
+                  background: 'var(--muted)',
                   borderRadius: 6,
                   fontSize: 13,
                   lineHeight: 1.6,
@@ -153,7 +153,7 @@ export function SessionDetailPanel({ agent, executionId, onClose, onRerun }: Pro
         okText="Run"
         width={600}
       >
-        <p style={{ marginBottom: 8, color: 'var(--semi-color-text-1)' }}>
+        <p style={{ marginBottom: 8, color: 'var(--foreground)' }}>
           Edit the prompt and re-run with the agent's current configuration:
         </p>
         <TextArea

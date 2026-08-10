@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 
-import { Input, Button, Tag } from '@douyinfe/semi-ui';
-
+import { Input, Button, Tag } from '../../ui/management';
 import type { AgentDef } from '../../../api';
 
 interface Props {

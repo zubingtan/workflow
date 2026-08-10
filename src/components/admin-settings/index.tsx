@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import { Button, Input, InputNumber, Typography, Spin, Toast, Tag } from '@douyinfe/semi-ui';
-import { IconTickCircle, IconClose } from '@douyinfe/semi-icons';
+import { CheckCircle2 as IconTickCircle, X as IconClose } from 'lucide-react';
 
+import { Button, Input, InputNumber, Typography, Spin, Toast, Tag } from '../ui/management';
 import * as api from '../../api';
 
 /**
@@ -20,6 +20,11 @@ import * as api from '../../api';
  * source of truth — client validation is advisory.
  */
 const MAX_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+const SETTINGS_NAV = [
+  { id: 'settings-execution', label: 'Execution' },
+  { id: 'settings-memory', label: 'Memory' },
+  { id: 'settings-provider', label: 'LLM / Embedding' },
+];
 
 export function AdminSettings() {
   const [loading, setLoading] = useState(true);
@@ -48,6 +53,9 @@ export function AdminSettings() {
         setLlmModel(s.mem0_llm_model ?? '');
         setEmbedderModel(s.mem0_embedder_model ?? '');
         setEmbeddingDims(s.mem0_embedding_dims);
+      })
+      .catch((err) => {
+        Toast.error(err instanceof Error ? err.message : 'Failed to load settings');
       })
       .finally(() => setLoading(false));
   }, []);
@@ -145,190 +153,232 @@ export function AdminSettings() {
   }
 
   return (
-    <div style={{ padding: 24, maxWidth: 560 }}>
-      <Typography.Title heading={4} style={{ marginBottom: 16 }}>
-        Global Settings
-      </Typography.Title>
-      <Typography.Paragraph type="tertiary" style={{ marginBottom: 24 }}>
-        The node timeout default applies to nodes that do not set their own timeout. Each node can
-        override this value in its node form.
-      </Typography.Paragraph>
-      <div style={{ marginBottom: 12 }}>
-        <Typography.Text size="small" strong>
-          Node Timeout Default (ms)
+    <div style={{ display: 'flex', minHeight: '100%', overflow: 'hidden' }}>
+      <nav
+        aria-label="Settings sections"
+        style={{ width: 190, flexShrink: 0, borderRight: '1px solid var(--border)', padding: 16 }}
+      >
+        <Typography.Text strong style={{ display: 'block', marginBottom: 12 }}>
+          Settings
         </Typography.Text>
-        <InputNumber
-          value={value ?? undefined}
-          min={1}
-          max={24 * 60 * 60 * 1000}
-          step={60000}
-          onChange={(v) => setValue(typeof v === 'number' ? v : null)}
-          style={{ width: '100%', marginTop: 4 }}
-        />
-        <Typography.Text type="tertiary" size="small">
-          1 min = 60000 ms; 10 min = 600000 ms; 0 or empty uses the built-in default (10 min)
-        </Typography.Text>
-      </div>
-      <Typography.Title heading={5} style={{ marginTop: 24, marginBottom: 12 }}>
-        Memory (mem0)
-      </Typography.Title>
-      <Typography.Paragraph type="tertiary" style={{ marginBottom: 16 }}>
-        Configure the self-hosted mem0 server connection. Leave empty to disable persistent memory.
-      </Typography.Paragraph>
-      <div style={{ marginBottom: 12 }}>
-        <Typography.Text size="small" strong>
-          mem0 Server URL
-        </Typography.Text>
-        <Input
-          value={mem0Host}
-          onChange={(v) => setMem0Host(v)}
-          placeholder="http://localhost:8890"
-          style={{ width: '100%', marginTop: 4 }}
-        />
-        <Typography.Text type="tertiary" size="small">
-          The base URL of the mem0 API server (e.g. http://localhost:8890)
-        </Typography.Text>
-      </div>
-      <div style={{ marginBottom: 12 }}>
-        <Typography.Text size="small" strong>
-          mem0 API Key
-        </Typography.Text>
-        <Input
-          value={mem0ApiKey}
-          onChange={(v) => setMem0ApiKey(v)}
-          placeholder="API key"
-          mode="password"
-          style={{ width: '100%', marginTop: 4 }}
-        />
-        <Typography.Text type="tertiary" size="small">
-          Used for memory read/write operations
-        </Typography.Text>
-      </div>
-      <div style={{ marginBottom: 12 }}>
-        <Typography.Text size="small" strong>
-          mem0 Admin Key (optional)
-        </Typography.Text>
-        <Input
-          value={mem0AdminKey}
-          onChange={(v) => setMem0AdminKey(v)}
-          placeholder="Admin key (required for LLM/embedding configuration)"
-          mode="password"
-          style={{ width: '100%', marginTop: 4 }}
-        />
-        <Typography.Text type="tertiary" size="small">
-          Only needed to push LLM/embedding settings below. Falls back to the API key when empty.
-        </Typography.Text>
-      </div>
-      <Typography.Text size="small" strong>
-        LLM / Embedding Provider
-      </Typography.Text>
-      <Typography.Paragraph type="tertiary" size="small" style={{ marginTop: 4 }}>
-        These are pushed to the mem0 server via its /configure endpoint. The provider must be
-        OpenAI-compatible (the mem0 server calls it internally for memory extraction and search).
-      </Typography.Paragraph>
-      <div style={{ marginBottom: 12 }}>
-        <Typography.Text size="small" strong>
-          LLM Base URL
-        </Typography.Text>
-        <Input
-          value={llmBaseUrl}
-          onChange={(v) => setLlmBaseUrl(v)}
-          placeholder="https://your-openai-compatible-endpoint.example/api"
-          style={{ width: '100%', marginTop: 4 }}
-        />
-        <Typography.Text type="tertiary" size="small">
-          OpenAI-compatible endpoint (no /v1 suffix needed)
-        </Typography.Text>
-      </div>
-      <div style={{ marginBottom: 12 }}>
-        <Typography.Text size="small" strong>
-          LLM Model
-        </Typography.Text>
-        <Input
-          value={llmModel}
-          onChange={(v) => setLlmModel(v)}
-          placeholder="deepseek-v4-flash"
-          style={{ width: '100%', marginTop: 4 }}
-        />
-        <Typography.Text type="tertiary" size="small">
-          Used by mem0 to extract facts from conversations
-        </Typography.Text>
-      </div>
-      <div style={{ marginBottom: 12 }}>
-        <Typography.Text size="small" strong>
-          Embedding Model
-        </Typography.Text>
-        <Input
-          value={embedderModel}
-          onChange={(v) => setEmbedderModel(v)}
-          placeholder="text-embedding-v4"
-          style={{ width: '100%', marginTop: 4 }}
-        />
-        <Typography.Text type="tertiary" size="small">
-          Used by mem0 to vectorize memories
-        </Typography.Text>
-      </div>
-      <div style={{ marginBottom: 12 }}>
-        <Typography.Text size="small" strong>
-          Embedding Dimensions
-        </Typography.Text>
-        <InputNumber
-          value={embeddingDims ?? undefined}
-          min={1}
-          onChange={(v) => setEmbeddingDims(typeof v === 'number' ? v : null)}
-          style={{ width: '100%', marginTop: 4 }}
-        />
-        <Typography.Text type="tertiary" size="small">
-          Must match the embedding model output size (e.g. 1024 for text-embedding-v4)
-        </Typography.Text>
-      </div>
-      <div style={{ marginTop: 16, display: 'flex', gap: 12 }}>
-        <Button theme="solid" loading={saving} onClick={save}>
-          Save
-        </Button>
-        <Button loading={testing} onClick={runTest}>
-          Test Connection
-        </Button>
-      </div>
-      {testResult && (
-        <div
-          style={{
-            marginTop: 16,
-            padding: 12,
-            borderRadius: 8,
-            background: 'var(--semi-color-fill-0)',
-          }}
-        >
-          <Typography.Text
-            strong
-            style={{
-              color: testResult.ok ? 'var(--semi-color-success)' : 'var(--semi-color-danger)',
-            }}
-          >
-            {testResult.ok ? '✓ Test passed' : '✗ Test failed'}
-          </Typography.Text>
-          {(testResult.steps ?? []).map((step) => (
-            <div
-              key={step.name}
-              style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 8 }}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {SETTINGS_NAV.map((item) => (
+            <Button
+              key={item.id}
+              theme="borderless"
+              size="small"
+              className="justify-start"
+              onClick={() =>
+                document
+                  .getElementById(item.id)
+                  ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              }
             >
-              {step.ok ? (
-                <IconTickCircle style={{ color: 'var(--semi-color-success)', marginTop: 2 }} />
-              ) : (
-                <IconClose style={{ color: 'var(--semi-color-danger)', marginTop: 2 }} />
-              )}
-              <div>
-                <Tag size="small" color={step.ok ? 'green' : 'red'} style={{ marginRight: 8 }}>
-                  {step.name}
-                </Tag>
-                <Typography.Text type="tertiary" size="small">
-                  {step.detail}
-                </Typography.Text>
-              </div>
-            </div>
+              {item.label}
+            </Button>
           ))}
         </div>
-      )}
+      </nav>
+      <div style={{ maxWidth: 620, overflow: 'auto', padding: 24 }}>
+        <Typography.Title heading={4} style={{ marginBottom: 8 }}>
+          Global Settings
+        </Typography.Title>
+        <Typography.Paragraph type="tertiary" style={{ marginBottom: 24 }}>
+          Runtime defaults and memory provider settings for the workflow workspace.
+        </Typography.Paragraph>
+        <section id="settings-execution" style={{ scrollMarginTop: 24 }}>
+          <Typography.Title heading={5} style={{ marginBottom: 12 }}>
+            Execution
+          </Typography.Title>
+          <Typography.Paragraph type="tertiary" style={{ marginBottom: 16 }}>
+            The node timeout default applies to nodes that do not set their own timeout. Each node
+            can override this value in its node form.
+          </Typography.Paragraph>
+          <div style={{ marginBottom: 12 }}>
+            <Typography.Text size="small" strong>
+              Node Timeout Default (ms)
+            </Typography.Text>
+            <InputNumber
+              value={value ?? undefined}
+              min={1}
+              max={24 * 60 * 60 * 1000}
+              step={60000}
+              onChange={(v) => setValue(typeof v === 'number' ? v : null)}
+              style={{ width: '100%', marginTop: 4 }}
+            />
+            <Typography.Text type="tertiary" size="small">
+              1 min = 60000 ms; 10 min = 600000 ms; 0 or empty uses the built-in default (10 min)
+            </Typography.Text>
+          </div>
+        </section>
+        <section id="settings-memory" style={{ scrollMarginTop: 24 }}>
+          <Typography.Title heading={5} style={{ marginTop: 24, marginBottom: 12 }}>
+            Memory (mem0)
+          </Typography.Title>
+          <Typography.Paragraph type="tertiary" style={{ marginBottom: 16 }}>
+            Configure the self-hosted mem0 server connection. Leave empty to disable persistent
+            memory.
+          </Typography.Paragraph>
+          <div style={{ marginBottom: 12 }}>
+            <Typography.Text size="small" strong>
+              mem0 Server URL
+            </Typography.Text>
+            <Input
+              value={mem0Host}
+              onChange={(v) => setMem0Host(v)}
+              placeholder="http://localhost:8890"
+              style={{ width: '100%', marginTop: 4 }}
+            />
+            <Typography.Text type="tertiary" size="small">
+              The base URL of the mem0 API server (e.g. http://localhost:8890)
+            </Typography.Text>
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <Typography.Text size="small" strong>
+              mem0 API Key
+            </Typography.Text>
+            <Input
+              value={mem0ApiKey}
+              onChange={(v) => setMem0ApiKey(v)}
+              placeholder="API key"
+              mode="password"
+              style={{ width: '100%', marginTop: 4 }}
+            />
+            <Typography.Text type="tertiary" size="small">
+              Used for memory read/write operations
+            </Typography.Text>
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <Typography.Text size="small" strong>
+              mem0 Admin Key (optional)
+            </Typography.Text>
+            <Input
+              value={mem0AdminKey}
+              onChange={(v) => setMem0AdminKey(v)}
+              placeholder="Admin key (required for LLM/embedding configuration)"
+              mode="password"
+              style={{ width: '100%', marginTop: 4 }}
+            />
+            <Typography.Text type="tertiary" size="small">
+              Only needed to push LLM/embedding settings below. Falls back to the API key when
+              empty.
+            </Typography.Text>
+          </div>
+        </section>
+        <section id="settings-provider" style={{ scrollMarginTop: 24 }}>
+          <Typography.Text size="small" strong>
+            LLM / Embedding Provider
+          </Typography.Text>
+          <Typography.Paragraph type="tertiary" size="small" style={{ marginTop: 4 }}>
+            These are pushed to the mem0 server via its /configure endpoint. The provider must be
+            OpenAI-compatible (the mem0 server calls it internally for memory extraction and
+            search).
+          </Typography.Paragraph>
+          <div style={{ marginBottom: 12 }}>
+            <Typography.Text size="small" strong>
+              LLM Base URL
+            </Typography.Text>
+            <Input
+              value={llmBaseUrl}
+              onChange={(v) => setLlmBaseUrl(v)}
+              placeholder="https://your-openai-compatible-endpoint.example/api"
+              style={{ width: '100%', marginTop: 4 }}
+            />
+            <Typography.Text type="tertiary" size="small">
+              OpenAI-compatible endpoint (no /v1 suffix needed)
+            </Typography.Text>
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <Typography.Text size="small" strong>
+              LLM Model
+            </Typography.Text>
+            <Input
+              value={llmModel}
+              onChange={(v) => setLlmModel(v)}
+              placeholder="deepseek-v4-flash"
+              style={{ width: '100%', marginTop: 4 }}
+            />
+            <Typography.Text type="tertiary" size="small">
+              Used by mem0 to extract facts from conversations
+            </Typography.Text>
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <Typography.Text size="small" strong>
+              Embedding Model
+            </Typography.Text>
+            <Input
+              value={embedderModel}
+              onChange={(v) => setEmbedderModel(v)}
+              placeholder="text-embedding-v4"
+              style={{ width: '100%', marginTop: 4 }}
+            />
+            <Typography.Text type="tertiary" size="small">
+              Used by mem0 to vectorize memories
+            </Typography.Text>
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <Typography.Text size="small" strong>
+              Embedding Dimensions
+            </Typography.Text>
+            <InputNumber
+              value={embeddingDims ?? undefined}
+              min={1}
+              onChange={(v) => setEmbeddingDims(typeof v === 'number' ? v : null)}
+              style={{ width: '100%', marginTop: 4 }}
+            />
+            <Typography.Text type="tertiary" size="small">
+              Must match the embedding model output size (e.g. 1024 for text-embedding-v4)
+            </Typography.Text>
+          </div>
+        </section>
+        <div style={{ marginTop: 16, display: 'flex', gap: 12 }}>
+          <Button theme="solid" loading={saving} onClick={save}>
+            Save
+          </Button>
+          <Button loading={testing} onClick={runTest}>
+            Test Connection
+          </Button>
+        </div>
+        {testResult && (
+          <div
+            style={{
+              marginTop: 16,
+              padding: 12,
+              borderRadius: 8,
+              background: 'var(--muted)',
+            }}
+          >
+            <Typography.Text
+              strong
+              style={{
+                color: testResult.ok ? 'var(--primary)' : 'var(--destructive)',
+              }}
+            >
+              {testResult.ok ? '✓ Test passed' : '✗ Test failed'}
+            </Typography.Text>
+            {(testResult.steps ?? []).map((step) => (
+              <div
+                key={step.name}
+                style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 8 }}
+              >
+                {step.ok ? (
+                  <IconTickCircle style={{ color: 'var(--primary)', marginTop: 2 }} />
+                ) : (
+                  <IconClose style={{ color: 'var(--destructive)', marginTop: 2 }} />
+                )}
+                <div>
+                  <Tag size="small" color={step.ok ? 'green' : 'red'} style={{ marginRight: 8 }}>
+                    {step.name}
+                  </Tag>
+                  <Typography.Text type="tertiary" size="small">
+                    {step.detail}
+                  </Typography.Text>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

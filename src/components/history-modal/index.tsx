@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { Modal, Toast, Empty, Spin, Typography } from '@douyinfe/semi-ui';
-
+import { Modal, Toast, Empty, Spin, Typography } from '../ui/management';
 import { ReadonlyViewer as HistoryViewer } from '../readonly-viewer';
 import { workflowRunEventHub } from '../../workflow-run-event-hub.mjs';
 import * as api from '../../api';

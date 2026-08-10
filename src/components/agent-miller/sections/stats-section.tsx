@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 
-import { Card, Spin, Empty, Toast, Typography } from '@douyinfe/semi-ui';
-
+import { Card, Spin, Empty, Toast, Typography } from '../../ui/management';
 import * as api from '../../../api';
 import type { AgentDef, AgentStats } from '../../../api';
 
@@ -78,8 +77,7 @@ export function StatsSection({ agent }: Props) {
                     4,
                     (d.count / Math.max(...daily.map((x) => x.count))) * 60
                   )}px`,
-                  background:
-                    d.failed > 0 ? 'var(--semi-color-danger)' : 'var(--semi-color-primary)',
+                  background: d.failed > 0 ? 'var(--destructive)' : 'var(--primary)',
                   borderRadius: 2,
                 }}
               />
