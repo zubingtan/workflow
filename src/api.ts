@@ -278,7 +278,9 @@ export const importAgentsPrecheck = (agents: any[]) =>
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(agents),
-  }).then((r) => json<{ total: number; conflicts: string[]; importable: number }>(r));
+  }).then((r) =>
+    json<{ total: number; conflicts: string[]; importable: number; missing_skills?: string[] }>(r)
+  );
 
 export const importAgentsConfirm = (agents: any[], onConflict: 'skip' | 'overwrite' | 'rename') =>
   fetch(`${SERVER_URL}/agents/import/confirm`, {
@@ -451,4 +453,74 @@ export const configureMem0 = (cfg: {
 export const getAgentMemories = (agentId: string) =>
   fetch(`${SERVER_URL}/api/mem0/memories?agentId=${encodeURIComponent(agentId)}`).then((r) =>
     json<{ ok: boolean; status?: number; results?: Mem0Memory[]; error?: string }>(r)
+  );
+
+// --- Skills (global skill library) ---
+// Each skill is a directory under the server data dir containing SKILL.md.
+// Agent configs reference skills by name (pi_settings.skills); the server
+// resolves names to paths at session creation (#307).
+export interface SkillSummary {
+  name: string;
+  description: string;
+}
+
+export interface SkillFile {
+  path: string;
+  content: string;
+  encoding?: 'base64';
+}
+
+export interface SkillTree {
+  name: string;
+  files: SkillFile[];
+}
+
+export const listSkills = () => fetch(`${SERVER_URL}/skills`).then((r) => json<SkillSummary[]>(r));
+
+export const getSkillTree = (name: string) =>
+  fetch(`${SERVER_URL}/skills/${encodeURIComponent(name)}`).then((r) => json<SkillTree>(r));
+
+/** Whole-tree submit (upsert) — save + create share this endpoint. */
+export const saveSkillTree = (name: string, files: SkillFile[]) =>
+  fetch(`${SERVER_URL}/skills/${encodeURIComponent(name)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ files }),
+  }).then((r) => json<{ name: string }>(r));
+
+/** Upload a folder as a skill (override when the name exists). */
+export const importSkill = (name: string, files: SkillFile[]) =>
+  fetch(`${SERVER_URL}/skills/import`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, files }),
+  }).then((r) => json<{ name: string }>(r));
+
+export const renameSkill = (oldName: string, newName: string) =>
+  fetch(`${SERVER_URL}/skills/${encodeURIComponent(oldName)}/rename`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ new_name: newName }),
+  }).then((r) => json<{ name: string }>(r));
+
+export const getSkillReferences = (name: string) =>
+  fetch(`${SERVER_URL}/skills/${encodeURIComponent(name)}/references`).then((r) =>
+    json<{ referencedBy: string[] }>(r)
+  );
+
+/** Delete a skill. 409 (ApiError code `referenced`) when agents still use it. */
+export const deleteSkill = (name: string) =>
+  fetch(`${SERVER_URL}/skills/${encodeURIComponent(name)}`, { method: 'DELETE' }).then(
+    async (r) => {
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}));
+        throw new ApiError(
+          body.error || `HTTP ${r.status}`,
+          body.code || 'unknown',
+          r.status,
+          body
+        );
+      }
+      return r.json() as Promise<{ name: string }>;
+    }
   );
