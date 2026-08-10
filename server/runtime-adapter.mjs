@@ -10,7 +10,7 @@
  * single terminal event to FlowGram's expected return/throw shape (#77).
  */
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { mkdirSync, writeFileSync, existsSync, cpSync, renameSync } from 'node:fs';
+import { mkdirSync, writeFileSync, existsSync, readFileSync, cpSync, renameSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -207,6 +207,26 @@ export async function createAgentSessionForAgent(agent, agentDir, mem0, structur
     defaultProjectTrust: 'always', // forced for headless
   });
 
+  // Inline enabled skill contents into the system prompt. pi's skill loader
+  // only surfaces name+description (available_skills) and expects the model
+  // to read SKILL.md via tools — but structured-output runs skip tool calls
+  // (#248), so the full instructions (e.g. output format) never reach the
+  // model. Appending the raw SKILL.md text keeps tool-using runs unaffected
+  // while making structured runs deterministic (#307).
+  const skillDocs = [];
+  for (const p of resolvedSkillPaths) {
+    const skillMd = join(p, 'SKILL.md');
+    if (!existsSync(skillMd)) continue;
+    try {
+      skillDocs.push(readFileSync(skillMd, 'utf8'));
+    } catch (err) {
+      console.warn(`[skills] agent ${agent.id} failed to read ${skillMd}: ${err?.message ?? err}`);
+    }
+  }
+  const systemPrompt = [config.system_prompt, skillDocs.join('\n\n')]
+    .filter(Boolean)
+    .join('\n\n');
+
   // 3. SessionManager — persist sessions per-agent
   const agentSessionDir = agent.id ? `${agentDir}/${agent.id}` : agentDir;
   const sessionDir = `${agentSessionDir}/sessions`;
@@ -239,7 +259,7 @@ export async function createAgentSessionForAgent(agent, agentDir, mem0, structur
     cwd: agentSessionDir,
     agentDir: agentSessionDir,
     settingsManager,
-    systemPrompt: config.system_prompt || undefined,
+    systemPrompt: systemPrompt || undefined,
     noThemes: true,
     noSkills: true,
     additionalSkillPaths: resolvedSkillPaths,
