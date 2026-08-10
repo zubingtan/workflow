@@ -6,7 +6,8 @@
 import { useMemo } from 'react';
 
 import { useService, WorkflowDocument } from '@flowgram.ai/free-layout-editor';
-import { IJsonSchema, JsonSchemaBasicType } from '@flowgram.ai/form-materials';
+
+import type { IJsonSchema, JsonSchemaBasicType } from '@/form-semantics';
 
 import { TestRunFormMetaItem } from '../testrun-form/type';
 import { WorkflowNodeType } from '../../../nodes';

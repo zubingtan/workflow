@@ -5,8 +5,9 @@
 
 import React, { useCallback } from 'react';
 
-import { DisplaySchemaTag } from '@flowgram.ai/form-materials';
 import { Typography, Tooltip } from '@douyinfe/semi-ui';
+
+import { DisplaySchemaTag } from '@/form-semantics/legacy-adapter';
 
 import './index.css';
 

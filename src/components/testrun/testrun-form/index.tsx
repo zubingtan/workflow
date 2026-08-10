@@ -6,8 +6,9 @@
 import { FC } from 'react';
 
 import classNames from 'classnames';
-import { DisplaySchemaTag } from '@flowgram.ai/form-materials';
 import { Input, Switch, InputNumber } from '@douyinfe/semi-ui';
+
+import { DisplaySchemaTag } from '@/form-semantics/legacy-adapter';
 
 import { JsonValueEditor } from '../json-value-editor';
 import { useFormMeta } from '../hooks/use-form-meta';

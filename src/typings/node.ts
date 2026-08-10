@@ -11,7 +11,8 @@ import {
   type WorkflowEdgeJSON,
   WorkflowNodeMeta,
 } from '@flowgram.ai/free-layout-editor';
-import { IFlowValue } from '@flowgram.ai/form-materials';
+
+import type { IFlowValue } from '@/form-semantics';
 
 import { type LayoutDirection } from '../utils/rotate-ports';
 import { type JsonSchema } from './json-schema';
@@ -85,4 +86,6 @@ export interface FlowDocumentJSON {
    * Warning: In real occasion, it's better to store the schema and value of these global variables in a reliable place, since the value of a global variable might be leaked in saved schema.
    */
   globalVariable?: JsonSchema;
+  /** Fields owned by newer or extension nodes must survive editor round-trip. */
+  [key: string]: unknown;
 }

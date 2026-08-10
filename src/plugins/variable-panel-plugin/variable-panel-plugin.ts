@@ -9,7 +9,9 @@ import {
   GlobalScope,
   VariableDeclaration,
 } from '@flowgram.ai/free-layout-editor';
-import { IJsonSchema, JsonSchemaUtils } from '@flowgram.ai/form-materials';
+
+import { JsonSchemaUtils } from '@/form-semantics';
+import type { IJsonSchema } from '@/form-semantics';
 
 import iconVariable from '../../assets/icon-variable.png';
 import { VariablePanelLayer } from './variable-panel-layer';

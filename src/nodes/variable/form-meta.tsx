@@ -4,7 +4,9 @@
  */
 
 import { FormMeta, FormRenderProps } from '@flowgram.ai/free-layout-editor';
-import { AssignRows, createInferAssignPlugin, DisplayOutputs } from '@flowgram.ai/form-materials';
+
+import { AssignRows, DisplayOutputs } from '@/form-semantics/legacy-adapter';
+import { createInferAssignPlugin } from '@/form-semantics';
 
 import { FormHeader, FormContent } from '../../form-components';
 import { VariableNodeJSON } from './types';

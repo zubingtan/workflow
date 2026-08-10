@@ -2,14 +2,12 @@ import { useEffect, useState, useContext } from 'react';
 
 import { FormRenderProps, FormMeta, ValidateTrigger } from '@flowgram.ai/free-layout-editor';
 import { Field } from '@flowgram.ai/free-layout-editor';
-import {
-  PromptEditorWithVariables,
-  IFlowTemplateValue,
-  provideJsonSchemaOutputs,
-  syncVariableTitle,
-} from '@flowgram.ai/form-materials';
 import { Select, Button, Typography } from '@douyinfe/semi-ui';
 import { IconChevronDown, IconChevronRight } from '@douyinfe/semi-icons';
+
+import { PromptEditorWithVariables } from '@/form-semantics/legacy-adapter';
+import { provideJsonSchemaOutputs, syncVariableTitle } from '@/form-semantics';
+import type { IFlowTemplateValue } from '@/form-semantics';
 
 import type { JsonSchema } from '../../typings/json-schema';
 import { FlowNodeJSON } from '../../typings';

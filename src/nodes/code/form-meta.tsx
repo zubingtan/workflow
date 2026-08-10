@@ -4,7 +4,8 @@
  */
 
 import { FormMeta, FormRenderProps } from '@flowgram.ai/free-layout-editor';
-import { createInferInputsPlugin } from '@flowgram.ai/form-materials';
+
+import { createInferInputsPlugin } from '@/form-semantics';
 
 import { FormHeader, FormContent } from '../../form-components';
 import { CodeNodeJSON } from './types';

@@ -4,7 +4,8 @@
  */
 
 import { FlowNodeJSON } from '@flowgram.ai/free-layout-editor';
-import { IFlowValue, IJsonSchema } from '@flowgram.ai/form-materials';
+
+import type { IFlowValue, IJsonSchema } from '@/form-semantics';
 
 export interface CodeNodeJSON extends FlowNodeJSON {
   data: {

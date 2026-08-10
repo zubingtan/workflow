@@ -4,12 +4,10 @@
  */
 
 import { Field, FormMeta } from '@flowgram.ai/free-layout-editor';
-import {
-  createInferInputsPlugin,
-  DisplayInputsValues,
-  IFlowValue,
-  InputsValues,
-} from '@flowgram.ai/form-materials';
+
+import { DisplayInputsValues, InputsValues } from '@/form-semantics/legacy-adapter';
+import { createInferInputsPlugin } from '@/form-semantics';
+import type { IFlowValue } from '@/form-semantics';
 
 import { defaultFormMeta } from '../default-form-meta';
 import { useIsSidebar } from '../../hooks';

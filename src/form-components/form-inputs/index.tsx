@@ -4,7 +4,8 @@
  */
 
 import { Field } from '@flowgram.ai/free-layout-editor';
-import { DynamicValueInput, PromptEditorWithVariables } from '@flowgram.ai/form-materials';
+
+import { DynamicValueInput, PromptEditorWithVariables } from '@/form-semantics/legacy-adapter';
 
 import { FormItem } from '../form-item';
 import { Feedback } from '../feedback';

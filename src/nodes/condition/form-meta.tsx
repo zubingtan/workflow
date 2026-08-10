@@ -4,7 +4,8 @@
  */
 
 import { FormRenderProps, FormMeta, ValidateTrigger } from '@flowgram.ai/free-layout-editor';
-import { autoRenameRefEffect } from '@flowgram.ai/form-materials';
+
+import { autoRenameRefEffect } from '@/form-semantics';
 
 import { FlowNodeJSON } from '../../typings';
 import { FormHeader, FormContent } from '../../form-components';

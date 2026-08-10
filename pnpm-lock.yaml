@@ -29,6 +29,9 @@ importers:
       '@earendil-works/pi-coding-agent':
         specifier: ^0.81.0
         version: 0.81.0(ws@8.21.1)(zod@3.25.76)
+      '@flowgram.ai/editor':
+        specifier: 1.0.12
+        version: 1.0.12(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@flowgram.ai/export-plugin':
         specifier: 1.0.12
         version: 1.0.12(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -56,6 +59,9 @@ importers:
       '@flowgram.ai/free-stack-plugin':
         specifier: 1.0.12
         version: 1.0.12(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(styled-components@5.3.11(@babel/core@7.29.7)(react-dom@18.3.1(react@18.3.1))(react-is@16.13.1)(react@18.3.1))
+      '@flowgram.ai/json-schema':
+        specifier: 1.0.12
+        version: 1.0.12(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@flowgram.ai/minimap-plugin':
         specifier: 1.0.12
         version: 1.0.12(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
