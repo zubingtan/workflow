@@ -1,5 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import {
   buildConfDContent,
   extractServerBlocks,
@@ -118,4 +122,60 @@ test('findServerNameConflicts reports listen collision across default servers', 
   const incoming = buildConfDContent(FULL_CONFIG, INCLUDE_PATH);
   const conflicts = findServerNameConflicts(existing, incoming);
   assert.ok(conflicts.length >= 1);
+});
+
+test('CLI --check-conflicts ignores the incoming file itself and flags real collisions', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'wf-nginx-'));
+  const incoming = buildConfDContent(FULL_CONFIG, INCLUDE_PATH);
+  const incomingPath = join(dir, 'workflow.conf');
+  writeFileSync(incomingPath, incoming);
+  // another conf.d file with the same server_name → real conflict
+  writeFileSync(
+    join(dir, 'other.conf'),
+    `server {
+    listen 80;
+    server_name app.example.com;
+    location /other/ { proxy_pass http://127.0.0.1:9999; }
+}
+`
+  );
+  const script = new URL('../deploy/scripts/nginx-wiring.mjs', import.meta.url).pathname;
+  const res = spawnSync(process.execPath, [script, '--check-conflicts', dir, incomingPath], {
+    encoding: 'utf8',
+  });
+  assert.equal(res.status, 1, 'conflict must fail');
+  assert.match(res.stderr, /CONFLICT: other\.conf/);
+  assert.doesNotMatch(res.stderr, /workflow\.conf/);
+});
+
+test('CLI --check-conflicts passes when only the incoming file matches', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'wf-nginx-'));
+  const incoming = buildConfDContent(FULL_CONFIG, INCLUDE_PATH);
+  const incomingPath = join(dir, 'workflow.conf');
+  writeFileSync(incomingPath, incoming);
+  const script = new URL('../deploy/scripts/nginx-wiring.mjs', import.meta.url).pathname;
+  const res = spawnSync(process.execPath, [script, '--check-conflicts', dir, incomingPath], {
+    encoding: 'utf8',
+  });
+  assert.equal(res.status, 0, 'no conflict expected');
+  assert.match(res.stdout, /no server_name conflicts/);
+});
+
+test('CLI conversion writes a conf.d fragment from a standalone config', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'wf-nginx-'));
+  const src = join(dir, 'standalone.conf');
+  const dst = join(dir, 'site.conf');
+  writeFileSync(src, FULL_CONFIG);
+  const script = new URL('../deploy/scripts/nginx-wiring.mjs', import.meta.url).pathname;
+  const res = spawnSync(
+    process.execPath,
+    [script, src, dst, INCLUDE_PATH, '--server-name', 'app.example.com'],
+    { encoding: 'utf8' }
+  );
+  assert.equal(res.status, 0, res.stderr);
+  const out = readFileSync(dst, 'utf8');
+  assert.ok(out.includes('server_name app.example.com'));
+  assert.ok(out.includes(`include ${INCLUDE_PATH};`));
+  assert.ok(!out.includes('listen 8888'));
+  assert.ok(!out.includes('events {'));
 });
