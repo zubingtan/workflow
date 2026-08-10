@@ -44,9 +44,13 @@ const STATUS_BADGE: Record<RunStatus, { text: string; color: TagColor; pulse?: b
 
 function formatTime(ts: string | null): string {
   if (!ts) return '—';
-  // SQLite datetime('now') returns "YYYY-MM-DD HH:MM:SS" UTC. Render as-is
-  // for now; a proper timezone-aware formatter is out of scope for Phase 7.
-  return ts.replace('T', ' ');
+  // SQLite datetime('now') stores UTC without a zone marker. Parse as UTC
+  // and render in the viewer's local timezone so history timestamps match
+  // Feishu message times (raw UTC strings were 8h off for UTC+8 viewers
+  // when the server itself runs on UTC).
+  const date = new Date(ts.replace(' ', 'T') + 'Z');
+  if (Number.isNaN(date.getTime())) return ts.replace('T', ' ');
+  return date.toLocaleString();
 }
 
 function formatDuration(start: string | null, end: string | null): string {
