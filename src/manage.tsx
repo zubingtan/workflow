@@ -1,6 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
+  Copy as IconCopy,
+  Trash2 as IconDelete,
+  Plus as IconPlus,
+  History as IconHistory,
+} from 'lucide-react';
+
+import { workflowRunEventHub } from './workflow-run-event-hub.mjs';
+import { useActiveRunCounts } from './use-active-run-counts';
+import { newWorkflowTemplate } from './new-workflow-template.mjs';
+import {
   Button,
   Table,
   Modal,
@@ -10,12 +20,7 @@ import {
   Popconfirm,
   Toast,
   Tooltip,
-} from '@douyinfe/semi-ui';
-import { IconCopy, IconDelete, IconPlus, IconHistory } from '@douyinfe/semi-icons';
-
-import { workflowRunEventHub } from './workflow-run-event-hub.mjs';
-import { useActiveRunCounts } from './use-active-run-counts';
-import { newWorkflowTemplate } from './new-workflow-template.mjs';
+} from './components/ui/management';
 import { HistoryModal } from './components/history-modal';
 import * as api from './api';
 import { ApiError } from './api';
@@ -39,6 +44,11 @@ export function WorkflowManager({ onOpen }: { onOpen: (id: string) => void }) {
       .then((list) => {
         if (generation !== reloadGeneration.current) return;
         setWorkflows(list.filter((workflow) => !deletedWorkflowIds.current.has(workflow.id)));
+      })
+      .catch((err) => {
+        if (generation === reloadGeneration.current) {
+          Toast.error(err instanceof Error ? err.message : 'Failed to load workflows');
+        }
       })
       .finally(() => {
         if (generation === reloadGeneration.current) setLoading(false);
@@ -88,16 +98,24 @@ export function WorkflowManager({ onOpen }: { onOpen: (id: string) => void }) {
   };
 
   const copy = async (id: string) => {
-    await api.copyWorkflow(id);
-    reload();
+    try {
+      await api.copyWorkflow(id);
+      reload();
+    } catch (err) {
+      Toast.error(err instanceof Error ? err.message : 'Failed to copy workflow');
+    }
   };
 
   const create = async () => {
     if (!newName.trim()) return;
-    const wf = await api.createWorkflow(newName.trim(), newWorkflowTemplate());
-    setCreating(false);
-    setNewName('');
-    onOpen(wf.id);
+    try {
+      const wf = await api.createWorkflow(newName.trim(), newWorkflowTemplate());
+      setCreating(false);
+      setNewName('');
+      onOpen(wf.id);
+    } catch (err) {
+      Toast.error(err instanceof Error ? err.message : 'Failed to create workflow');
+    }
   };
 
   return (

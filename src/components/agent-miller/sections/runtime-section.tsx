@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import { InputNumber, Switch, Input } from '@douyinfe/semi-ui';
-
+import { InputNumber, Switch, Input } from '../../ui/management';
 import type { AgentDef } from '../../../api';
 
 interface Props {
@@ -58,7 +57,7 @@ export function RuntimeSection({ agent, config, saveConfig }: Props) {
             }}
             style={{ width: 100 }}
           />
-          <span style={{ fontSize: 12, color: 'var(--semi-color-text-2)' }}>max retries</span>
+          <span style={{ fontSize: 12, color: 'var(--muted-foreground)' }}>max retries</span>
         </div>
       </div>
       <div style={fieldStyle}>

@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 
-import { Table, Tag, Button, Empty, Popconfirm, Toast } from '@douyinfe/semi-ui';
-
+import { Table, Tag, Button, Empty, Popconfirm, Toast } from '../../ui/management';
 import * as api from '../../../api';
 import type { AgentDef, AgentExecution } from '../../../api';
 

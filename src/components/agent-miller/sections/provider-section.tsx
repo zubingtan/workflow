@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
-import { Button, Input, Select, Tag, Typography } from '@douyinfe/semi-ui';
-
 import { providerConnectionFingerprint } from '../agent-config-store.mjs';
+import { Button, Input, Select, Tag, Typography } from '../../ui/management';
 import * as api from '../../../api';
 import type { AgentConfig, AgentDef } from '../../../api';
 
@@ -277,7 +276,7 @@ export function ProviderSection({
           style={{
             marginBottom: 20,
             padding: 12,
-            border: '1px solid var(--semi-color-border)',
+            border: '1px solid var(--border)',
             borderRadius: 6,
           }}
         >

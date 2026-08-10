@@ -1,5 +1,4 @@
-import { Table, Tag, Space, Button, Popconfirm, Tooltip } from '@douyinfe/semi-ui';
-
+import { Table, Tag, Space, Button, Popconfirm, Tooltip } from '../ui/management';
 import type { RunMeta, RunStatus } from '../../api';
 
 /**

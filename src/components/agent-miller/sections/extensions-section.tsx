@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 
-import { Button, Input, List, Typography, Empty } from '@douyinfe/semi-ui';
-import { IconPlus, IconDelete } from '@douyinfe/semi-icons';
+import { Plus as IconPlus, Trash2 as IconDelete } from 'lucide-react';
 
+import { Button, Input, List, Typography, Empty } from '../../ui/management';
 import type { AgentDef } from '../../../api';
 
 interface Props {
