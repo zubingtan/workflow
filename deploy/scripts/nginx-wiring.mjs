@@ -168,9 +168,18 @@ if (isMain) {
     const incomingFile = b;
     const incomingBase = incomingFile.split('/').pop();
     const incomingText = readFileSync(incomingFile, 'utf8');
-    // compare against every conf.d file EXCEPT the incoming one itself
+    // compare against every conf.d file EXCEPT the incoming one itself — by
+    // path (same basename) OR by identical content (idempotent re-run of our
+    // own wiring, not a conflict)
     const all = readdirSync(dir)
       .filter((f) => f.endsWith('.conf') && !f.endsWith('.disabled') && f !== incomingBase)
+      .filter((f) => {
+        try {
+          return readFileSync(join(dir, f), 'utf8') !== incomingText;
+        } catch {
+          return true;
+        }
+      })
       .map((f) => ({ file: f, text: readFileSync(join(dir, f), 'utf8') }));
     const conflicts = all.flatMap(({ file, text }) =>
       findServerNameConflicts(text, incomingText).map((conf) => ({ file, ...conf }))
