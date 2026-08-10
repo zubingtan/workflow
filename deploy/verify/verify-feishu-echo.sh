@@ -41,10 +41,21 @@ CID="verify-$TS"
 DETAIL="echo-$TS"
 
 # --- 1. Register the deterministic reply ---
+# The LLM node executor requires JSON structured output (#249): the agent's
+# final text must parse as the node's declared schema ({result: string}).
+# So register json_response mode with a JSON-wrapped rawDetail — the node
+# then outputs result == DETAIL, which the bot echoes verbatim.
+#
+# Contract gotcha: fake-provider keeps rawDetail ONLY when it is a string
+# (typeof check in PUT /test/control); an object is coerced to '' which the
+# executor then rejects as an empty response. So double-encode: the outer
+# json.dumps produces a JSON string literal for the body, the inner one is
+# the actual {result: ...} payload.
 say "1/4 register fake-provider control: $CID -> $DETAIL"
+RAW_DETAIL="$(python3 -c 'import json,sys; print(json.dumps(json.dumps({"result": sys.argv[1]})))' "$DETAIL")"
 curl -fsS -X PUT "$FAKE_BASE/test/control" \
   -H 'Content-Type: application/json' \
-  -d "{\"correlationId\":\"$CID\",\"rawDetail\":\"$DETAIL\",\"mode\":\"success\"}" >/dev/null \
+  -d "{\"correlationId\":\"$CID\",\"rawDetail\":$RAW_DETAIL,\"mode\":\"json_response\"}" >/dev/null \
   || die "fake-provider control failed at $FAKE_BASE (is it up?)"
 
 # --- 2. Send the real @bot message ---
