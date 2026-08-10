@@ -1,8 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import { CheckCircle2 as IconTickCircle, X as IconClose } from 'lucide-react';
+import {
+  Archive,
+  CheckCircle2 as IconTickCircle,
+  Clock3,
+  Database,
+  RefreshCw,
+  X as IconClose,
+} from 'lucide-react';
 
-import { Button, Input, InputNumber, Typography, Spin, Toast, Tag } from '../ui/management';
+import { Button, Card, Input, InputNumber, Typography, Spin, Toast, Tag } from '../ui/management';
 import * as api from '../../api';
 
 /**
@@ -21,9 +28,24 @@ import * as api from '../../api';
  */
 const MAX_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 const SETTINGS_NAV = [
-  { id: 'settings-execution', label: 'Execution' },
-  { id: 'settings-memory', label: 'Memory' },
-  { id: 'settings-provider', label: 'LLM / Embedding' },
+  {
+    id: 'execution',
+    label: 'Execution',
+    description: 'Default workflow run limits.',
+    icon: Clock3,
+  },
+  {
+    id: 'memory',
+    label: 'Memory',
+    description: 'Persistent memory and retrieval models.',
+    icon: Database,
+  },
+  {
+    id: 'local-data',
+    label: 'Local data',
+    description: 'Storage location and access.',
+    icon: Archive,
+  },
 ];
 
 export function AdminSettings() {
@@ -39,6 +61,7 @@ export function AdminSettings() {
   const [embedderModel, setEmbedderModel] = useState<string>('');
   const [embeddingDims, setEmbeddingDims] = useState<number | null>(null);
   const [testResult, setTestResult] = useState<api.Mem0TestResponse | null>(null);
+  const [activeSection, setActiveSection] = useState('execution');
 
   const reload = useCallback(() => {
     setLoading(true);
@@ -152,209 +175,150 @@ export function AdminSettings() {
     );
   }
 
-  return (
-    <div style={{ display: 'flex', minHeight: '100%', overflow: 'hidden' }}>
-      <nav
-        aria-label="Settings sections"
-        style={{ width: 190, flexShrink: 0, borderRight: '1px solid var(--border)', padding: 16 }}
-      >
-        <Typography.Text strong style={{ display: 'block', marginBottom: 12 }}>
-          Settings
+  const activeSettings = SETTINGS_NAV.find((item) => item.id === activeSection) ?? SETTINGS_NAV[0];
+
+  const field = (label: string, control: React.ReactNode, description?: string) => (
+    <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <Typography.Text size="small" strong>
+        {label}
+      </Typography.Text>
+      {control}
+      {description && (
+        <Typography.Text type="tertiary" size="small">
+          {description}
         </Typography.Text>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {SETTINGS_NAV.map((item) => (
-            <Button
-              key={item.id}
-              theme="borderless"
-              size="small"
-              className="justify-start"
-              onClick={() =>
-                document
-                  .getElementById(item.id)
-                  ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-              }
-            >
-              {item.label}
-            </Button>
-          ))}
+      )}
+    </label>
+  );
+
+  const memoryCard = (
+    <Card style={{ overflow: 'hidden', boxShadow: 'none' }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 12,
+          padding: '16px 18px',
+          borderBottom: '1px solid var(--border)',
+        }}
+      >
+        <div
+          style={{
+            display: 'grid',
+            placeItems: 'center',
+            width: 32,
+            height: 32,
+            borderRadius: 10,
+            background: 'var(--muted)',
+            color: 'var(--primary)',
+          }}
+        >
+          <Database size={17} />
         </div>
-      </nav>
-      <div style={{ maxWidth: 620, overflow: 'auto', padding: 24 }}>
-        <Typography.Title heading={4} style={{ marginBottom: 8 }}>
-          Global Settings
-        </Typography.Title>
-        <Typography.Paragraph type="tertiary" style={{ marginBottom: 24 }}>
-          Runtime defaults and memory provider settings for the workflow workspace.
-        </Typography.Paragraph>
-        <section id="settings-execution" style={{ scrollMarginTop: 24 }}>
-          <Typography.Title heading={5} style={{ marginBottom: 12 }}>
-            Execution
-          </Typography.Title>
-          <Typography.Paragraph type="tertiary" style={{ marginBottom: 16 }}>
-            The node timeout default applies to nodes that do not set their own timeout. Each node
-            can override this value in its node form.
-          </Typography.Paragraph>
-          <div style={{ marginBottom: 12 }}>
-            <Typography.Text size="small" strong>
-              Node Timeout Default (ms)
-            </Typography.Text>
-            <InputNumber
-              value={value ?? undefined}
-              min={1}
-              max={24 * 60 * 60 * 1000}
-              step={60000}
-              onChange={(v) => setValue(typeof v === 'number' ? v : null)}
-              style={{ width: '100%', marginTop: 4 }}
-            />
-            <Typography.Text type="tertiary" size="small">
-              1 min = 60000 ms; 10 min = 600000 ms; 0 or empty uses the built-in default (10 min)
-            </Typography.Text>
-          </div>
-        </section>
-        <section id="settings-memory" style={{ scrollMarginTop: 24 }}>
-          <Typography.Title heading={5} style={{ marginTop: 24, marginBottom: 12 }}>
+        <div>
+          <Typography.Title heading={5} style={{ margin: 0 }}>
             Memory (mem0)
           </Typography.Title>
-          <Typography.Paragraph type="tertiary" style={{ marginBottom: 16 }}>
-            Configure the self-hosted mem0 server connection. Leave empty to disable persistent
-            memory.
+          <Typography.Paragraph type="tertiary" size="small" style={{ margin: '4px 0 0' }}>
+            Configure persistent Agent memory and the models used to extract and search it.
           </Typography.Paragraph>
-          <div style={{ marginBottom: 12 }}>
-            <Typography.Text size="small" strong>
-              mem0 Server URL
-            </Typography.Text>
-            <Input
-              value={mem0Host}
-              onChange={(v) => setMem0Host(v)}
-              placeholder="http://localhost:8890"
-              style={{ width: '100%', marginTop: 4 }}
-            />
-            <Typography.Text type="tertiary" size="small">
-              The base URL of the mem0 API server (e.g. http://localhost:8890)
-            </Typography.Text>
-          </div>
-          <div style={{ marginBottom: 12 }}>
-            <Typography.Text size="small" strong>
-              mem0 API Key
-            </Typography.Text>
+        </div>
+      </div>
+      <div style={{ display: 'grid', gap: 16, padding: 18 }}>
+        <div
+          style={{
+            display: 'grid',
+            gap: 16,
+            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+          }}
+        >
+          {field(
+            'Server URL',
+            <Input value={mem0Host} onChange={setMem0Host} placeholder="http://localhost:8890" />
+          )}
+          {field(
+            'API key',
             <Input
               value={mem0ApiKey}
-              onChange={(v) => setMem0ApiKey(v)}
+              onChange={setMem0ApiKey}
               placeholder="API key"
               mode="password"
-              style={{ width: '100%', marginTop: 4 }}
             />
-            <Typography.Text type="tertiary" size="small">
-              Used for memory read/write operations
-            </Typography.Text>
-          </div>
-          <div style={{ marginBottom: 12 }}>
-            <Typography.Text size="small" strong>
-              mem0 Admin Key (optional)
-            </Typography.Text>
+          )}
+          {field(
+            'Admin key',
             <Input
               value={mem0AdminKey}
-              onChange={(v) => setMem0AdminKey(v)}
-              placeholder="Admin key (required for LLM/embedding configuration)"
+              onChange={setMem0AdminKey}
+              placeholder="Optional admin key"
               mode="password"
-              style={{ width: '100%', marginTop: 4 }}
             />
-            <Typography.Text type="tertiary" size="small">
-              Only needed to push LLM/embedding settings below. Falls back to the API key when
-              empty.
-            </Typography.Text>
-          </div>
-        </section>
-        <section id="settings-provider" style={{ scrollMarginTop: 24 }}>
-          <Typography.Text size="small" strong>
-            LLM / Embedding Provider
-          </Typography.Text>
-          <Typography.Paragraph type="tertiary" size="small" style={{ marginTop: 4 }}>
-            These are pushed to the mem0 server via its /configure endpoint. The provider must be
-            OpenAI-compatible (the mem0 server calls it internally for memory extraction and
-            search).
-          </Typography.Paragraph>
-          <div style={{ marginBottom: 12 }}>
-            <Typography.Text size="small" strong>
-              LLM Base URL
-            </Typography.Text>
-            <Input
-              value={llmBaseUrl}
-              onChange={(v) => setLlmBaseUrl(v)}
-              placeholder="https://your-openai-compatible-endpoint.example/api"
-              style={{ width: '100%', marginTop: 4 }}
-            />
-            <Typography.Text type="tertiary" size="small">
-              OpenAI-compatible endpoint (no /v1 suffix needed)
-            </Typography.Text>
-          </div>
-          <div style={{ marginBottom: 12 }}>
-            <Typography.Text size="small" strong>
-              LLM Model
-            </Typography.Text>
-            <Input
-              value={llmModel}
-              onChange={(v) => setLlmModel(v)}
-              placeholder="deepseek-v4-flash"
-              style={{ width: '100%', marginTop: 4 }}
-            />
-            <Typography.Text type="tertiary" size="small">
-              Used by mem0 to extract facts from conversations
-            </Typography.Text>
-          </div>
-          <div style={{ marginBottom: 12 }}>
-            <Typography.Text size="small" strong>
-              Embedding Model
-            </Typography.Text>
+          )}
+          {field(
+            'LLM base URL',
+            <div style={{ display: 'flex', gap: 6 }}>
+              <Input
+                value={llmBaseUrl}
+                onChange={setLlmBaseUrl}
+                placeholder="https://api.example.com/v1"
+                style={{ flex: 1 }}
+              />
+              <Button
+                size="small"
+                aria-label="Refresh memory models"
+                icon={<RefreshCw className={testing ? 'animate-spin' : undefined} />}
+                onClick={() => Toast.info('Models are discovered by the configured mem0 provider')}
+              />
+            </div>,
+            'OpenAI-compatible endpoint used by mem0.'
+          )}
+          {field(
+            'LLM model',
+            <Input value={llmModel} onChange={setLlmModel} placeholder="deepseek-v4-flash" />
+          )}
+          {field(
+            'Embedding model',
             <Input
               value={embedderModel}
-              onChange={(v) => setEmbedderModel(v)}
+              onChange={setEmbedderModel}
               placeholder="text-embedding-v4"
-              style={{ width: '100%', marginTop: 4 }}
             />
-            <Typography.Text type="tertiary" size="small">
-              Used by mem0 to vectorize memories
-            </Typography.Text>
-          </div>
-          <div style={{ marginBottom: 12 }}>
-            <Typography.Text size="small" strong>
-              Embedding Dimensions
-            </Typography.Text>
+          )}
+          {field(
+            'Embedding dimensions',
             <InputNumber
               value={embeddingDims ?? undefined}
               min={1}
               onChange={(v) => setEmbeddingDims(typeof v === 'number' ? v : null)}
-              style={{ width: '100%', marginTop: 4 }}
             />
-            <Typography.Text type="tertiary" size="small">
-              Must match the embedding model output size (e.g. 1024 for text-embedding-v4)
-            </Typography.Text>
-          </div>
-        </section>
-        <div style={{ marginTop: 16, display: 'flex', gap: 12 }}>
+          )}
+        </div>
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            gap: 10,
+            paddingTop: 4,
+          }}
+        >
           <Button theme="solid" loading={saving} onClick={save}>
-            Save
+            Save settings
           </Button>
           <Button loading={testing} onClick={runTest}>
-            Test Connection
+            Test connection
           </Button>
+          <Typography.Text type="tertiary" size="small">
+            LLM and embedding settings are pushed through the mem0 /configure endpoint.
+          </Typography.Text>
         </div>
         {testResult && (
-          <div
-            style={{
-              marginTop: 16,
-              padding: 12,
-              borderRadius: 8,
-              background: 'var(--muted)',
-            }}
-          >
+          <div style={{ padding: 12, borderRadius: 10, background: 'var(--muted)' }}>
             <Typography.Text
               strong
-              style={{
-                color: testResult.ok ? 'var(--primary)' : 'var(--destructive)',
-              }}
+              style={{ color: testResult.ok ? 'var(--primary)' : 'var(--destructive)' }}
             >
-              {testResult.ok ? '✓ Test passed' : '✗ Test failed'}
+              {testResult.ok ? 'Test passed' : 'Test failed'}
             </Typography.Text>
             {(testResult.steps ?? []).map((step) => (
               <div
@@ -378,6 +342,170 @@ export function AdminSettings() {
             ))}
           </div>
         )}
+      </div>
+    </Card>
+  );
+
+  return (
+    <div style={{ display: 'flex', minHeight: '100%', overflow: 'hidden' }}>
+      <nav
+        aria-label="Settings sections"
+        style={{
+          width: 176,
+          flexShrink: 0,
+          borderRight: '1px solid var(--border)',
+          background: 'color-mix(in oklch, var(--muted) 35%, transparent)',
+          padding: 10,
+        }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {SETTINGS_NAV.map((item) => {
+            const Icon = item.icon;
+            return (
+              <Button
+                key={item.id}
+                theme={activeSection === item.id ? 'light' : 'borderless'}
+                size="small"
+                className="justify-start"
+                onClick={() => setActiveSection(item.id)}
+              >
+                <Icon /> {item.label}
+              </Button>
+            );
+          })}
+        </div>
+      </nav>
+      <div style={{ minWidth: 0, flex: 1, overflow: 'auto', padding: '28px 24px 40px' }}>
+        <div style={{ maxWidth: 900, margin: '0 auto' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, marginBottom: 20 }}>
+            <div>
+              <Typography.Title heading={4} style={{ margin: 0 }}>
+                {activeSettings.label}
+              </Typography.Title>
+              <Typography.Paragraph type="tertiary" style={{ margin: '5px 0 0' }}>
+                {activeSettings.description}
+              </Typography.Paragraph>
+            </div>
+            <Tag
+              color={saving ? 'blue' : 'green'}
+              style={{ marginLeft: 'auto', whiteSpace: 'nowrap' }}
+            >
+              {saving ? 'Saving' : 'Saved'}
+            </Tag>
+          </div>
+
+          {activeSection === 'execution' && (
+            <Card style={{ overflow: 'hidden', boxShadow: 'none' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 12,
+                  padding: '16px 18px',
+                  borderBottom: '1px solid var(--border)',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'grid',
+                    placeItems: 'center',
+                    width: 32,
+                    height: 32,
+                    borderRadius: 10,
+                    background: 'var(--muted)',
+                    color: 'var(--primary)',
+                  }}
+                >
+                  <Clock3 size={17} />
+                </div>
+                <div>
+                  <Typography.Title heading={5} style={{ margin: 0 }}>
+                    Execution
+                  </Typography.Title>
+                  <Typography.Paragraph type="tertiary" size="small" style={{ margin: '4px 0 0' }}>
+                    Control the default limits applied to every workflow run.
+                  </Typography.Paragraph>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gap: 16, padding: 18 }}>
+                {field(
+                  'Node timeout',
+                  <InputNumber
+                    value={value ?? undefined}
+                    min={1}
+                    max={MAX_TIMEOUT_MS}
+                    step={60000}
+                    onChange={(v) => setValue(typeof v === 'number' ? v : null)}
+                  />,
+                  'Milliseconds. Individual nodes can override this default.'
+                )}
+                <div
+                  style={{
+                    display: 'flex',
+                    gap: 10,
+                    alignItems: 'flex-start',
+                    padding: 12,
+                    borderRadius: 10,
+                    background: 'var(--muted)',
+                  }}
+                >
+                  <Clock3 size={16} style={{ marginTop: 2, color: 'var(--primary)' }} />
+                  <Typography.Text type="tertiary" size="small">
+                    A running node is cancelled after this limit. Workflow execution semantics
+                    remain unchanged.
+                  </Typography.Text>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <Button theme="solid" loading={saving} onClick={save}>
+                    Save settings
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          )}
+          {activeSection === 'memory' && memoryCard}
+          {activeSection === 'local-data' && (
+            <Card style={{ overflow: 'hidden', boxShadow: 'none' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 12,
+                  padding: '16px 18px',
+                  borderBottom: '1px solid var(--border)',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'grid',
+                    placeItems: 'center',
+                    width: 32,
+                    height: 32,
+                    borderRadius: 10,
+                    background: 'var(--muted)',
+                    color: 'var(--primary)',
+                  }}
+                >
+                  <Archive size={17} />
+                </div>
+                <div>
+                  <Typography.Title heading={5} style={{ margin: 0 }}>
+                    Local data
+                  </Typography.Title>
+                  <Typography.Paragraph type="tertiary" size="small" style={{ margin: '4px 0 0' }}>
+                    Understand where workflows, agents and run history are stored.
+                  </Typography.Paragraph>
+                </div>
+              </div>
+              <div style={{ padding: 18 }}>
+                <Typography.Text type="tertiary" size="small">
+                  The application uses the configured local workflow data directory for SQLite
+                  persistence.
+                </Typography.Text>
+              </div>
+            </Card>
+          )}
+        </div>
       </div>
     </div>
   );

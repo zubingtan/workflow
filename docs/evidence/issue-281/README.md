@@ -1,24 +1,33 @@
 # Issue #281 management UI evidence
 
+## Visual source of truth
+
+The management surfaces were reviewed against the repository's actual prototype branch:
+
+- [research/shadcn-ui-prototype](https://github.com/zubingtan/workflow/tree/research/shadcn-ui-prototype), commit `da7203e64`
+- Workflows: `docs/prototypes/shadcn-ui/workflows-clean-navigation.png`
+- Agents: `docs/prototypes/shadcn-ui/agents-full-detail-stats.png`
+- Settings: `docs/prototypes/shadcn-ui/audit-modern-shell/35-settings-mem0-main-sync.png`, with the current Memory section also checked against `src/prototypes/shadcn-ui/prototype-app.tsx`
+
+The earlier management screenshots were superseded because they were captured before the real prototype branch was verified. Only the captures below are current evidence.
+
 ## Browser smoke
 
 Environment: local `pnpm dev`, server `:4001`, fake provider `:4010`, Chromium via `pnpm dlx agent-browser`.
 
-1. Opened `#/workflows`; created `Issue 281 CRUD smoke`, opened it, returned to the catalog, copied it, and deleted both the copy and the original through the confirmation dialog.
-2. Repeated the workflow path with rename and History; the new modal rendered the empty state without a legacy dialog.
-3. Opened `#/agents`; created an agent, opened Basic and Provider, and verified model discovery/testing controls. The search clear affordance was exercised through the new local Input primitive.
-4. Opened `#/settings`; verified vertical Execution/Memory/LLM navigation. With empty mem0 fields, Test Connection produced the recoverable message `Please fill in mem0 Server URL and API Key first` in the shared feedback viewport.
-5. Captured light and dark screenshots at 1440×900. At 900×900, collapsed the rail and verified the snapshot changed from `Collapse navigation` to `Expand navigation`.
-
-## Captures
-
-- [Workflows light](./workflows-light.png)
-- [Agents light](./agents-light.png)
-- [Agents dark](./agents-dark.png)
-- [Settings light](./settings-light.png)
-- [Settings dark](./settings-dark.png)
-- [Workflows narrow dark](./workflows-narrow-dark.png)
+1. Opened `#/workflows`; verified the prototype-aligned collection header, reusable workflow row, Open, Copy, History and Delete actions.
+2. Opened `#/agents`; opened the Fake Provider agent, verified the horizontal General/Provider/System Prompt/Tools/Runtime/Skills/Extensions/Memories/Sessions/Stats sections, then checked the empty Stats state.
+3. Opened `#/settings`; switched Execution → Memory and verified the card layout, mem0 fields, LLM/embedding fields, model refresh affordance and Test connection action.
+4. Captured the default Workflow state at 1440×900 light and a 900×900 narrow rail state; captured Agent and Settings focused states at 1446×976 to match the checked prototype captures. Browser console/page errors were checked and none were reported.
 
 The smoke used the existing API and FlowGram editor paths; no API payload or Workflow JSON contract was changed.
 
-Manual signoff: Codex browser smoke completed on 2026-08-11; screenshots and the operation record above are the review evidence for #281.
+## Captures
+
+- [Workflows (prototype-aligned)](./workflows-prototype-aligned.png)
+- [Agents (prototype-aligned)](./agents-prototype-aligned.png)
+- [Settings (prototype-aligned)](./settings-prototype-aligned.png)
+- [Workflows default 1440×900](./workflows-1440x900.png)
+- [Workflows narrow rail 900×900](./workflows-narrow-rail.png)
+
+Manual signoff: Codex browser smoke completed on 2026-08-11; the branch references, screenshots and operation record above are the review evidence for #281.

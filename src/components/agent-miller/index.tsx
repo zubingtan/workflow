@@ -1,6 +1,9 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 
 import {
+  ArrowLeft as IconArrowLeft,
+  ArrowRight as IconArrowRight,
+  Bot as IconBot,
   Search as IconSearch,
   Plus as IconPlus,
   Download as IconDownload,
@@ -9,11 +12,7 @@ import {
 } from 'lucide-react';
 
 import {
-  ResizeGroup,
-  ResizeItem,
-  ResizeHandler,
   Input,
-  List,
   Button,
   Empty,
   Spin,
@@ -40,7 +39,7 @@ import { ExtensionsSection } from './sections/extensions-section';
 import { AgentSaveCoordinator, parseAgentConfig } from './agent-config-store.mjs';
 
 const SECTIONS: Array<{ key: string; label: string }> = [
-  { key: 'general', label: 'Basic' },
+  { key: 'general', label: 'General' },
   { key: 'provider', label: 'Provider' },
   { key: 'system-prompt', label: 'System Prompt' },
   { key: 'tools', label: 'Tools' },
@@ -59,7 +58,6 @@ export function AgentMillerColumns() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [selectedExecutionId, setSelectedExecutionId] = useState<string | null>(null);
-  const [hoveredAgentId, setHoveredAgentId] = useState<string | null>(null);
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [importState, setImportState] = useState<{
     visible: boolean;
@@ -408,183 +406,278 @@ export function AgentMillerColumns() {
     [selectedAgent]
   );
 
-  return (
-    <div style={{ height: '100%', display: 'flex' }}>
-      <ResizeGroup direction="horizontal">
-        {/* Col 2: Agent List */}
-        <ResizeItem defaultSize="250px" min="180px" max="35%">
-          <div
-            style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
-          >
-            <div
-              style={{
-                padding: 12,
-                borderBottom: '1px solid var(--border)',
-                flexShrink: 0,
-              }}
-            >
-              <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
-                <Button
-                  icon={<IconPlus />}
-                  theme="solid"
-                  onClick={handleCreate}
-                  style={{ flex: 1 }}
-                >
-                  New Agent
-                </Button>
-                <Button icon={<IconDownload />} onClick={handleExportAll} title="Export all" />
-                <Button icon={<IconUpload />} onClick={handleImport} title="Import" />
-              </div>
-              <Input
-                prefix={<IconSearch />}
-                placeholder="Search agents..."
-                value={search}
-                onChange={setSearch}
-                showClear
-                style={{ marginBottom: 8 }}
-              />
-              {allTags.length > 0 && (
-                <Select
-                  placeholder="Filter by tag"
-                  value={tagFilter ?? ''}
-                  onChange={(v) => setTagFilter(v === '' ? null : (v as string))}
-                  showClear
-                  size="small"
-                >
-                  <Select.Option value="">All tags</Select.Option>
-                  {allTags.map((t) => (
-                    <Select.Option key={t} value={t}>
-                      {t}
-                    </Select.Option>
-                  ))}
-                </Select>
-              )}
-            </div>
-            <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
-              {loading ? (
-                <Spin style={{ display: 'block', margin: '40px auto' }} />
-              ) : filtered.length === 0 ? (
-                <Empty description="No agents" />
-              ) : (
-                <List
-                  dataSource={filtered}
-                  renderItem={(item) => (
-                    <List.Item
-                      key={item.id}
-                      onClick={() => navigate(item.id, activeSection)}
-                      onMouseEnter={() => setHoveredAgentId(item.id)}
-                      onMouseLeave={() => setHoveredAgentId(null)}
-                      style={{
-                        cursor: 'pointer',
-                        padding: '8px 12px',
-                        background: selectedAgent?.id === item.id ? 'var(--muted)' : 'transparent',
-                        borderLeft:
-                          selectedAgent?.id === item.id
-                            ? '3px solid var(--primary)'
-                            : '3px solid transparent',
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          width: '100%',
-                        }}
-                      >
-                        <div>
-                          <div style={{ fontWeight: 500 }}>{item.name}</div>
-                          <div style={{ fontSize: 12, color: 'var(--muted-foreground)' }}>
-                            {parseAgentConfig(item.config)?.provider?.model || ''}
-                          </div>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                          {JSON.parse(item.tags || '[]').length > 0 && (
-                            <Tag size="small" color="blue">
-                              {JSON.parse(item.tags)[0]}
-                            </Tag>
-                          )}
-                          {hoveredAgentId === item.id && (
-                            <Popconfirm
-                              title={`Delete "${item.name}"?`}
-                              content="Execution history will also be deleted."
-                              onConfirm={() => void handleDelete(item.id)}
-                              position="right"
-                            >
-                              <Button
-                                icon={<IconDelete />}
-                                size="small"
-                                theme="borderless"
-                                type="danger"
-                                onClick={(e) => e.stopPropagation()}
-                              />
-                            </Popconfirm>
-                          )}
-                        </div>
-                      </div>
-                    </List.Item>
-                  )}
-                />
-              )}
-            </div>
+  if (!selectedAgent) {
+    return (
+      <div
+        style={{ minHeight: '100%', maxWidth: 1120, margin: '0 auto', padding: '28px 24px 40px' }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            justifyContent: 'space-between',
+            gap: 20,
+            marginBottom: 24,
+          }}
+        >
+          <div>
+            <Typography.Title heading={3} style={{ margin: 0 }}>
+              Agents
+            </Typography.Title>
+            <Typography.Paragraph type="tertiary" style={{ margin: '6px 0 0' }}>
+              Configure reusable agents and their runtime behavior.
+            </Typography.Paragraph>
           </div>
-        </ResizeItem>
-
-        <ResizeHandler />
-
-        {/* Col 3: Section Nav */}
-        <ResizeItem defaultSize="160px" min="120px" max="20%">
-          <div
-            style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+          <Button icon={<IconPlus />} theme="solid" onClick={handleCreate}>
+            New agent
+          </Button>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+          <Input
+            prefix={<IconSearch />}
+            placeholder="Search agents"
+            value={search}
+            onChange={setSearch}
+            showClear
+            style={{ maxWidth: 320 }}
+          />
+          <Typography.Text type="tertiary" size="small">
+            {filtered.length} agents
+          </Typography.Text>
+          <div style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
+            <Button size="small" icon={<IconUpload />} onClick={handleImport}>
+              Import
+            </Button>
+            <Button size="small" icon={<IconDownload />} onClick={handleExportAll}>
+              Export
+            </Button>
+          </div>
+        </div>
+        {allTags.length > 0 && (
+          <Select
+            placeholder="Filter by tag"
+            value={tagFilter ?? ''}
+            onChange={(v) => setTagFilter(v === '' ? null : (v as string))}
+            showClear
+            size="small"
+            style={{ marginBottom: 14 }}
           >
-            <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0', minHeight: 0 }}>
-              <List
-                dataSource={SECTIONS}
-                renderItem={(s) => (
-                  <List.Item
-                    key={s.key}
-                    onClick={() => selectedAgent && navigate(selectedAgent.id, s.key)}
+            <Select.Option value="">All tags</Select.Option>
+            {allTags.map((tag) => (
+              <Select.Option key={tag} value={tag}>
+                {tag}
+              </Select.Option>
+            ))}
+          </Select>
+        )}
+        <div
+          aria-label="Agent list"
+          style={{
+            overflow: 'hidden',
+            border: '1px solid var(--border)',
+            borderRadius: 14,
+            background: 'var(--card)',
+          }}
+        >
+          {loading ? (
+            <Spin style={{ display: 'block', margin: 48 }} />
+          ) : filtered.length === 0 ? (
+            <Empty description="No agents" />
+          ) : (
+            filtered.map((item) => {
+              let tags: string[] = [];
+              try {
+                tags = JSON.parse(item.tags || '[]');
+              } catch {
+                tags = [];
+              }
+              const model = parseAgentConfig(item.config)?.provider?.model || 'OpenAI-compatible';
+              return (
+                <div
+                  key={item.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 14,
+                    minHeight: 78,
+                    padding: '12px 16px',
+                    borderBottom: '1px solid var(--border)',
+                  }}
+                >
+                  <div
                     style={{
-                      cursor: selectedAgent ? 'pointer' : 'default',
-                      padding: '8px 16px',
-                      opacity: selectedAgent ? 1 : 0.4,
-                      background:
-                        activeSection === s.key && selectedAgent ? 'var(--muted)' : 'transparent',
-                      fontWeight: activeSection === s.key && selectedAgent ? 600 : 400,
+                      display: 'grid',
+                      placeItems: 'center',
+                      width: 36,
+                      height: 36,
+                      flexShrink: 0,
+                      borderRadius: 12,
+                      background: 'var(--muted)',
+                      color: 'var(--primary)',
                     }}
                   >
-                    {s.label}
-                  </List.Item>
-                )}
-              />
-            </div>
+                    <IconBot size={18} />
+                  </div>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <Button
+                      theme="borderless"
+                      onClick={() => navigate(item.id, 'general')}
+                      style={{
+                        height: 'auto',
+                        padding: 0,
+                        fontWeight: 600,
+                        color: 'var(--foreground)',
+                      }}
+                    >
+                      {item.name}
+                    </Button>
+                    <Typography.Text
+                      type="tertiary"
+                      size="small"
+                      style={{ display: 'block', marginTop: 4 }}
+                    >
+                      {model}
+                      {tags[0] ? ` · ${tags[0]}` : ''}
+                    </Typography.Text>
+                  </div>
+                  <Button size="small" onClick={() => navigate(item.id, 'general')}>
+                    Open <IconArrowRight />
+                  </Button>
+                  <Popconfirm
+                    title={`Delete "${item.name}"?`}
+                    content="Execution history will also be deleted."
+                    onConfirm={() => void handleDelete(item.id)}
+                  >
+                    <Button
+                      icon={<IconDelete />}
+                      size="small"
+                      theme="borderless"
+                      type="danger"
+                      aria-label={`Delete ${item.name}`}
+                    />
+                  </Popconfirm>
+                </div>
+              );
+            })
+          )}
+        </div>
+        <Modal
+          title="Import Conflicts"
+          visible={importState.visible}
+          onCancel={() => setImportState({ visible: false, conflicts: [], agents: [], total: 0 })}
+          footer={null}
+        >
+          <p>
+            {importState.conflicts.length} of {importState.total} agents have name conflicts:
+          </p>
+          <div style={{ marginBottom: 16 }}>
+            {importState.conflicts.map((name) => (
+              <Tag key={name} color="orange" style={{ margin: 2 }}>
+                {name}
+              </Tag>
+            ))}
           </div>
-        </ResizeItem>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <Button onClick={() => handleImportConfirm('skip')}>Skip conflicts</Button>
+            <Button onClick={() => handleImportConfirm('overwrite')}>Overwrite existing</Button>
+            <Button theme="solid" onClick={() => handleImportConfirm('rename')}>
+              Rename new
+            </Button>
+          </div>
+        </Modal>
+      </div>
+    );
+  }
 
-        <ResizeHandler />
-
-        {/* Col 4: Content Area */}
-        <ResizeItem defaultSize="1" min="30%">
-          <div style={{ height: '100%', overflow: 'auto', padding: 20 }}>{renderSection()}</div>
-        </ResizeItem>
-
-        {/* Col 5: Session Detail (dynamic, shown when an execution is selected) */}
-        {selectedExecutionId && selectedAgent && (
-          <>
-            <ResizeHandler />
-            <ResizeItem defaultSize="350px" min="250px" max="50%">
-              <SessionDetailPanel
-                agent={selectedAgent}
-                executionId={selectedExecutionId}
-                onClose={() => setSelectedExecutionId(null)}
-                onRerun={handleRerun}
-              />
-            </ResizeItem>
-          </>
-        )}
-      </ResizeGroup>
-
-      {/* Import conflict dialog */}
+  const selectedModel =
+    parseAgentConfig(selectedAgent.config)?.provider?.model || 'OpenAI-compatible';
+  return (
+    <div style={{ position: 'relative', minHeight: '100%', overflow: 'auto' }}>
+      <div style={{ maxWidth: 1120, margin: '0 auto', padding: '20px 24px 40px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
+          <Button theme="borderless" size="small" onClick={() => navigate(null)}>
+            <IconArrowLeft /> Agents
+          </Button>
+          <span style={{ color: 'var(--muted-foreground)' }}>/</span>
+          <Typography.Text type="tertiary" size="small">
+            {selectedAgent.name}
+          </Typography.Text>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 18 }}>
+          <div
+            style={{
+              display: 'grid',
+              placeItems: 'center',
+              width: 44,
+              height: 44,
+              flexShrink: 0,
+              borderRadius: 14,
+              background: 'var(--muted)',
+              color: 'var(--primary)',
+            }}
+          >
+            <IconBot size={21} />
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <Typography.Title heading={3} style={{ margin: 0 }}>
+              {selectedAgent.name}
+            </Typography.Title>
+            <Typography.Text type="tertiary" size="small">
+              {selectedModel} · Active configuration
+            </Typography.Text>
+          </div>
+          <Tag color="green" style={{ marginLeft: 'auto' }}>
+            Configured
+          </Tag>
+        </div>
+        <nav
+          aria-label="Agent sections"
+          style={{
+            display: 'flex',
+            gap: 4,
+            overflowX: 'auto',
+            borderBottom: '1px solid var(--border)',
+            marginBottom: 24,
+          }}
+        >
+          {SECTIONS.map((section) => (
+            <Button
+              key={section.key}
+              theme={activeSection === section.key ? 'light' : 'borderless'}
+              size="small"
+              onClick={() => navigate(selectedAgent.id, section.key)}
+              style={{ flexShrink: 0, borderRadius: '8px 8px 0 0' }}
+            >
+              {section.label}
+            </Button>
+          ))}
+        </nav>
+        <div style={{ maxWidth: 820, margin: '0 auto', padding: '0 4px' }}>{renderSection()}</div>
+      </div>
+      {selectedExecutionId && (
+        <div
+          style={{
+            position: 'absolute',
+            zIndex: 4,
+            top: 16,
+            right: 16,
+            bottom: 16,
+            width: 'min(380px, calc(100% - 32px))',
+            overflow: 'auto',
+            border: '1px solid var(--border)',
+            borderRadius: 14,
+            background: 'var(--card)',
+            boxShadow: 'var(--app-shadow-lg)',
+          }}
+        >
+          <SessionDetailPanel
+            agent={selectedAgent}
+            executionId={selectedExecutionId}
+            onClose={() => setSelectedExecutionId(null)}
+            onRerun={handleRerun}
+          />
+        </div>
+      )}
       <Modal
         title="Import Conflicts"
         visible={importState.visible}
