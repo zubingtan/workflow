@@ -111,4 +111,9 @@ test('the app consumes the foundation for theme, rename field, and confirmation 
   assert.match(app, /<Field/);
   assert.match(app, /<Button variant="ghost" size="sm"/);
   assert.doesNotMatch(app, /ghost-primary/, 'page code must use the standard ghost variant');
+  assert.match(
+    app,
+    /themeMode === 'auto' \? Monitor : themeMode === 'dark' \? Moon : Sun/,
+    'the theme trigger must represent the selected mode, including System'
+  );
 });
