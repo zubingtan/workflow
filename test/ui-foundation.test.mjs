@@ -70,6 +70,7 @@ test('canonical tokens register Tailwind v4 semantic utilities and preserve the 
   const flowgram = read('src/theme/flowgram-bridge.css');
 
   assert.match(tokens, /@import ['"]tailwindcss\/theme\.css['"]/);
+  assert.match(tokens, /@import ['"]tailwindcss\/preflight\.css['"]/);
   assert.match(tokens, /@import ['"]tailwindcss\/utilities\.css['"]/);
   assert.match(tokens, /@custom-variant dark/);
   assert.match(tokens, /@theme inline/);
