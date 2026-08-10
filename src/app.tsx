@@ -92,7 +92,8 @@ function App() {
   // LayoutDirectionProvider syncs it to the loaded workflow's direction on
   // mount and updates it on every toggle.
   const directionRef = useRef<LayoutDirection>('LR');
-  const { resolvedTheme, themeMode, setThemeMode } = useTheme();
+  const { themeMode, setThemeMode } = useTheme();
+  const ThemeIcon = themeMode === 'auto' ? Monitor : themeMode === 'dark' ? Moon : Sun;
 
   // Seed a default workflow on first launch + restore hash-based route
   useEffect(() => {
@@ -302,7 +303,7 @@ function App() {
             <PopoverTrigger
               render={
                 <Button variant="ghost" size="icon" aria-label="Choose theme">
-                  {resolvedTheme === 'dark' ? <Sun /> : <Moon />}
+                  <ThemeIcon />
                 </Button>
               }
             />
