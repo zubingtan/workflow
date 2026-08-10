@@ -153,6 +153,9 @@ test('CLI --check-conflicts passes when only the incoming file matches', () => {
   const incoming = buildConfDContent(FULL_CONFIG, INCLUDE_PATH);
   const incomingPath = join(dir, 'workflow.conf');
   writeFileSync(incomingPath, incoming);
+  // a copy of the same content under a different name = idempotent re-run,
+  // not a conflict (incoming may live outside the dir during testing)
+  writeFileSync(join(dir, 'site-copy.conf'), incoming);
   const script = new URL('../deploy/scripts/nginx-wiring.mjs', import.meta.url).pathname;
   const res = spawnSync(process.execPath, [script, '--check-conflicts', dir, incomingPath], {
     encoding: 'utf8',
