@@ -59,6 +59,20 @@ function parseMessageContent(content) {
   }
 }
 
+// Extract user-typed text from any supported message type. post (rich text)
+// carries its text as nested {tag:'text'} blocks; everything else either has
+// a flat text field or none (image/audio/file → empty query, still triggers).
+function extractMessageText(messageType, content) {
+  if (messageType === 'post') {
+    const blocks = content?.content ?? [];
+    return blocks
+      .flat()
+      .map((b) => (b?.tag === 'text' ? b.text ?? '' : ''))
+      .join('');
+  }
+  return content?.text ?? '';
+}
+
 function removeMentionKeys(text, mentions) {
   let next = text ?? '';
   for (const mention of mentions ?? []) {
@@ -86,9 +100,6 @@ export function normalizeReceiveMessageEvent(payload, { requireBotMention = true
   if (sender.sender_type === 'bot') {
     return { ok: false, reason: 'bot_sender' };
   }
-  if (message.message_type !== 'text') {
-    return { ok: false, reason: 'unsupported_message_type' };
-  }
 
   const mentions = Array.isArray(message.mentions) ? message.mentions : [];
   const botMention = mentions.find((m) => m?.mentioned_type === 'bot');
@@ -96,8 +107,10 @@ export function normalizeReceiveMessageEvent(payload, { requireBotMention = true
     return { ok: false, reason: 'bot_not_mentioned' };
   }
 
+  // Accept ANY message type (text, post/rich-text, image, ...): the trigger
+  // fires on the @-mention, and the query is best-effort extracted text.
   const content = parseMessageContent(message.content);
-  const rawText = content.text ?? '';
+  const rawText = extractMessageText(message.message_type, content);
   const query = removeMentionKeys(rawText, mentions);
 
   return {
