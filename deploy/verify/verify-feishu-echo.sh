@@ -17,11 +17,17 @@
 #     agent pointed at the fake-provider (deploy/README.md)
 #
 # Usage:
-#   bash deploy/verify/verify-feishu-echo.sh [--fake-base http://10.8.184.96:4010]
+#   bash deploy/verify/verify-feishu-echo.sh [--fake-base http://127.0.0.1:4010]
+#   env CHAT_ID=oc_xxx BOT_OPEN_ID=ou_xxx bash deploy/verify/verify-feishu-echo.sh
 set -euo pipefail
 
 # --- Config (override via env) ---
-FAKE_BASE="${FAKE_BASE:-http://10.8.184.96:4010}"          # w8 fake-provider
+# FAKE_BASE defaults to 127.0.0.1:4010: the fake-provider runs on the server
+# (supervisord) and is usually not reachable from the local machine, so run
+# with an ssh tunnel: `ssh -L 4010:127.0.0.1:4010 <server>` then keep the
+# default. If your provider is directly reachable, pass --fake-base http://<host>:4010.
+FAKE_BASE="${FAKE_BASE:-http://127.0.0.1:4010}"
+# Override with YOUR validation group chat_id and bot open_id.
 CHAT_ID="${CHAT_ID:-oc_0da8b36e7656ca1768a04e720c190c15}"   # Bot Testing group
 BOT_OPEN_ID="${BOT_OPEN_ID:-ou_e848234a502c6fb8c32fab1321cbd84c}" # Localization Team Bot
 FEISHU_IM_SCRIPT="${FEISHU_IM_SCRIPT:-$HOME/.agents/skills/feishu-im/scripts/feishu_im.py}"
