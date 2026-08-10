@@ -11,7 +11,9 @@ import {
   useRefresh,
   useService,
 } from '@flowgram.ai/free-layout-editor';
-import { JsonSchemaEditor, JsonSchemaUtils } from '@flowgram.ai/form-materials';
+
+import { JsonSchemaEditor } from '@/form-semantics/legacy-adapter';
+import { JsonSchemaUtils } from '@/form-semantics';
 
 export function GlobalVariableEditor() {
   const globalScope = useService(GlobalScope);

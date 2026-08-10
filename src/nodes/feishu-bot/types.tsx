@@ -1,5 +1,6 @@
 import { FlowNodeJSON } from '@flowgram.ai/free-layout-editor';
-import { IFlowTemplateValue, IJsonSchema } from '@flowgram.ai/form-materials';
+
+import type { IFlowTemplateValue, IJsonSchema } from '@/form-semantics';
 
 /**
  * Feishu Bot node JSON shape.

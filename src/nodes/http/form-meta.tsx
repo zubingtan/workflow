@@ -4,8 +4,10 @@
  */
 
 import { FormMeta, FormRenderProps } from '@flowgram.ai/free-layout-editor';
-import { createInferInputsPlugin, DisplayOutputs } from '@flowgram.ai/form-materials';
 import { Divider } from '@douyinfe/semi-ui';
+
+import { DisplayOutputs } from '@/form-semantics/legacy-adapter';
+import { createInferInputsPlugin } from '@/form-semantics';
 
 import { FormHeader, FormContent } from '../../form-components';
 import { HTTPNodeJSON } from './types';

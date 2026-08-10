@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-import type { JsonSchemaBasicType } from '@flowgram.ai/form-materials';
+import type { JsonSchemaBasicType } from '@/form-semantics';
 
 export interface TestRunFormMetaItem {
   type: JsonSchemaBasicType;

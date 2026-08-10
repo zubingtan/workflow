@@ -4,8 +4,10 @@
  */
 
 import { Field } from '@flowgram.ai/free-layout-editor';
-import { DisplayOutputs, IJsonSchema, JsonSchemaEditor } from '@flowgram.ai/form-materials';
 import { Divider } from '@douyinfe/semi-ui';
+
+import { DisplayOutputs, JsonSchemaEditor } from '@/form-semantics/legacy-adapter';
+import type { IJsonSchema } from '@/form-semantics';
 
 import { useIsSidebar, useNodeRenderContext } from '../../../hooks';
 import { FormItem } from '../../../form-components';

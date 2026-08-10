@@ -4,7 +4,9 @@
  */
 
 import { Field } from '@flowgram.ai/free-layout-editor';
-import { DisplayInputsValues, IFlowValue, InputsValues } from '@flowgram.ai/form-materials';
+
+import { DisplayInputsValues, InputsValues } from '@/form-semantics/legacy-adapter';
+import type { IFlowValue } from '@/form-semantics';
 
 import { useIsSidebar, useNodeRenderContext } from '../../../hooks';
 import { FormItem } from '../../../form-components';

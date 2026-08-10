@@ -4,7 +4,8 @@
  */
 
 import { FlowNodeJSON } from '@flowgram.ai/free-layout-editor';
-import { AssignValueType, IJsonSchema } from '@flowgram.ai/form-materials';
+
+import type { AssignValueType, IJsonSchema } from '@/form-semantics';
 
 export interface VariableNodeJSON extends FlowNodeJSON {
   data: {

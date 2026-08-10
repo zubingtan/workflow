@@ -4,16 +4,17 @@
  */
 
 import { FormRenderProps, FormMeta, ValidateTrigger } from '@flowgram.ai/free-layout-editor';
+import { Divider } from '@douyinfe/semi-ui';
+
+import { DisplayOutputs } from '@/form-semantics/legacy-adapter';
 import {
   autoRenameRefEffect,
   provideJsonSchemaOutputs,
   syncVariableTitle,
-  DisplayOutputs,
   validateFlowValue,
   validateWhenVariableSync,
   listenRefSchemaChange,
-} from '@flowgram.ai/form-materials';
-import { Divider } from '@douyinfe/semi-ui';
+} from '@/form-semantics';
 
 import { FlowNodeJSON } from '../typings';
 import { FormHeader, FormContent, FormInputs } from '../form-components';

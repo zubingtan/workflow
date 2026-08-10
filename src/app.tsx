@@ -2,7 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { createRoot } from 'react-dom/client';
 import { ArrowLeft, LoaderCircle, Moon, Pencil, Save, Sun, Monitor } from 'lucide-react';
-import { unstableSetCreateRoot } from '@flowgram.ai/form-materials';
+
+import { unstableSetCreateRoot } from '@/form-semantics/legacy-adapter';
+import { preserveWorkflowDocumentFields } from '@/form-semantics';
+
 // Semi CSS must load before semi-bridge.css so the bridge overrides win.
 // D6 pitfall 1: bare '@douyinfe/semi-ui/dist/css/semi.min.css' import path is
 // blocked by the package's `exports` field under Semi 2.101.1, but the file
@@ -158,13 +161,13 @@ function App() {
     }
     setSaving(true);
     try {
-      const data = {
+      const data = preserveWorkflowDocumentFields(workflowData, {
         ...ctx.document.toJSON(),
         // #190: persist the current layout direction so reopening a vertical
         // workflow keeps both node positions and port anchors vertical.
         direction: directionRef.current,
         globalVariable: ctx.get(GetGlobalVariableSchema)(),
-      };
+      });
       await api.updateWorkflow(currentWorkflowId, { data });
       Toast.success('Workflow saved');
       setDirty(false);
@@ -173,7 +176,7 @@ function App() {
     } finally {
       setSaving(false);
     }
-  }, [currentWorkflowId]);
+  }, [currentWorkflowId, workflowData]);
 
   // Inline rename: click the workflow name span to edit it in place.
   // Enter or blur commits (name-only PATCH, canvas dirty state untouched);

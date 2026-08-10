@@ -1,5 +1,6 @@
 import { FlowNodeJSON } from '@flowgram.ai/free-layout-editor';
-import { IJsonSchema } from '@flowgram.ai/form-materials';
+
+import type { IJsonSchema } from '@/form-semantics';
 
 export interface FeishuTriggerNodeJSON extends FlowNodeJSON {
   data: {

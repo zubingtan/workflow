@@ -4,8 +4,9 @@
  */
 
 import { Field } from '@flowgram.ai/free-layout-editor';
-import { TypeScriptCodeEditor } from '@flowgram.ai/form-materials';
 import { Divider } from '@douyinfe/semi-ui';
+
+import { TypeScriptCodeEditor } from '@/form-semantics/legacy-adapter';
 
 import { useTheme } from '../../../theme';
 import { useIsSidebar, useNodeRenderContext } from '../../../hooks';

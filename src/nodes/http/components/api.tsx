@@ -4,8 +4,10 @@
  */
 
 import { Field } from '@flowgram.ai/free-layout-editor';
-import { IFlowTemplateValue, PromptEditorWithVariables } from '@flowgram.ai/form-materials';
 import { Select } from '@douyinfe/semi-ui';
+
+import { PromptEditorWithVariables } from '@/form-semantics/legacy-adapter';
+import type { IFlowTemplateValue } from '@/form-semantics';
 
 import { useNodeRenderContext } from '../../../hooks';
 import { FormItem } from '../../../form-components';

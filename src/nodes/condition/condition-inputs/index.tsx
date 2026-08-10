@@ -9,9 +9,11 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { nanoid } from 'nanoid';
 import { Field, FieldArray, I18n } from '@flowgram.ai/free-layout-editor';
 import type { WorkflowNodeEntity } from '@flowgram.ai/free-layout-editor';
-import { ConditionRow, ConditionRowValueType } from '@flowgram.ai/form-materials';
 import { Button } from '@douyinfe/semi-ui';
 import { IconPlus, IconCrossCircleStroked } from '@douyinfe/semi-icons';
+
+import { ConditionRow } from '@/form-semantics/legacy-adapter';
+import type { ConditionRowValueType } from '@/form-semantics';
 
 import { hasTargetElement, rotatePortLocation } from '../../../utils/rotate-ports';
 import { useNodeRenderContext } from '../../../hooks';

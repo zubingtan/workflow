@@ -5,14 +5,14 @@
 
 import { FormRenderProps, FlowNodeJSON, Field, FormMeta } from '@flowgram.ai/free-layout-editor';
 import { SubCanvasRender } from '@flowgram.ai/free-container-plugin';
+
 import {
   BatchOutputs,
   BatchVariableSelector,
-  createBatchOutputsFormPlugin,
   DisplayOutputs,
-  IFlowRefValue,
-  provideBatchInputEffect,
-} from '@flowgram.ai/form-materials';
+} from '@/form-semantics/legacy-adapter';
+import { createBatchOutputsFormPlugin, provideBatchInputEffect } from '@/form-semantics';
+import type { IFlowRefValue } from '@/form-semantics';
 
 import { defaultFormMeta } from '../default-form-meta';
 import { useIsSidebar, useNodeRenderContext } from '../../hooks';

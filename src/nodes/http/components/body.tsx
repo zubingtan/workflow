@@ -4,12 +4,13 @@
  */
 
 import { Field } from '@flowgram.ai/free-layout-editor';
+import { Select } from '@douyinfe/semi-ui';
+
 import {
-  IFlowTemplateValue,
   JsonEditorWithVariables,
   PromptEditorWithVariables,
-} from '@flowgram.ai/form-materials';
-import { Select } from '@douyinfe/semi-ui';
+} from '@/form-semantics/legacy-adapter';
+import type { IFlowTemplateValue } from '@/form-semantics';
 
 import { useNodeRenderContext } from '../../../hooks';
 import { FormItem } from '../../../form-components';

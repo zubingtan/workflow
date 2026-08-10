@@ -1,6 +1,7 @@
 import { Field, FormMeta, FormRenderProps } from '@flowgram.ai/free-layout-editor';
-import { DisplayOutputs } from '@flowgram.ai/form-materials';
 import { Divider, Select, Switch, Typography } from '@douyinfe/semi-ui';
+
+import { DisplayOutputs } from '@/form-semantics/legacy-adapter';
 
 import { defaultFormMeta } from '../default-form-meta';
 import { useIsSidebar, useNodeRenderContext } from '../../hooks';
