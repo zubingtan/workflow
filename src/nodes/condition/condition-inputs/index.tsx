@@ -13,6 +13,7 @@ import { Button } from '@douyinfe/semi-ui';
 import { IconPlus, IconCrossCircleStroked } from '@douyinfe/semi-icons';
 
 import { ConditionRow } from '@/form-semantics/legacy-adapter';
+import { conditionRowRuleConfig } from '@/form-semantics';
 import type { ConditionRowValueType } from '@/form-semantics';
 
 import { hasTargetElement, rotatePortLocation } from '../../../utils/rotate-ports';
@@ -103,6 +104,7 @@ function ConditionBranches({
               <div style={{ display: 'flex', alignItems: 'center' }}>
                 <ConditionRow
                   readonly={readonly}
+                  ruleConfig={conditionRowRuleConfig}
                   style={{ flexGrow: 1, overflow: 'hidden' }}
                   value={childField.value.value}
                   onChange={(v) => childField.onChange({ value: v, key: childField.value.key })}

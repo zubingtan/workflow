@@ -29,6 +29,28 @@ function buildSemanticRoundTripSchema() {
         },
       },
       {
+        id: 'code_0',
+        type: 'code',
+        meta: { position: { x: 300, y: 300 } },
+        data: {
+          title: 'Code',
+          inputsValues: {
+            expressionValue: { type: 'expression', content: 'start_0.query' },
+            templateValue: { type: 'template', content: 'Hello {{start_0.query}}' },
+          },
+          inputs: {
+            type: 'object',
+            properties: {
+              expressionValue: { type: 'string' },
+              templateValue: { type: 'string' },
+            },
+          },
+          script: { language: 'javascript', content: 'return params;' },
+          outputs: { type: 'object', properties: { result: { type: 'string' } } },
+          futureCodeField: { preserved: true },
+        },
+      },
+      {
         id: 'condition_0',
         type: 'condition',
         meta: { position: { x: 500, y: 300 } },
@@ -88,7 +110,8 @@ function buildSemanticRoundTripSchema() {
       },
     ],
     edges: [
-      { sourceNodeID: 'start_0', targetNodeID: 'condition_0' },
+      { sourceNodeID: 'start_0', targetNodeID: 'code_0' },
+      { sourceNodeID: 'code_0', targetNodeID: 'condition_0' },
       { sourceNodeID: 'condition_0', sourcePortID: 'if_0', targetNodeID: 'end_0' },
     ],
   };
@@ -102,8 +125,19 @@ test('editor preserves headless form semantics across load/edit/save/reload', as
   await page.getByText('Workflows', { exact: true }).first().click();
   await page.locator('tr', { hasText: name }).getByRole('button', { name: 'Open' }).click();
   await expect(page.locator('[data-node-id="condition_0"]')).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator('[data-node-id="code_0"]')).toBeVisible();
   await expect(page.locator('[data-node-id="loop_0"]')).toBeVisible();
   await expect(page.locator('[data-node-id="block_start_0"]')).toBeVisible();
+
+  // A real form edit: add a Condition branch and let FlowGram rebuild its
+  // dynamic output port before the document is saved.
+  await page.locator('[data-node-id="condition_0"]').click();
+  const addConditionButton = page.getByRole('button', { name: 'plus Add', exact: true }).last();
+  await expect(addConditionButton).toBeVisible({ timeout: 10_000 });
+  await addConditionButton.click();
+  await expect(
+    page.locator('[data-node-id="condition_0"] [data-port-id][data-port-type="output"]')
+  ).toHaveCount(3);
 
   // A real editor edit: this exercises dynamic ports and FlowGram's nested
   // document serialization before the app's Save path is invoked.
@@ -115,6 +149,10 @@ test('editor preserves headless form semantics across load/edit/save/reload', as
 
   await page.reload();
   await expect(page.locator('[data-node-id="condition_0"]')).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator('[data-node-id="code_0"]')).toBeVisible();
+  await expect(
+    page.locator('[data-node-id="condition_0"] [data-port-id][data-port-type="output"]')
+  ).toHaveCount(3);
 
   const saved = await getWorkflowSchema(workflowId);
   expect(saved.direction).toBe('TB');
@@ -124,9 +162,16 @@ test('editor preserves headless form semantics across load/edit/save/reload', as
 
   const start = saved.nodes.find((node: any) => node.id === 'start_0');
   const condition = saved.nodes.find((node: any) => node.id === 'condition_0');
+  const code = saved.nodes.find((node: any) => node.id === 'code_0');
   const loop = saved.nodes.find((node: any) => node.id === 'loop_0');
   expect(start.data.futureNodeField).toEqual({ nested: ['kept'] });
   expect(condition.data.futureConditionField).toEqual({ preserved: true });
+  expect(condition.data.conditions).toHaveLength(2);
+  expect(code.data.futureCodeField).toEqual({ preserved: true });
+  expect(code.data.inputsValues).toMatchObject({
+    expressionValue: { type: 'expression', content: 'start_0.query' },
+    templateValue: { type: 'template', content: 'Hello {{start_0.query}}' },
+  });
   expect(loop.data.futureLoopField).toEqual({ preserved: true });
   expect(loop.data.loopFor).toEqual({
     type: 'ref',

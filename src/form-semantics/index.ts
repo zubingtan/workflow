@@ -20,9 +20,10 @@ export type {
 } from './types';
 export {
   ConditionPresetOp,
+  conditionRowRuleConfig,
   defaultConditionOpConfigs,
+  defaultConditionRuleConfigs,
   FlowValueUtils,
-  FORM_SEMANTIC_NODE_TYPES,
   getLoopScopeContract,
   inferFormInputs,
   preserveWorkflowDocumentFields,

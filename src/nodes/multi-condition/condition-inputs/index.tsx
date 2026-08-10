@@ -13,6 +13,7 @@ import { Button, Select, Space } from '@douyinfe/semi-ui';
 import { IconCrossCircleStroked, IconDelete, IconPlus } from '@douyinfe/semi-icons';
 
 import { ConditionRow } from '@/form-semantics/legacy-adapter';
+import { conditionRowRuleConfig } from '@/form-semantics';
 import type { ConditionRowValueType } from '@/form-semantics';
 
 import { useConditionPortOrder } from '../../condition/condition-inputs/use-condition-port-order';
@@ -143,6 +144,7 @@ function MultiConditionBranches({
                           <div style={{ flex: 1 }}>
                             <ConditionRow
                               readonly={readonly}
+                              ruleConfig={conditionRowRuleConfig}
                               value={conditionField.value.value}
                               onChange={(v) => {
                                 conditionField.onChange({
