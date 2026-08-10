@@ -8,17 +8,21 @@
  * progress/status events before local fan-out.
  */
 
+// #297: BASE_PATH is injected at build time via rsbuild source.define (empty
+// for root-path builds, e.g. '/workflow' for the sub-path nginx mount).
+const BASE_PATH = process.env.BASE_PATH ?? '';
+
 const DEFAULT_EVENTS_URL = ({ workflowIds, runIDs, types }) => {
   const params = new URLSearchParams();
   for (const workflowId of workflowIds) params.append('workflowId', workflowId);
   for (const runID of runIDs) params.append('runID', runID);
   for (const type of types) params.append('type', type);
   const query = params.toString();
-  return `/api/runs/events${query ? `?${query}` : ''}`;
+  return `${BASE_PATH}/api/runs/events${query ? `?${query}` : ''}`;
 };
 
 const DEFAULT_SNAPSHOT_URL = (workflowId) =>
-  `/api/workflows/${encodeURIComponent(workflowId)}/runs`;
+  `${BASE_PATH}/api/workflows/${encodeURIComponent(workflowId)}/runs`;
 
 const TERMINAL_STATUSES = new Set([
   'succeeded',

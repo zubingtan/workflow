@@ -6,7 +6,9 @@
 // (T3 #119 was never merged; folded into T7 #123 to unblock prod-mode E2E —
 // the previous `process.env.PUBLIC_SERVER_URL` ref threw "process is not
 // defined" in the browser because rsbuild's prod build doesn't polyfill it.)
-export const SERVER_URL = '';
+// #297: BASE_PATH is injected at build time via rsbuild source.define (empty
+// for root-path builds, e.g. '/workflow' for the sub-path nginx mount).
+export const SERVER_URL = process.env.BASE_PATH ?? '';
 
 export interface AgentConfig {
   provider: {
