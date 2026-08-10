@@ -229,12 +229,20 @@ export async function createAgentSessionForAgent(agent, agentDir, mem0, structur
   // settings. When this run carries a structured output contract, register the
   // request-scoped inline extension whose closure captures the schema (#243:
   // per-run isolation via extensionFactories).
+  //
+  // noSkills + additionalSkillPaths: pi auto-collects user-level skills
+  // (~/.agents/skills, ~/.pi/agent/skills) and project-level ones by default —
+  // an agent must only see the skills explicitly enabled in its config (#307).
+  // noSkills drops the auto-collected set; additionalSkillPaths re-injects the
+  // resolved global-library paths as the sole source.
   const resourceLoader = new DefaultResourceLoader({
     cwd: agentSessionDir,
     agentDir: agentSessionDir,
     settingsManager,
     systemPrompt: config.system_prompt || undefined,
     noThemes: true,
+    noSkills: true,
+    additionalSkillPaths: resolvedSkillPaths,
     extensionFactories: structured
       ? [
           createStructuredOutputExtension({
