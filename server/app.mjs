@@ -151,6 +151,9 @@ export function enqueueSavedWorkflowRun({ db, enqueueRun, workflowId, schema, in
  * @param {string} deps.agentDir
  * @param {boolean} [deps.staticEnabled=false] - prod serves dist/, dev does not
  * @param {string} [deps.staticDir] - root for serveStatic (defaults to ./dist)
+ * @param {string} [deps.basePath=''] - sub-path mount prefix (#297), e.g.
+ *   '/workflow' behind nginx. Empty = today's root-path behavior. Every route
+ *   (API, static, SPA fallback, SSE) is served under the prefix.
  * @param {object} [deps.runAgentExecution] - injected for tests
  * @param {object} [deps.createAgentSessionForAgent] - injected for tests
  * @param {(c: object, handler: (stream: object) => Promise<void>) => Promise<void>} [deps.streamSSE]
@@ -189,6 +192,7 @@ export function createApp({
   agentDir,
   staticEnabled = false,
   staticDir,
+  basePath = '',
   runAgentExecution,
   createAgentSessionForAgent,
   streamSSE,
@@ -203,7 +207,7 @@ export function createApp({
   providerClient = { fetchModels: fetchProviderModels, testCompletion: testProviderCompletion },
   feishuLongConnectionManager,
 }) {
-  const app = new Hono();
+  const app = basePath && basePath !== '/' ? new Hono().basePath(basePath) : new Hono();
 
   async function refreshFeishuLongConnections() {
     try {
@@ -1309,7 +1313,21 @@ export function createApp({
     // Hash-named assets under /static/* → immutable long cache. rsbuild
     // emits [name].[contenthash:8][ext] by default, so every file under
     // /static/* is content-hashed and safe to cache forever.
-    app.use('/static/*', withCache(serveStatic({ root }), 'public, max-age=31536000, immutable'));
+    // #297: under a basePath mount, c.req.path keeps the full prefixed path
+    // (Hono routes match on the merged path) — strip the prefix before the
+    // file lookup. `path:`-fixed serveStatic calls below are unaffected.
+    app.use(
+      '/static/*',
+      withCache(
+        serveStatic({
+          root,
+          ...(basePath
+            ? { rewriteRequestPath: (p) => (p.startsWith(basePath) ? p.slice(basePath.length) : p) }
+            : {}),
+        }),
+        'public, max-age=31536000, immutable'
+      )
+    );
 
     // index.html — never cached (must pick up new deploys immediately).
     // `path: "index.html"` ignores the request URL and serves that file

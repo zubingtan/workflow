@@ -161,6 +161,7 @@ export class WorkflowRuntimeServerClient implements IRuntimeClient {
     const host = this.config.port
       ? `${this.config.domain}:${this.config.port}`
       : this.config.domain;
-    return `${protocol}://${host}${path}`;
+    const basePath = this.config.basePath ?? '';
+    return `${protocol}://${host}${basePath}${path}`;
   }
 }

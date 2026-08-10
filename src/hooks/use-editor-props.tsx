@@ -458,6 +458,10 @@ export function useEditorProps(
                 domain: window.location.hostname,
                 port: window.location.port ? Number(window.location.port) : undefined,
                 protocol: window.location.protocol.replace(':', ''),
+                // #297: sub-path mount (e.g. /workflow behind nginx) — prefix
+                // every runtime API call with the same base the SPA was served
+                // from (injected at build time; empty for root-path builds).
+                basePath: process.env.BASE_PATH ?? '',
                 // Thread the saved workflow's id into POST /api/task/run so the
                 // backend enqueues into the per-workflow serial queue (Phase 2 of
                 // #152). Undefined for draft runs → backend takes immediate path.

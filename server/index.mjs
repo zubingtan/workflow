@@ -51,6 +51,9 @@ const STATIC_DIR = process.env.STATIC_DIR
   : resolve(process.cwd(), 'dist');
 const IS_PROD = process.env.NODE_ENV === 'production';
 const STATIC_ENABLED = IS_PROD;
+// #297: sub-path mount prefix (e.g. '/workflow' behind nginx, nginx keeps the
+// prefix and forwards as-is). Normalized to no trailing slash; empty = root.
+const BASE_PATH = (process.env.BASE_PATH ?? '').replace(/\/+$/, '');
 
 // --- SQLite init ---
 mkdirSync(DATA_DIR, { recursive: true });
@@ -151,6 +154,7 @@ const app = createApp({
   agentDir: AGENT_DIR,
   staticEnabled: STATIC_ENABLED,
   staticDir: STATIC_DIR,
+  basePath: BASE_PATH,
   runAgentExecution,
   createAgentSessionForAgent,
   enqueueRun: (workflowId, runID, payload) => runQueue.enqueue(workflowId, runID, payload),
@@ -227,7 +231,13 @@ if (IS_PROD) {
     '/api/feishu',
   ];
   const apiGate = (req, res, next) => {
-    const path = (req.url ?? '').split('?')[0];
+    // #297: under a basePath mount, incoming paths carry the prefix (nginx
+    // forwards as-is) — strip it before matching the API whitelist.
+    const rawPath = (req.url ?? '').split('?')[0];
+    const path =
+      BASE_PATH && rawPath.startsWith(BASE_PATH)
+        ? rawPath.slice(BASE_PATH.length) || '/'
+        : rawPath;
     if (API_PREFIXES.some((p) => path === p || path.startsWith(p + '/'))) {
       return honoListener(req, res);
     }
