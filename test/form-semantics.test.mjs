@@ -6,8 +6,8 @@ import { JsonSchemaUtils } from '@flowgram.ai/json-schema';
 
 import {
   ConditionPresetOp,
-  FORM_SEMANTIC_NODE_TYPES,
   FlowValueUtils,
+  defaultConditionRuleConfigs,
   defaultConditionOpConfigs,
   getLoopScopeContract,
   inferFormInputs,
@@ -180,35 +180,87 @@ describe('headless form plugins and control-flow semantics', () => {
   });
 });
 
-test('headless semantic manifest covers every current node registry', () => {
+test('headless seam covers every current node registry and form meta', () => {
   const source = readFileSync(join(process.cwd(), 'src/nodes/index.ts'), 'utf8');
-  const registryImports = [...source.matchAll(/import \{ (\w+NodeRegistry) \} from/g)]
-    .map(([, name]) => name)
-    .filter((name) => name !== 'FlowNodeRegistry');
-
-  assert.equal(registryImports.length, FORM_SEMANTIC_NODE_TYPES.length);
-  assert.deepEqual(
-    [...FORM_SEMANTIC_NODE_TYPES].sort(),
-    [
-      'block-end',
-      'block-start',
-      'break',
-      'code',
-      'comment',
-      'condition',
-      'continue',
-      'end',
-      'feishu-bot',
-      'feishu-trigger',
-      'group',
-      'http',
-      'llm',
-      'loop',
-      'multi-condition',
-      'start',
-      'variable',
-    ].sort()
+  const registryImports = [...source.matchAll(/import \{ (\w+NodeRegistry) \} from '(.+)'/g)].filter(
+    ([, name]) => name !== 'FlowNodeRegistry'
   );
+  const registryTypes = registryImports.map(([, , importPath]) => importPath.slice(2));
+
+  assert.deepEqual(registryTypes.sort(), [
+    'block-end',
+    'block-start',
+    'break',
+    'code',
+    'comment',
+    'condition',
+    'continue',
+    'end',
+    'feishu-bot',
+    'feishu-trigger',
+    'group',
+    'http',
+    'llm',
+    'loop',
+    'multi-condition',
+    'start',
+    'variable',
+  ].sort());
+
+  for (const [, registryName, importPath] of registryImports) {
+    const nodeDirectory = importPath.slice(2);
+    const registrySource = ['index.ts', 'index.tsx']
+      .map((file) => join(process.cwd(), 'src/nodes', nodeDirectory, file))
+      .find((file) => {
+        try {
+          statSync(file);
+          return true;
+        } catch {
+          return false;
+        }
+      });
+    assert.ok(registrySource, `${nodeDirectory} registry source exists`);
+    assert.match(readFileSync(registrySource, 'utf8'), new RegExp(`${registryName}\\s*:`));
+
+    const formMetaSource = ['form-meta.ts', 'form-meta.tsx']
+      .map((file) => join(process.cwd(), 'src/nodes', nodeDirectory, file))
+      .find((file) => {
+        try {
+          statSync(file);
+          return true;
+        } catch {
+          return false;
+        }
+      });
+    if (formMetaSource) {
+      assert.match(readFileSync(formMetaSource, 'utf8'), /export const formMeta|export const LLMFormMeta/);
+    } else {
+      assert.match(readFileSync(registrySource, 'utf8'), /formMeta:/);
+    }
+  }
+});
+
+test('Condition and MultiCondition use local schema operator semantics', () => {
+  assert.deepEqual(Object.keys(defaultConditionRuleConfigs).sort(), [
+    'array',
+    'boolean',
+    'date-time',
+    'integer',
+    'map',
+    'number',
+    'object',
+    'string',
+  ]);
+  assert.deepEqual(defaultConditionRuleConfigs.boolean.is_true, null);
+  assert.deepEqual(defaultConditionRuleConfigs.boolean.is_false, null);
+  assert.deepEqual(defaultConditionRuleConfigs.string.in, {
+    type: 'array',
+    items: { type: 'string' },
+  });
+  assert.deepEqual(defaultConditionRuleConfigs.integer.nin, {
+    type: 'array',
+    extra: { weak: true },
+  });
 });
 
 test('document save preserves unknown top-level fields while canonical fields win', () => {
