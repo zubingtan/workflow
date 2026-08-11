@@ -107,7 +107,7 @@ if (seeded) console.log(`  seeded fake-provider agent (port ${fakeProviderPort})
 // Phase 9 (#161): pass a settingsProvider so AgentExecutor.resolveTimeoutMs
 // can read the global node_timeout_default_ms from the settings table.
 const settingsProvider = { getNodeTimeoutDefaultMs: () => getNodeTimeoutDefaultMs(db) };
-initRuntime(db, AGENT_DIR, settingsProvider);
+initRuntime(db, AGENT_DIR, settingsProvider, SKILLS_DIR);
 
 // --- Restart-interrupt sweep (#145) ---
 // Mark every in-flight (queued/running) run from a previous server lifetime as

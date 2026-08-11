@@ -356,17 +356,39 @@ export function SkillEditor({ initialName, existingNames, onClose, onSaved }: Pr
       okText: 'Save',
       onOk: async () => {
         setSaving(true);
+        let renamed = false;
         try {
           // Rename first when the editor is open on an existing skill with a
           // different name (folder rename + frontmatter sync happen server-side).
           if (originalName && originalName !== targetName) {
             await api.renameSkill(originalName, targetName);
+            renamed = true;
           }
-          await api.saveSkillTree(targetName, files);
+          // Keep the submitted tree in sync with the folder name: the server
+          // synced the frontmatter during rename, but the draft may still hold
+          // the old name — rewriting it locally prevents an overwrite that
+          // would revert the sync.
+          const filesToSave = renamed
+            ? files.map((f) =>
+                f.path === 'SKILL.md'
+                  ? { ...f, content: rewriteFrontmatterName(f.content, targetName) }
+                  : f
+              )
+            : files;
+          await api.saveSkillTree(targetName, filesToSave);
           Toast.success(`Saved "${targetName}"`);
           onSaved();
           onClose();
         } catch (err: any) {
+          // The rename landed but the tree save failed — roll the folder name
+          // back so the editor state and the library stay consistent.
+          if (renamed) {
+            try {
+              await api.renameSkill(targetName, originalName!);
+            } catch {
+              // best-effort rollback; the library may temporarily hold both names
+            }
+          }
           Toast.error(err?.message || 'Save failed');
         } finally {
           setSaving(false);

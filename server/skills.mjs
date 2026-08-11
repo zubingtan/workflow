@@ -65,11 +65,13 @@ export function validateSkillName(name) {
 /**
  * Lightweight frontmatter parser — only the fields pi consumes:
  * `name` and `description` (single-line YAML values).
- * Returns { name, description } plus raw frontmatter boundaries for rewrites.
+ * Returns { name, description, hasFrontmatter, body } where body is the
+ * content below the frontmatter (or the whole content when there is none).
  */
 export function parseSkillFrontmatter(content) {
-  const lines = String(content).split(/\r?\n/);
-  if (lines[0]?.trim() !== '---') return { name: undefined, description: undefined, hasFrontmatter: false, body: content };
+  const text = String(content);
+  const lines = text.split(/\r?\n/);
+  if (lines[0]?.trim() !== '---') return { name: undefined, description: undefined, hasFrontmatter: false, body: text };
   let end = -1;
   for (let i = 1; i < lines.length; i++) {
     if (lines[i].trim() === '---') {
@@ -77,7 +79,7 @@ export function parseSkillFrontmatter(content) {
       break;
     }
   }
-  if (end === -1) return { name: undefined, description: undefined, hasFrontmatter: false, body: content };
+  if (end === -1) return { name: undefined, description: undefined, hasFrontmatter: false, body: text };
   const raw = lines.slice(1, end).join('\n');
   const readField = (key) => {
     const match = raw.match(new RegExp(`^${key}\\s*:\\s*(.+?)\\s*$`, 'm'));
@@ -92,7 +94,7 @@ export function parseSkillFrontmatter(content) {
     name: readField('name'),
     description: readField('description'),
     hasFrontmatter: true,
-    body: content,
+    body: lines.slice(end + 1).join('\n').replace(/^\n+/, ''),
   };
 }
 
@@ -192,6 +194,8 @@ export function listSkills(skillsDir) {
 
 /** Read a skill's full file tree: { name, files: [{ path, content, encoding? }] }. */
 export function readSkillTree(skillsDir, name) {
+  const nameError = validateSkillName(name);
+  if (nameError) throw new SkillError(nameError, 'invalid_name');
   const dir = skillDir(skillsDir, name);
   if (!existsSync(dir)) {
     throw new SkillError(`skill not found: ${name}`, 'not_found', 404);
@@ -218,13 +222,20 @@ export function writeSkillTree(skillsDir, name, files) {
   for (const f of files) {
     assertSafePath(f.path);
     if (typeof f.content !== 'string') throw new SkillError(`invalid content for ${f.path}`, 'invalid_files');
-    if (f.content.length > MAX_FILE_SIZE && f.encoding !== 'base64') {
+    // Size guard on the decoded byte length — base64 inflates by ~4/3, so
+    // comparing the encoded string length alone would under-count the payload.
+    const byteLen =
+      f.encoding === 'base64'
+        ? Buffer.from(f.content, 'base64').length
+        : Buffer.byteLength(f.content, 'utf-8');
+    if (byteLen > MAX_FILE_SIZE) {
       throw new SkillError(`file exceeds size limit: ${f.path}`, 'file_too_large', 413);
     }
   }
 
   ensureSkillsDir(skillsDir);
   const staging = join(skillsDir, `.${name}.tmp-${nanoid(6)}`);
+  const backup = join(skillsDir, `.${name}.bak-${nanoid(6)}`);
   try {
     mkdirSync(staging, { recursive: true });
     for (const f of files) {
@@ -236,20 +247,32 @@ export function writeSkillTree(skillsDir, name, files) {
       const buf = f.encoding === 'base64' ? Buffer.from(f.content, 'base64') : Buffer.from(f.content, 'utf-8');
       writeFileSync(target, buf);
     }
+    // Atomic swap: move the old tree aside first, then rename the staging dir
+    // into place. A failure between the two leaves the previous tree intact
+    // (recoverable from the backup) instead of a half-deleted target.
     const target = skillDir(skillsDir, name);
     if (existsSync(target)) {
-      rmSync(target, { recursive: true, force: true });
+      renameSync(target, backup);
     }
-    renameSync(staging, target);
+    try {
+      renameSync(staging, target);
+    } catch (err) {
+      if (existsSync(backup)) renameSync(backup, target); // rollback
+      throw err;
+    }
   } catch (err) {
     rmSync(staging, { recursive: true, force: true });
+    rmSync(backup, { recursive: true, force: true });
     throw err;
   }
+  rmSync(backup, { recursive: true, force: true });
   return { name };
 }
 
 /** Rename a skill: directory rename + frontmatter name sync. */
 export function renameSkill(skillsDir, oldName, newName) {
+  const oldNameError = validateSkillName(oldName);
+  if (oldNameError) throw new SkillError(oldNameError, 'invalid_name');
   const nameError = validateSkillName(newName);
   if (nameError) throw new SkillError(nameError, 'invalid_name');
   if (oldName === newName) return { name: newName };
@@ -272,6 +295,8 @@ export function renameSkill(skillsDir, oldName, newName) {
 
 /** Delete a skill directory. Caller (route layer) checks references first. */
 export function deleteSkillDir(skillsDir, name) {
+  const nameError = validateSkillName(name);
+  if (nameError) throw new SkillError(nameError, 'invalid_name');
   const dir = skillDir(skillsDir, name);
   if (!existsSync(dir)) throw new SkillError(`skill not found: ${name}`, 'not_found', 404);
   rmSync(dir, { recursive: true, force: true });
