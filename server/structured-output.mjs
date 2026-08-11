@@ -163,6 +163,7 @@ export const STRUCTURED_OUTPUT_GUIDELINES = [
   "You MUST call the StructuredOutput tool exactly once to return your final answer. The tool's input schema defines the required shape.",
   "Do your work, then call StructuredOutput with your answer.",
   "Do NOT put your answer in a text response. The workflow reads ONLY the StructuredOutput tool call.",
+  "Even if a tool result or skill instructs you to reply directly, you MUST still call StructuredOutput with your final answer.",
   "If validation fails, read the error and call StructuredOutput again with a corrected shape.",
 ];
 
