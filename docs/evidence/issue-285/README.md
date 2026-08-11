@@ -6,13 +6,19 @@ Manual server: `http://localhost:4060/#/workflows`
 
 ## Smoke coverage
 
-The browser smoke was exercised against the production build with `npx --yes agent-browser` using the `t4-evidence` session:
+The browser smoke was exercised against the production build with `npx --yes agent-browser` using the `t4-evidence` and `t4-record` sessions. The command shape was:
+
+```bash
+AGENT_BROWSER_DEFAULT_TIMEOUT=5000 npx --yes agent-browser --session t4-record <command>
+```
+
+The recorded interaction was:
 
 1. Created `T4 Browser Smoke` from the Workflows screen and opened it in the editor.
 2. Confirmed the seeded Start → Agent_Main → End connection and captured the editor at 1440×900.
 3. Added a Condition node from Add Node and switched the layout to vertical.
 4. Waited for the debounced content change to surface `Unsaved changes`, clicked Back, and confirmed the Unsaved Changes dialog.
-5. Cancelled navigation, saved the workflow, and reopened it after a hard refresh.
+5. Cancelled navigation, saved the workflow, and reopened it after a hard refresh; the added Condition node remained present.
 6. Captured the narrow editor at 720×900.
 
 The repeatable Playwright coverage is [t4-editor-smoke.spec.ts](../../../e2e/t4-editor-smoke.spec.ts). It covers UI creation/open, the two connected edges, layout editing, save, reload, 1440×900 and 720×900 screenshots, invalid Agent form validation, and Cancel/Discard unsaved navigation.
