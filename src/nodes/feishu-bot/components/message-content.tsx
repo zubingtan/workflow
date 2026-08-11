@@ -1,11 +1,8 @@
 import { Field } from '@flowgram.ai/free-layout-editor';
-import { Select, Typography } from '@douyinfe/semi-ui';
 
-import {
-  JsonEditorWithVariables,
-  PromptEditorWithVariables,
-} from '@/form-semantics/legacy-adapter';
+import { JsonEditorWithVariables, PromptEditorWithVariables } from '@/form-semantics';
 import type { IFlowTemplateValue } from '@/form-semantics';
+import { Select } from '@/components/ui';
 
 import { useNodeRenderContext, useIsSidebar } from '../../../hooks';
 import { FormItem } from '../../../form-components';
@@ -85,16 +82,18 @@ export function MessageContent() {
           <FormItem name="Message Type" required vertical type="string">
             <Select
               value={field.value}
-              onChange={(v) => field.onChange(v as string)}
-              style={{ width: '100%', marginBottom: 10 }}
-              size="small"
+              onChange={(event) => field.onChange(event.currentTarget.value)}
+              className="mb-2"
               disabled={readonly_}
-              optionList={MSG_TYPE_OPTIONS}
-            />
+            >
+              {MSG_TYPE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
             <div style={{ marginTop: 4 }}>
-              <Typography.Text size="small" strong>
-                Content
-              </Typography.Text>
+              <label className="text-xs font-medium">Content</label>
               <div style={{ marginTop: 4 }}>{renderContentEditor(field.value)}</div>
             </div>
           </FormItem>

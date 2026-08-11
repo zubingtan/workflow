@@ -3,10 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-import { useCallback } from 'react';
-
-import { FlowNodeEntity, useClientContext, useNodeRender } from '@flowgram.ai/free-layout-editor';
-import { ConfigProvider } from '@douyinfe/semi-ui';
+import { FlowNodeEntity, useNodeRender } from '@flowgram.ai/free-layout-editor';
 
 import { NodeStatusBar } from '../testrun/node-status-bar';
 import { NodeRenderContext } from '../../context';
@@ -18,7 +15,6 @@ export const BaseNode = ({ node }: { node: FlowNodeEntity }) => {
    * Provides methods related to node rendering
    */
   const nodeRender = useNodeRender();
-  const ctx = useClientContext();
   /**
    * It can only be used when nodeEngine is enabled
    */
@@ -27,20 +23,13 @@ export const BaseNode = ({ node }: { node: FlowNodeEntity }) => {
   /**
    * Used to make the Tooltip scale with the node, which can be implemented by itself depending on the UI library
    */
-  const getPopupContainer = useCallback(
-    () => ctx.playground.node.querySelector('.gedit-flow-render-layer') as HTMLDivElement,
-    []
-  );
-
   return (
-    <ConfigProvider getPopupContainer={getPopupContainer}>
-      <NodeRenderContext.Provider value={nodeRender}>
-        <NodeWrapper>
-          {form?.state.invalid && <ErrorIcon />}
-          {form?.render()}
-        </NodeWrapper>
-        <NodeStatusBar />
-      </NodeRenderContext.Provider>
-    </ConfigProvider>
+    <NodeRenderContext.Provider value={nodeRender}>
+      <NodeWrapper>
+        {form?.state.invalid && <ErrorIcon />}
+        {form?.render()}
+      </NodeWrapper>
+      <NodeStatusBar />
+    </NodeRenderContext.Provider>
   );
 };

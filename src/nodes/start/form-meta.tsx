@@ -11,7 +11,7 @@ import {
   ValidateTrigger,
 } from '@flowgram.ai/free-layout-editor';
 
-import { DisplayOutputs, JsonSchemaEditor } from '@/form-semantics/legacy-adapter';
+import { DisplayOutputs, JsonSchemaEditor } from '@/form-semantics';
 import { provideJsonSchemaOutputs, syncVariableTitle } from '@/form-semantics';
 
 import { FlowNodeJSON, JsonSchema } from '../../typings';

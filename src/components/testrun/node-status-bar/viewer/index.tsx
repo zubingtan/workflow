@@ -6,7 +6,6 @@
 import React, { useState } from 'react';
 
 import classnames from 'classnames';
-import { Toast } from '@douyinfe/semi-ui';
 
 import styles from './index.module.less';
 
@@ -26,8 +25,7 @@ const TreeNode: React.FC<TreeNodeProps> = ({ label, value, level, isLast = false
   const [isExpanded, setIsExpanded] = useState(true);
 
   const handleCopy = (text: string) => {
-    navigator.clipboard.writeText(text);
-    Toast.success('Copied');
+    void navigator.clipboard?.writeText(text);
   };
 
   const isExpandable = (val: any) =>

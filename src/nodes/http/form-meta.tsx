@@ -4,10 +4,10 @@
  */
 
 import { FormMeta, FormRenderProps } from '@flowgram.ai/free-layout-editor';
-import { Divider } from '@douyinfe/semi-ui';
 
-import { DisplayOutputs } from '@/form-semantics/legacy-adapter';
+import { DisplayOutputs } from '@/form-semantics';
 import { createInferInputsPlugin } from '@/form-semantics';
+import { Separator } from '@/components/ui';
 
 import { FormHeader, FormContent } from '../../form-components';
 import { HTTPNodeJSON } from './types';
@@ -23,15 +23,15 @@ export const FormRender = ({ form }: FormRenderProps<HTTPNodeJSON>) => (
     <FormHeader />
     <FormContent>
       <Api />
-      <Divider />
+      <Separator />
       <Headers />
-      <Divider />
+      <Separator />
       <Params />
-      <Divider />
+      <Separator />
       <Body />
-      <Divider />
+      <Separator />
       <Timeout />
-      <Divider />
+      <Separator />
       <DisplayOutputs displayFromScope />
     </FormContent>
   </>

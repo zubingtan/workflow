@@ -1,10 +1,6 @@
-/**
- * Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
- * SPDX-License-Identifier: MIT
- */
+import { useCallback } from 'react';
 
-import { useState, useCallback } from 'react';
-
+import { MessageSquare } from 'lucide-react';
 import {
   delay,
   usePlayground,
@@ -13,72 +9,38 @@ import {
   WorkflowDragService,
   WorkflowSelectService,
 } from '@flowgram.ai/free-layout-editor';
-import { IconButton, Tooltip } from '@douyinfe/semi-ui';
+
+import { Button } from '@/components/ui';
 
 import { WorkflowNodeType } from '../../nodes';
-import { IconComment } from '../../assets/icon-comment';
 
 export const Comment = () => {
   const playground = usePlayground();
   const document = useService(WorkflowDocument);
   const selectService = useService(WorkflowSelectService);
   const dragService = useService(WorkflowDragService);
-
-  const [tooltipVisible, setTooltipVisible] = useState(false);
-
-  const calcNodePosition = useCallback(
-    (mouseEvent: React.MouseEvent<HTMLButtonElement>) => {
-      const mousePosition = playground.config.getPosFromMouseEvent(mouseEvent);
-      return {
+  const createComment = useCallback(
+    async (event: React.MouseEvent<HTMLButtonElement>) => {
+      const mousePosition = playground.config.getPosFromMouseEvent(event);
+      const node = document.createWorkflowNodeByType(WorkflowNodeType.Comment, {
         x: mousePosition.x,
         y: mousePosition.y - 75,
-      };
-    },
-    [playground]
-  );
-
-  const createComment = useCallback(
-    async (mouseEvent: React.MouseEvent<HTMLButtonElement>) => {
-      setTooltipVisible(false);
-      const canvasPosition = calcNodePosition(mouseEvent);
-      // create comment node
-      const node = document.createWorkflowNodeByType(WorkflowNodeType.Comment, canvasPosition);
-      // wait comment node render
+      });
       await delay(16);
-      // select comment node
       selectService.selectNode(node);
-      // maybe touch event
-      if (mouseEvent.detail !== 0) {
-        // start drag
-        dragService.startDragSelectedNodes(mouseEvent);
-      }
+      if (event.detail !== 0) dragService.startDragSelectedNodes(event);
     },
-    [selectService, calcNodePosition, document, dragService]
+    [document, dragService, playground, selectService]
   );
-
   return (
-    <Tooltip
-      trigger="custom"
-      visible={tooltipVisible}
-      onVisibleChange={setTooltipVisible}
-      content="Comment"
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      disabled={playground.config.readonly}
+      onClick={createComment}
+      aria-label="Comment"
     >
-      <IconButton
-        disabled={playground.config.readonly}
-        icon={
-          <IconComment
-            style={{
-              width: 16,
-              height: 16,
-            }}
-          />
-        }
-        type="tertiary"
-        theme="borderless"
-        onClick={createComment}
-        onMouseEnter={() => setTooltipVisible(true)}
-        onMouseLeave={() => setTooltipVisible(false)}
-      />
-    </Tooltip>
+      <MessageSquare />
+    </Button>
   );
 };

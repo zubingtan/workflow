@@ -5,8 +5,8 @@
 
 import React, { useState } from 'react';
 
+import { ChevronDown } from 'lucide-react';
 import classNames from 'classnames';
-import { IconChevronDown } from '@douyinfe/semi-icons';
 
 import { useNodeRenderContext } from '../../../../hooks';
 
@@ -54,7 +54,8 @@ export const NodeStatusHeader: React.FC<React.PropsWithChildren<NodeStatusBarPro
           {extraBtns.length > 0 ? extraBtns : null}
         </div>
         <div className={styles['status-btns']}>
-          <IconChevronDown
+          <ChevronDown
+            size={16}
             className={classNames({
               [styles['is-show-detail']]: showDetail,
             })}

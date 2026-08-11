@@ -1,8 +1,8 @@
 import { FormMeta, FormRenderProps } from '@flowgram.ai/free-layout-editor';
-import { Divider } from '@douyinfe/semi-ui';
 
-import { DisplayOutputs } from '@/form-semantics/legacy-adapter';
+import { DisplayOutputs } from '@/form-semantics';
 import { createInferInputsPlugin } from '@/form-semantics';
+import { Separator } from '@/components/ui';
 
 import { FormHeader, FormContent } from '../../form-components';
 import { FeishuBotNodeJSON } from './types';
@@ -15,9 +15,9 @@ export const FormRender = ({ form }: FormRenderProps<FeishuBotNodeJSON>) => (
     <FormHeader />
     <FormContent>
       <BotConfig />
-      <Divider />
+      <Separator />
       <MessageContent />
-      <Divider />
+      <Separator />
       <DisplayOutputs displayFromScope />
     </FormContent>
   </>

@@ -4,10 +4,10 @@
  */
 
 import { Field } from '@flowgram.ai/free-layout-editor';
-import { Select } from '@douyinfe/semi-ui';
 
-import { PromptEditorWithVariables } from '@/form-semantics/legacy-adapter';
+import { PromptEditorWithVariables } from '@/form-semantics';
 import type { IFlowTemplateValue } from '@/form-semantics';
+import { Select } from '@/components/ui';
 
 import { useNodeRenderContext } from '../../../hooks';
 import { FormItem } from '../../../form-components';
@@ -23,21 +23,16 @@ export function Api() {
             {({ field }) => (
               <Select
                 value={field.value}
-                onChange={(value) => {
-                  field.onChange(value as string);
-                }}
-                style={{ width: 85, maxWidth: 85, minWidth: 85 }}
-                size="small"
+                onChange={(event) => field.onChange(event.currentTarget.value)}
+                className="w-[85px] shrink-0"
                 disabled={readonly}
-                optionList={[
-                  { label: 'GET', value: 'GET' },
-                  { label: 'POST', value: 'POST' },
-                  { label: 'PUT', value: 'PUT' },
-                  { label: 'DELETE', value: 'DELETE' },
-                  { label: 'PATCH', value: 'PATCH' },
-                  { label: 'HEAD', value: 'HEAD' },
-                ]}
-              />
+              >
+                {['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD'].map((method) => (
+                  <option key={method} value={method}>
+                    {method}
+                  </option>
+                ))}
+              </Select>
             )}
           </Field>
 

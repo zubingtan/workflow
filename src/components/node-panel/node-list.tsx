@@ -1,11 +1,5 @@
-/**
- * Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
- * SPDX-License-Identifier: MIT
- */
-
 import React, { FC } from 'react';
 
-import styled from 'styled-components';
 import { NodePanelRenderProps } from '@flowgram.ai/free-node-panel-plugin';
 import {
   useClientContext,
@@ -13,104 +7,57 @@ import {
   WorkflowPortEntity,
 } from '@flowgram.ai/free-layout-editor';
 
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui';
+
 import { canContainNode } from '../../utils';
 import { FlowNodeRegistry } from '../../typings';
 import { nodeRegistries } from '../../nodes';
 
-const NodeWrap = styled.div`
-  width: 100%;
-  height: 32px;
-  border-radius: 5px;
-  display: flex;
-  align-items: center;
-  cursor: pointer;
-  font-size: 19px;
-  padding: 0 15px;
-  &:hover {
-    background-color: var(--app-color-primary-light-default);
-    color: var(--app-color-primary-active);
-  }
-`;
-
-const NodeLabel = styled.div`
-  color: var(--app-color-text-1);
-  font-size: 12px;
-  margin-left: 10px;
-`;
-
-interface NodeProps {
-  label: string;
-  icon: JSX.Element;
-  onClick: React.MouseEventHandler<HTMLDivElement>;
-  disabled: boolean;
-}
-
-function Node(props: NodeProps) {
-  return (
-    <NodeWrap
-      data-testid={`demo-free-node-list-${props.label}`}
-      onClick={props.disabled ? undefined : props.onClick}
-      style={props.disabled ? { opacity: 0.3 } : {}}
-    >
-      <div style={{ fontSize: 14 }}>{props.icon}</div>
-      <NodeLabel>{props.label}</NodeLabel>
-    </NodeWrap>
-  );
-}
-
-const NodesWrap = styled.div`
-  max-height: 500px;
-  overflow: auto;
-  &::-webkit-scrollbar {
-    display: none;
-  }
-`;
-
 interface NodeListProps {
   onSelect: NodePanelRenderProps['onSelect'];
-  fromPort?: WorkflowPortEntity; // From which port to add
+  fromPort?: WorkflowPortEntity;
   containerNode?: WorkflowNodeEntity;
 }
 
-export const NodeList: FC<NodeListProps> = (props) => {
-  const { onSelect, containerNode, fromPort } = props;
+export const NodeList: FC<NodeListProps> = ({ onSelect, containerNode }) => {
   const context = useClientContext();
-  const handleClick = (e: React.MouseEvent, registry: FlowNodeRegistry) => {
-    const json = registry.onAdd?.(context);
+  const handleClick = (event: React.MouseEvent, registry: FlowNodeRegistry) => {
     onSelect({
       nodeType: registry.type as string,
-      selectEvent: e,
-      nodeJSON: json,
+      selectEvent: event,
+      nodeJSON: registry.onAdd?.(context),
     });
   };
-  console.log('>>> fromNode', fromPort?.node);
+
   return (
-    <NodesWrap style={{ width: 80 * 2 + 20 }}>
+    <div className="grid max-h-80 grid-cols-2 gap-1 overflow-auto">
       {nodeRegistries
-        .filter((register) => register.meta.nodePanelVisible !== false)
-        .filter((register) => {
-          if (register.meta.onlyInContainer) {
-            return register.meta.onlyInContainer === containerNode?.flowNodeType;
-          }
-          /**
-           * Loop nodes cannot be nested inside other loop nodes
-           */
-          if (containerNode && !canContainNode(register.type, containerNode.flowNodeType)) {
-            return false;
-          }
-          return true;
+        .filter((registry) => registry.meta.nodePanelVisible !== false)
+        .filter((registry) => {
+          if (registry.meta.onlyInContainer)
+            return registry.meta.onlyInContainer === containerNode?.flowNodeType;
+          return !containerNode || canContainNode(registry.type, containerNode.flowNodeType);
         })
-        .map((registry) => (
-          <Node
-            key={registry.type}
-            disabled={!(registry.canAdd?.(context) ?? true)}
-            icon={
-              <img style={{ width: 10, height: 10, borderRadius: 4 }} src={registry.info?.icon} />
-            }
-            label={registry.type as string}
-            onClick={(e) => handleClick(e, registry)}
-          />
-        ))}
-    </NodesWrap>
+        .map((registry) => {
+          const disabled = !(registry.canAdd?.(context) ?? true);
+          return (
+            <Button
+              key={registry.type}
+              data-testid={`demo-free-node-list-${registry.type}`}
+              className={cn(
+                'h-auto min-h-10 justify-start gap-2 px-2 text-left text-xs',
+                disabled && 'opacity-40'
+              )}
+              variant="ghost"
+              disabled={disabled}
+              onClick={(event) => handleClick(event, registry)}
+            >
+              <img className="size-5 rounded-md object-cover" src={registry.info?.icon} alt="" />
+              <span className="truncate">{registry.type as string}</span>
+            </Button>
+          );
+        })}
+    </div>
   );
 };

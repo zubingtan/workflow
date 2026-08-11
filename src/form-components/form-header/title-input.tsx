@@ -6,11 +6,11 @@
 import { useRef, useEffect } from 'react';
 
 import { Field, FieldRenderProps } from '@flowgram.ai/free-layout-editor';
-import { Typography, Input } from '@douyinfe/semi-ui';
+
+import { Input } from '@/components/ui';
 
 import { Title } from './styles';
 import { Feedback } from '../feedback';
-const { Text } = Typography;
 
 export function TitleInput(props: {
   readonly: boolean;
@@ -44,7 +44,9 @@ export function TitleInput(props: {
                 onBlur={() => updateTitleEdit(false)}
               />
             ) : (
-              <Text ellipsis={{ showTooltip: true }}>{value}</Text>
+              <span className="block truncate text-xs font-semibold" title={value}>
+                {value}
+              </span>
             )}
             <Feedback errors={fieldState?.errors} />
           </div>

@@ -4,9 +4,8 @@
  */
 
 import { FormRenderProps, FormMeta, ValidateTrigger } from '@flowgram.ai/free-layout-editor';
-import { Divider } from '@douyinfe/semi-ui';
 
-import { DisplayOutputs } from '@/form-semantics/legacy-adapter';
+import { DisplayOutputs } from '@/form-semantics';
 import {
   autoRenameRefEffect,
   provideJsonSchemaOutputs,
@@ -15,6 +14,7 @@ import {
   validateWhenVariableSync,
   listenRefSchemaChange,
 } from '@/form-semantics';
+import { Separator } from '@/components/ui';
 
 import { FlowNodeJSON } from '../typings';
 import { FormHeader, FormContent, FormInputs } from '../form-components';
@@ -24,7 +24,7 @@ export const renderForm = ({ form }: FormRenderProps<FlowNodeJSON>) => (
     <FormHeader />
     <FormContent>
       <FormInputs />
-      <Divider />
+      <Separator />
       <DisplayOutputs displayFromScope />
     </FormContent>
   </>

@@ -5,9 +5,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { JsonCodeEditor } from '@/form-semantics/legacy-adapter';
-
-import { useTheme } from '../../../theme';
+import { Textarea } from '@/components/ui';
 
 export function JsonValueEditor({
   value,
@@ -16,17 +14,9 @@ export function JsonValueEditor({
   value: Record<string, unknown>;
   onChange: (value: Record<string, unknown>) => void;
 }) {
-  const { resolvedTheme } = useTheme();
   const defaultJsonText = useMemo(() => JSON.stringify(value, null, 2), [value]);
 
   const [jsonText, setJsonText] = useState(defaultJsonText);
-  // remountKey increments only when value is overridden externally (not on
-  // user input round-trips — the effectVersion/changeVersion guard below
-  // distinguishes the two). Forcing JsonCodeEditor to remount discards
-  // stale codemirror tooltip pos (-1) that triggers
-  // "RangeError: Invalid position -1 in document of length N" (map #107 R2).
-  const [remountKey, setRemountKey] = useState(0);
-
   const effectVersion = useRef(0);
   const changeVersion = useRef(0);
 
@@ -50,15 +40,14 @@ export function JsonValueEditor({
     effectVersion.current = changeVersion.current;
 
     setJsonText(JSON.stringify(value, null, 2));
-    setRemountKey((k) => k + 1);
   }, [value]);
 
   return (
-    <JsonCodeEditor
-      key={remountKey}
+    <Textarea
+      aria-label="JSON value"
+      className="min-h-40 resize-y font-mono text-xs"
       value={jsonText}
-      onChange={handleJsonTextChange}
-      theme={resolvedTheme}
+      onChange={(event) => handleJsonTextChange(event.target.value)}
     />
   );
 }

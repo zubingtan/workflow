@@ -5,10 +5,12 @@
 
 import { FC, useMemo, useState } from 'react';
 
+import { LoaderCircle } from 'lucide-react';
 import classnames from 'classnames';
 import { NodeReport, WorkflowStatus } from '@flowgram.ai/runtime-interface';
-import { Tag, Button, Select } from '@douyinfe/semi-ui';
-import { IconSpin } from '@douyinfe/semi-icons';
+
+import { Select } from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
 
 import { NodeStatusHeader } from '../header';
 import { NodeStatusGroup } from '../group';
@@ -65,7 +67,9 @@ export const NodeStatusRender: FC<NodeStatusRenderProps> = ({ report }) => {
 
   const renderIcon = () => {
     if (isNodeProcessing) {
-      return <IconSpin spin className={classnames(styles.icon, styles.processing)} />;
+      return (
+        <LoaderCircle className={classnames(styles.icon, styles.processing, 'animate-spin')} />
+      );
     }
     if (isNodeSucceed) {
       return <IconSuccessFill />;
@@ -91,11 +95,7 @@ export const NodeStatusRender: FC<NodeStatusRenderProps> = ({ report }) => {
 
     return desc ? <p className={styles.desc}>{desc}</p> : null;
   };
-  const renderCost = () => (
-    <Tag size="small" className={tagColor}>
-      {msToSeconds(report.timeCost)}
-    </Tag>
-  );
+  const renderCost = () => <span className={tagColor}>{msToSeconds(report.timeCost)}</span>;
 
   const renderSnapshotNavigation = () => {
     if (snapshots.length <= 1) {
@@ -112,8 +112,8 @@ export const NodeStatusRender: FC<NodeStatusRenderProps> = ({ report }) => {
             {snapshots.map((_, index) => (
               <Button
                 key={index}
-                size="small"
-                type={currentSnapshotIndex === index ? 'primary' : 'tertiary'}
+                size="sm"
+                variant={currentSnapshotIndex === index ? 'default' : 'outline'}
                 onClick={() => setCurrentSnapshotIndex(index)}
                 className={classnames(styles.snapshotButton, {
                   [styles.active]: currentSnapshotIndex === index,
@@ -136,8 +136,8 @@ export const NodeStatusRender: FC<NodeStatusRenderProps> = ({ report }) => {
           {snapshots.slice(0, displayCount).map((_, index) => (
             <Button
               key={index}
-              size="small"
-              type="tertiary"
+              size="sm"
+              variant="outline"
               onClick={() => setCurrentSnapshotIndex(index)}
               className={classnames(styles.snapshotButton, {
                 [styles.active]: currentSnapshotIndex === index,
@@ -148,21 +148,23 @@ export const NodeStatusRender: FC<NodeStatusRenderProps> = ({ report }) => {
             </Button>
           ))}
           <Select
-            value={currentSnapshotIndex >= displayCount ? currentSnapshotIndex : undefined}
-            onChange={(value) => setCurrentSnapshotIndex(value as number)}
+            aria-label="Select snapshot"
+            value={currentSnapshotIndex >= displayCount ? String(currentSnapshotIndex) : ''}
+            onChange={(event) => setCurrentSnapshotIndex(Number(event.target.value))}
             className={classnames(styles.snapshotSelect, {
               [styles.active]: currentSnapshotIndex >= displayCount,
               [styles.inactive]: currentSnapshotIndex < displayCount,
             })}
-            size="small"
-            placeholder="Select"
           >
+            <option value="" disabled>
+              Select
+            </option>
             {snapshots.slice(displayCount).map((_, index) => {
               const actualIndex = index + displayCount;
               return (
-                <Select.Option key={actualIndex} value={actualIndex}>
+                <option key={actualIndex} value={actualIndex}>
                   {actualIndex + 1}
-                </Select.Option>
+                </option>
               );
             })}
           </Select>

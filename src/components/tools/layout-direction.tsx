@@ -11,7 +11,8 @@ import {
   usePlaygroundTools,
   WorkflowDocument,
 } from '@flowgram.ai/free-layout-editor';
-import { IconButton, Tooltip } from '@douyinfe/semi-ui';
+
+import { Button } from '@/components/ui';
 
 import { rotateAllPorts, type LayoutDirection } from '../../utils/rotate-ports';
 import { fireLayoutSettled } from '../../utils/layout-settled-bus.mjs';
@@ -81,15 +82,15 @@ export const LayoutDirectionSwitch = () => {
   const tooltipContent = direction === 'LR' ? 'Layout: Horizontal' : 'Layout: Vertical';
 
   return (
-    <Tooltip content={tooltipContent}>
-      <IconButton
-        disabled={playground.config.readonly}
-        type="tertiary"
-        theme="borderless"
-        onClick={toggle}
-        icon={<IconLayoutDirection direction={direction} />}
-        aria-label={`Layout Direction: ${direction === 'LR' ? 'Horizontal' : 'Vertical'}`}
-      />
-    </Tooltip>
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      disabled={playground.config.readonly}
+      onClick={toggle}
+      title={tooltipContent}
+      aria-label={`Layout Direction: ${direction === 'LR' ? 'Horizontal' : 'Vertical'}`}
+    >
+      <IconLayoutDirection direction={direction} />
+    </Button>
   );
 };

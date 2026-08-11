@@ -5,9 +5,8 @@
 
 import { FC, useState } from 'react';
 
+import { ChevronDown } from 'lucide-react';
 import classNames from 'classnames';
-import { Tag } from '@douyinfe/semi-ui';
-import { IconSmallTriangleDown } from '@douyinfe/semi-icons';
 
 import { DataStructureViewer } from '../viewer';
 
@@ -44,18 +43,15 @@ export const NodeStatusGroup: FC<NodeStatusGroupProps> = ({
         onClick={() => hasContent && !disableCollapse && setIsExpanded(!isExpanded)}
       >
         {!disableCollapse && (
-          <IconSmallTriangleDown
+          <ChevronDown
+            size={14}
             className={classNames(styles['node-status-group-icon'], {
               [styles['node-status-group-icon-expanded']]: isExpanded && hasContent,
             })}
           />
         )}
         <span>{title}:</span>
-        {!hasContent && (
-          <Tag size="small" className={styles['node-status-group-tag']}>
-            null
-          </Tag>
-        )}
+        {!hasContent && <span className={styles['node-status-group-tag']}>null</span>}
       </div>
       {hasContent && isExpanded ? <DataStructureViewer data={data} /> : null}
     </>

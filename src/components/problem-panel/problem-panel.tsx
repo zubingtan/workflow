@@ -3,9 +3,10 @@
  * SPDX-License-Identifier: MIT
  */
 
+import { AlertCircle, LoaderCircle, X } from 'lucide-react';
 import { useService, WorkflowSelectService } from '@flowgram.ai/free-layout-editor';
-import { IconButton, Spin, Typography, Avatar, Tooltip } from '@douyinfe/semi-ui';
-import { IconUploadError, IconClose } from '@douyinfe/semi-icons';
+
+import { Button } from '@/components/ui';
 
 import { useProblemPanel, useNodeFormPanel } from '../../plugins/panel-manager-plugin/hooks';
 import { useWatchValidate } from './use-watch-validate';
@@ -20,79 +21,40 @@ export const ProblemPanel = () => {
 
   return (
     <div
-      style={{
-        width: '100%',
-        height: '100%',
-        borderRadius: 'var(--app-radius-md)',
-        background: 'var(--app-color-surface)',
-        border: '1px solid var(--app-color-border)',
-      }}
+      className="h-full w-full rounded-xl border border-border bg-background"
+      style={{ color: 'var(--app-color-text-1)' }}
     >
-      <div
-        style={{
-          display: 'flex',
-          height: '50px',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '0 var(--app-space-3)',
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            columnGap: 'var(--app-space-1)',
-            height: '100%',
-          }}
-        >
-          <Typography.Text strong>Problem</Typography.Text>
-          {loading && <Spin size="small" style={{ lineHeight: '0' }} />}
+      <div className="flex h-12 items-center justify-between border-b px-3">
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          Problem {loading && <LoaderCircle className="animate-spin" />}
         </div>
-        <IconButton
-          type="tertiary"
-          theme="borderless"
-          icon={<IconClose />}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Close problems"
           onClick={() => closePanel()}
-        />
+        >
+          <X />
+        </Button>
       </div>
-      <div
-        style={{
-          padding: 'var(--app-space-3)',
-          display: 'flex',
-          flexDirection: 'column',
-          rowGap: 'var(--app-space-1)',
-        }}
-      >
+      <div className="flex flex-col gap-1.5 p-3">
         {results.map((i) => (
-          <div
+          <button
             key={i.node.id}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              border: '1px solid var(--app-color-border)',
-              borderRadius: 'var(--app-radius-sm)',
-              padding: '0 var(--app-space-1)',
-              cursor: 'pointer',
-            }}
+            className="flex items-center rounded-lg border border-border p-2 text-left hover:bg-accent"
             onClick={() => {
               selectService.selectNodeAndScrollToView(i.node);
               openNodeFormPanel({ nodeId: i.node.id });
             }}
           >
-            <Avatar
-              style={{ flexShrink: '0' }}
-              src={i.node.getNodeRegistry().info.icon}
-              size="24px"
-              shape="square"
-            />
-            <div style={{ marginLeft: 'var(--app-space-2)' }}>
-              <Typography.Text>{i.node.form?.values.title}</Typography.Text>
-              <br />
-              <Typography.Text type="danger">
-                {i.feedbacks.map((i) => i.feedbackText).join(', ')}
-              </Typography.Text>
+            <img className="size-6 rounded-md" src={i.node.getNodeRegistry().info.icon} alt="" />
+            <div className="ml-2 min-w-0">
+              <div className="truncate text-xs font-medium">{i.node.form?.values.title}</div>
+              <div className="truncate text-xs text-destructive">
+                {i.feedbacks.map((item) => item.feedbackText).join(', ')}
+              </div>
             </div>
-          </div>
+          </button>
         ))}
       </div>
     </div>
@@ -102,13 +64,8 @@ export const ProblemPanel = () => {
 export const ProblemButton = () => {
   const { open } = useProblemPanel();
   return (
-    <Tooltip content="Problem">
-      <IconButton
-        type="tertiary"
-        theme="borderless"
-        icon={<IconUploadError />}
-        onClick={() => open()}
-      />
-    </Tooltip>
+    <Button variant="ghost" size="icon-sm" aria-label="Problem" onClick={() => open()}>
+      <AlertCircle />
+    </Button>
   );
 };

@@ -1,77 +1,40 @@
-/**
- * Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
- * SPDX-License-Identifier: MIT
- */
+import { useCallback, useEffect, useState } from 'react';
 
-import { useState, useEffect, useCallback } from 'react';
-
+import { Save as SaveIcon } from 'lucide-react';
 import { useClientContext, FlowNodeEntity } from '@flowgram.ai/free-layout-editor';
-import { Button, Badge } from '@douyinfe/semi-ui';
+
+import { Button } from '@/components/ui';
 
 export function Save(props: { disabled: boolean }) {
   const [errorCount, setErrorCount] = useState(0);
   const clientContext = useClientContext();
-
   const updateValidateData = useCallback(() => {
     const allForms = clientContext.document.getAllNodes().map((node) => node.form);
-    const count = allForms.filter((form) => form?.state.invalid).length;
-    setErrorCount(count);
+    setErrorCount(allForms.filter((form) => form?.state.invalid).length);
   }, [clientContext]);
-
-  /**
-   * Validate all node and Save
-   */
   const onSave = useCallback(async () => {
     const allForms = clientContext.document.getAllNodes().map((node) => node.form);
     await Promise.all(allForms.map(async (form) => form?.validate()));
-    console.log('>>>>> save data: ', clientContext.document.toJSON());
-  }, [clientContext]);
-
-  /**
-   * Listen single node validate
-   */
+    updateValidateData();
+  }, [clientContext, updateValidateData]);
   useEffect(() => {
-    const listenSingleNodeValidate = (node: FlowNodeEntity) => {
-      const { form } = node;
-      if (form) {
-        const formValidateDispose = form.onValidate(() => updateValidateData());
-        node.onDispose(() => formValidateDispose.dispose());
-      }
+    const listen = (node: FlowNodeEntity) => {
+      if (!node.form) return;
+      const dispose = node.form.onValidate(updateValidateData);
+      node.onDispose(() => dispose.dispose());
     };
-    clientContext.document.getAllNodes().map((node) => listenSingleNodeValidate(node));
-    const dispose = clientContext.document.onNodeCreate(({ node }) =>
-      listenSingleNodeValidate(node)
-    );
+    clientContext.document.getAllNodes().forEach(listen);
+    const dispose = clientContext.document.onNodeCreate(({ node }) => listen(node));
     return () => dispose.dispose();
-  }, [clientContext]);
-
-  if (errorCount === 0) {
-    return (
-      <Button
-        disabled={props.disabled}
-        onClick={onSave}
-        style={{
-          backgroundColor: 'var(--app-color-primary-light-default)',
-          borderRadius: 'var(--app-radius-md)',
-        }}
-      >
-        Save
-      </Button>
-    );
-  }
+  }, [clientContext, updateValidateData]);
   return (
-    <Badge count={errorCount} position="rightTop" type="danger">
-      <Button
-        type="danger"
-        disabled={props.disabled}
-        onClick={onSave}
-        style={{
-          backgroundColor: 'var(--semi-color-danger-light-default)',
-          borderRadius: 'var(--app-radius-md)',
-        }}
-      >
-          Save
-      </Button>
-    </Badge>
+    <Button
+      variant={errorCount ? 'destructive' : 'outline'}
+      disabled={props.disabled}
+      onClick={onSave}
+      style={{ color: 'var(--app-color-text-1)' }}
+    >
+      <SaveIcon /> Save{errorCount ? ` (${errorCount})` : ''}
+    </Button>
   );
 }

@@ -1,13 +1,13 @@
 import { useEffect, useState, useContext } from 'react';
 
-import { FormRenderProps, FormMeta, ValidateTrigger } from '@flowgram.ai/free-layout-editor';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Field } from '@flowgram.ai/free-layout-editor';
-import { Select, Button, Typography } from '@douyinfe/semi-ui';
-import { IconChevronDown, IconChevronRight } from '@douyinfe/semi-icons';
+import { FormRenderProps, FormMeta, ValidateTrigger } from '@flowgram.ai/free-layout-editor';
 
-import { PromptEditorWithVariables } from '@/form-semantics/legacy-adapter';
+import { PromptEditorWithVariables } from '@/form-semantics';
 import { provideJsonSchemaOutputs, syncVariableTitle } from '@/form-semantics';
 import type { IFlowTemplateValue } from '@/form-semantics';
+import { Button, Select } from '@/components/ui';
 
 import type { JsonSchema } from '../../typings/json-schema';
 import { FlowNodeJSON } from '../../typings';
@@ -61,25 +61,23 @@ function AgentSelect({
 
   return (
     <Select
-      value={value || undefined}
-      onChange={(v) => onChange(v as string)}
+      value={value || ''}
+      onChange={(event) => onChange(event.currentTarget.value)}
       disabled={readonly}
-      loading={loading}
-      placeholder="Select an agent"
-      optionList={agents.map((a) => {
+    >
+      {!value && <option value="">{loading ? 'Loading agents…' : 'Select an agent'}</option>}
+      {agents.map((a) => {
         const m = parseAgentConfig(a.config)?.provider?.model || '';
-        return { label: `${a.name}${m ? ` (${m})` : ''}`, value: a.id };
+        return <option key={a.id} value={a.id}>{`${a.name}${m ? ` (${m})` : ''}`}</option>;
       })}
-      style={{ width: '100%' }}
-      size="small"
-    />
+    </Select>
   );
 }
 
 const PHASE_BADGE: Record<string, { text: string; color: string }> = {
-  succeeded: { text: 'Succeeded', color: 'var(--semi-color-success)' },
-  cancelled: { text: 'Cancelled', color: 'var(--semi-color-tertiary)' },
-  failed: { text: 'Failed', color: 'var(--semi-color-danger)' },
+  succeeded: { text: 'Succeeded', color: 'var(--app-color-success)' },
+  cancelled: { text: 'Cancelled', color: 'var(--muted-foreground)' },
+  failed: { text: 'Failed', color: 'var(--destructive)' },
 };
 
 /** Tool event row — collapsed detail by default (UX-B). */
@@ -89,22 +87,22 @@ function ToolEventRow({ ev }: { ev: ToolEvent }) {
   return (
     <div style={{ marginTop: 4 }}>
       <Button
-        size="small"
-        theme="borderless"
-        icon={expanded ? <IconChevronDown /> : <IconChevronRight />}
+        size="sm"
+        variant="ghost"
+        aria-expanded={expanded}
         onClick={() => setExpanded((v) => !v)}
-        style={{ padding: '0 4px' }}
       >
-        <Typography.Text size="small">
+        {expanded ? <ChevronDown /> : <ChevronRight />}
+        <span className="text-xs">
           {label} {ev.toolName}
-        </Typography.Text>
+        </span>
       </Button>
       {expanded && (
         <pre
           style={{
             margin: '4px 0 0 16px',
             padding: 4,
-            background: 'var(--semi-color-fill-1)',
+            background: 'var(--muted)',
             borderRadius: 4,
             fontSize: 11,
             whiteSpace: 'pre-wrap',
@@ -131,37 +129,27 @@ function AgentOutput({ agentId, prompt }: { agentId: string; prompt: string }) {
   return (
     <div style={{ marginTop: 8 }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <Button
-          size="small"
-          theme="solid"
-          onClick={exec.run}
-          disabled={!canRun || exec.isRunning}
-          loading={exec.isRunning}
-        >
+        <Button size="sm" onClick={exec.run} disabled={!canRun || exec.isRunning}>
           {exec.isRunning ? 'Running...' : 'Run Agent'}
         </Button>
         {exec.isRunning && (
-          <Button size="small" theme="borderless" onClick={exec.cancel}>
+          <Button size="sm" variant="ghost" onClick={exec.cancel}>
             Cancel
           </Button>
         )}
         {PHASE_BADGE[exec.phase] && (
-          <Typography.Text size="small" style={{ color: PHASE_BADGE[exec.phase].color }}>
+          <span className="text-xs" style={{ color: PHASE_BADGE[exec.phase].color }}>
             {PHASE_BADGE[exec.phase].text}
-          </Typography.Text>
+          </span>
         )}
       </div>
-      {exec.error && (
-        <Typography.Text type="danger" size="small" style={{ display: 'block', marginTop: 4 }}>
-          {exec.error}
-        </Typography.Text>
-      )}
+      {exec.error && <span className="mt-1 block text-xs text-destructive">{exec.error}</span>}
       {showPanel && (exec.content || exec.toolEvents.length > 0) && (
         <div
           style={{
             marginTop: 8,
             padding: 8,
-            background: 'var(--semi-color-fill-0)',
+            background: 'var(--muted)',
             borderRadius: 4,
             fontSize: 12,
             whiteSpace: 'pre-wrap',
@@ -201,10 +189,8 @@ function LLMFormRender({ form }: FormRenderProps<FlowNodeJSON>) {
       <FormContent>
         <Field<{ content?: string }> name="inputsValues.agentId">
           {({ field }) => (
-            <div style={{ marginBottom: 12 }}>
-              <Typography.Text size="small" strong>
-                Agent
-              </Typography.Text>
+            <div className="mb-3">
+              <label className="text-xs font-medium">Agent</label>
               <AgentSelect
                 value={field.value?.content}
                 onChange={(v) => field.onChange({ type: 'constant', content: v })}
@@ -215,10 +201,8 @@ function LLMFormRender({ form }: FormRenderProps<FlowNodeJSON>) {
         </Field>
         <Field<IFlowTemplateValue> name="inputsValues.prompt">
           {({ field }) => (
-            <div style={{ marginBottom: 12 }}>
-              <Typography.Text size="small" strong>
-                Prompt
-              </Typography.Text>
+            <div className="mb-3">
+              <label className="text-xs font-medium">Prompt</label>
               <PromptEditorWithVariables
                 value={field.value}
                 onChange={(v) => field.onChange(v!)}
@@ -245,35 +229,41 @@ function LLMFormRender({ form }: FormRenderProps<FlowNodeJSON>) {
                 ? 'none'
                 : String(timeoutValue);
             return (
-              <div style={{ marginBottom: 12 }}>
-                <Typography.Text size="small" strong>
-                  Node Timeout
-                </Typography.Text>
-                <Select
-                  value={timeoutSelectValue}
-                  onChange={(v) => {
-                    if (v === undefined || v === '' || v === 'default') {
-                      // Clear → use global default (fallback kicks in).
-                      field.onChange(undefined);
-                    } else if (v === 'none') {
-                      // No timeout → null signals "no timeout" to the backend.
-                      field.onChange(null);
-                    } else {
-                      field.onChange(typeof v === 'number' ? v : Number(v));
-                    }
-                  }}
-                  disabled={readonly}
-                  style={{ width: '100%' }}
-                  size="small"
-                  optionList={[
-                    { label: 'Use global default', value: 'default' },
-                    { label: '1 min', value: '60000' },
-                    { label: '5 min', value: '300000' },
-                    { label: '10 min', value: '600000' },
-                    { label: '30 min', value: '1800000' },
-                    { label: 'No timeout', value: 'none' },
-                  ]}
-                />
+              <div className="mb-3">
+                <label className="text-xs font-medium">Node Timeout</label>
+                <div className="relative">
+                  <span className="pointer-events-none absolute inset-y-0 left-2.5 z-10 flex items-center text-xs text-foreground">
+                    {timeoutSelectValue === 'default'
+                      ? 'Use global default'
+                      : timeoutSelectValue === 'none'
+                      ? 'No timeout'
+                      : `${Number(timeoutSelectValue) / 60000} min`}
+                  </span>
+                  <Select
+                    value={timeoutSelectValue}
+                    className="bg-transparent text-transparent [&>option]:text-foreground"
+                    onChange={(event) => {
+                      const v = event.currentTarget.value;
+                      if (v === undefined || v === '' || v === 'default') {
+                        // Clear → use global default (fallback kicks in).
+                        field.onChange(undefined);
+                      } else if (v === 'none') {
+                        // No timeout → null signals "no timeout" to the backend.
+                        field.onChange(null);
+                      } else {
+                        field.onChange(Number(v));
+                      }
+                    }}
+                    disabled={readonly}
+                  >
+                    <option value="default">Use global default</option>
+                    <option value="60000">1 min</option>
+                    <option value="300000">5 min</option>
+                    <option value="600000">10 min</option>
+                    <option value="1800000">30 min</option>
+                    <option value="none">No timeout</option>
+                  </Select>
+                </div>
               </div>
             );
           }}

@@ -5,9 +5,10 @@
 
 import { useState, useEffect } from 'react';
 
+import { ChevronDown, ChevronLeft, X } from 'lucide-react';
 import { useClientContext, CommandService } from '@flowgram.ai/free-layout-editor';
-import { Button } from '@douyinfe/semi-ui';
-import { IconClose, IconSmallTriangleDown, IconSmallTriangleLeft } from '@douyinfe/semi-icons';
+
+import { Button } from '@/components/ui';
 
 import { toggleLoopExpanded } from '../../utils';
 import { FlowCommandId } from '../../shortcuts';
@@ -47,12 +48,13 @@ export function FormHeader() {
       <TitleInput readonly={readonly} updateTitleEdit={updateTitleEdit} titleEdit={titleEdit} />
       {node.renderData.expandable && !isSidebar && (
         <Button
-          type="primary"
-          icon={expanded ? <IconSmallTriangleDown /> : <IconSmallTriangleLeft />}
-          size="small"
-          theme="borderless"
+          variant="ghost"
+          size="icon-sm"
+          aria-label={expanded ? 'Collapse node' : 'Expand node'}
           onClick={handleExpand}
-        />
+        >
+          {expanded ? <ChevronDown /> : <ChevronLeft />}
+        </Button>
       )}
       {readonly ? undefined : (
         <Operators>
@@ -61,12 +63,13 @@ export function FormHeader() {
       )}
       {isSidebar && (
         <Button
-          type="primary"
-          icon={<IconClose />}
-          size="small"
-          theme="borderless"
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Close node settings"
           onClick={handleClose}
-        />
+        >
+          <X />
+        </Button>
       )}
     </Header>
   );

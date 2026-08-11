@@ -4,10 +4,10 @@
  */
 
 import { Field } from '@flowgram.ai/free-layout-editor';
-import { Divider } from '@douyinfe/semi-ui';
 
-import { DisplayOutputs, JsonSchemaEditor } from '@/form-semantics/legacy-adapter';
+import { DisplayOutputs, JsonSchemaEditor } from '@/form-semantics';
 import type { IJsonSchema } from '@/form-semantics';
+import { Separator } from '@/components/ui';
 
 import { useIsSidebar, useNodeRenderContext } from '../../../hooks';
 import { FormItem } from '../../../form-components';
@@ -19,7 +19,7 @@ export function Outputs() {
   if (!isSidebar) {
     return (
       <>
-        <Divider />
+        <Separator />
         <Field<IJsonSchema> name="outputs">
           {({ field }) => <DisplayOutputs value={field.value} />}
         </Field>
@@ -29,7 +29,7 @@ export function Outputs() {
 
   return (
     <>
-      <Divider />
+      <Separator />
       <FormItem name="outputs" type="object" vertical>
         <Field<IJsonSchema> name="outputs">
           {({ field }) => (
