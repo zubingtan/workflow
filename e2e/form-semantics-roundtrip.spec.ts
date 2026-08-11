@@ -123,7 +123,11 @@ test('editor preserves headless form semantics across load/edit/save/reload', as
 
   await page.goto('/');
   await page.getByText('Workflows', { exact: true }).first().click();
-  await page.locator('tr', { hasText: name }).getByRole('button', { name: 'Open' }).click();
+  await page
+    .getByTestId('workflow-row')
+    .filter({ hasText: name })
+    .getByRole('button', { name: 'Open' })
+    .click();
   await expect(page.locator('[data-node-id="condition_0"]')).toBeVisible({ timeout: 10_000 });
   await expect(page.locator('[data-node-id="code_0"]')).toBeVisible();
   await expect(page.locator('[data-node-id="loop_0"]')).toBeVisible();
