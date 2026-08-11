@@ -20,15 +20,12 @@ import { unstableSetCreateRoot } from '@/form-semantics/legacy-adapter';
 import { preserveWorkflowDocumentFields } from '@/form-semantics';
 
 // Semi CSS must load before semi-bridge.css so the bridge overrides win.
-// D6 pitfall 1: bare '@douyinfe/semi-ui/dist/css/semi.min.css' import path is
-// blocked by the package's `exports` field under Semi 2.101.1, but the file
-// physically exists at that path — rsbuild resolves it via the filesystem.
-// If this breaks in a future Semi upgrade, switch to a relative path.
+// D6 pitfall 1: the Semi stylesheet is resolved from the package's physical
+// file because the package exports do not expose this CSS entry point.
 import '@douyinfe/semi-ui/dist/css/semi.min.css';
 
 // Theme CSS files — order matters (ADR-0002):
 //   semi.min.css → semi-bridge.css → tokens.css → theme-dark.css → flowgram-bridge.css → styles/index.css
-import '@douyinfe/semi-ui/dist/css/semi.min.css';
 import './theme/semi-bridge.css';
 import './theme/tokens.css';
 import './theme/theme-dark.css';
