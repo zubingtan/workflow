@@ -18,12 +18,15 @@ import { projectTerminal } from "./agent-execution.mjs";
  * @param {(opts: object) => AsyncGenerator} deps.runAgentExecution
  * @param {(agent: object, agentDir: string) => Promise<object>} deps.createAgentSessionForAgent
  * @param {string} deps.agentDir
+ * @param {string} [deps.skillsDir] - explicit skills library dir passed through
+ *   to createAgentSessionForAgent (defaults to <agentDir parent>/skills).
  * @param {(c: object, handler: (stream: object) => Promise<void>) => Promise<void>} [deps.streamSSE]
  */
 export function createRunAgentSse({
   runAgentExecution,
   createAgentSessionForAgent,
   agentDir,
+  skillsDir,
   streamSSE: streamer = streamSSE,
   onTerminal = null,
 }) {
@@ -31,7 +34,7 @@ export function createRunAgentSse({
     c.header("X-Accel-Buffering", "no");
 
     // New interface: createAgentSessionForAgent(agent, agentDir) resolves credentials internally
-    const createSessionBound = (cfg, dir) => createAgentSessionForAgent(cfg, dir);
+    const createSessionBound = (cfg, dir) => createAgentSessionForAgent(cfg, dir, undefined, undefined, skillsDir);
 
     const run = async (stream) => {
       const ac = new AbortController();

@@ -127,6 +127,43 @@ test('delete is blocked while agents reference the skill', async () => {
   assert.ok(!existsSync(join(skillsDir, 'zh-en')));
 });
 
+test('rename is blocked while agents reference the old name', async () => {
+  const { app, db } = makeApp();
+  await jsonRequest(app, '/skills/zh-en', 'PUT', { files: validTree });
+  createAgent(db, {
+    name: 'Ref Agent',
+    config: { provider: {}, pi_settings: { skills: ['zh-en'] } },
+  });
+
+  const blocked = await jsonRequest(app, '/skills/zh-en/rename', 'POST', { new_name: 'zh-en-v2' });
+  assert.equal(blocked.status, 409);
+  assert.equal((await blocked.json()).code, 'referenced');
+
+  // no-op rename (same name) is allowed even when referenced — nothing changes
+  const noop = await jsonRequest(app, '/skills/zh-en/rename', 'POST', { new_name: 'zh-en' });
+  assert.equal(noop.status, 200);
+
+  // once the reference is gone the rename succeeds
+  const agent = db.prepare("SELECT id FROM agents WHERE name = 'Ref Agent'").get();
+  updateAgent(db, agent.id, { config: { pi_settings: { skills: [] } } });
+  const ok = await jsonRequest(app, '/skills/zh-en/rename', 'POST', { new_name: 'zh-en-v2' });
+  assert.equal(ok.status, 200);
+});
+
+test('traversal-style names are rejected on read and delete (no fs escape)', async () => {
+  const { app } = makeApp();
+  await jsonRequest(app, '/skills/zh-en', 'PUT', { files: validTree });
+
+  // %2F decodes to '/' — Hono passes it to the handler as part of :name
+  const read = await jsonRequest(app, '/skills/..%2F..%2Fetc', 'GET');
+  assert.equal(read.status, 400);
+  assert.equal((await read.json()).code, 'invalid_name');
+
+  const del = await jsonRequest(app, '/skills/..%2F..%2Fetc', 'DELETE');
+  assert.equal(del.status, 400);
+  assert.equal((await del.json()).code, 'invalid_name');
+});
+
 test('agent import precheck reports missing skills', async () => {
   const { app } = makeApp();
   await jsonRequest(app, '/skills/known', 'PUT', { files: validTree });

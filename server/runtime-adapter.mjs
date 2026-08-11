@@ -31,7 +31,7 @@ import {
   StructuredOutputCapabilityError,
 } from './structured-output.mjs';
 import { executeFeishuBot } from './feishu-executor.mjs';
-import { resolveSkillPaths } from './skills.mjs';
+import { resolveSkillPaths, parseSkillFrontmatter } from './skills.mjs';
 
 // API shapes that can honor the structured output contract (#248).
 // The model registry pins `api` per registered model; anything outside these
@@ -121,14 +121,21 @@ export function resolveApiKey(rawValue) {
  * persisted ("Item with id ... not found"), which breaks multi-turn tool
  * loops. Force store:true for non-OpenAI endpoints so tool calls survive;
  * official OpenAI keeps the stateless default.
+ *
+ * @param {{ endpoint?: string, store?: boolean }} opts - `store` is the
+ *   provider.responses_store escape hatch: true/false pins the behavior,
+ *   undefined falls back to the endpoint heuristic (non-OpenAI → true).
  */
-export function createResponsesStoreCompatExtension({ endpoint }) {
+export function createResponsesStoreCompatExtension({ endpoint, store }) {
   const isOfficialOpenAI = /api\.openai\.com/i.test(endpoint ?? '');
+  const forced = typeof store === 'boolean' ? store : undefined;
   return (api) => {
     api.on('before_provider_request', (event) => {
       const payload = event.payload;
-      if (!payload || payload.store === undefined || isOfficialOpenAI) return;
-      return { ...payload, store: true };
+      if (!payload || payload.store === undefined) return;
+      const target = forced ?? !isOfficialOpenAI;
+      if (payload.store === target) return;
+      return { ...payload, store: target };
     });
   };
 }
@@ -144,11 +151,14 @@ export function createResponsesStoreCompatExtension({ endpoint }) {
  *   null when the node declares no structured outputs. The contract is
  *   captured by a request-scoped inline extension so it can never leak across
  *   sessions (#248); sessions without a contract never inject response_format.
+ * @param {string} [skillsDir] - explicit skills library dir. Defaults to
+ *   <agentDir parent>/skills; callers that know the real library dir (e.g.
+ *   DATA_DIR/skills) pass it so the agent dir layout never dictates resolution.
  * @throws {StructuredOutputCapabilityError} when structured is set but the
  *   provider's API shape cannot honor json_schema (fail fast, before any
  *   provider request is sent).
  */
-export async function createAgentSessionForAgent(agent, agentDir, mem0, structured) {
+export async function createAgentSessionForAgent(agent, agentDir, mem0, structured, skillsDir) {
   const {
     createAgentSession,
     ModelRuntime,
@@ -210,14 +220,22 @@ export async function createAgentSessionForAgent(agent, agentDir, mem0, structur
   // entries are library names in the agent config; resolve them to absolute
   // paths here so pi-agent keeps working on paths untouched (#307). Existing
   // absolute paths pass through; unknown names are skipped with a warning.
-  const skillsDir = join(dirname(agentDir), 'skills');
+  const skillsLibraryDir = skillsDir ?? join(dirname(agentDir), 'skills');
   const { paths: resolvedSkillPaths, skipped: skippedSkills } = resolveSkillPaths(
-    skillsDir,
+    skillsLibraryDir,
     piSettings.skills
   );
   if (skippedSkills.length > 0) {
     console.warn(
       `[skills] agent ${agent.id} references missing skill(s), skipped: ${skippedSkills.join(', ')}`
+    );
+  }
+  // #307 behavior change: pi's auto-collected user/project skills are excluded
+  // (noSkills). Agents that never set pi_settings.skills silently lose that
+  // implicit set — surface the migration once per session creation.
+  if (piSettings.skills === undefined || piSettings.skills === null) {
+    console.warn(
+      `[skills] agent ${agent.id} sets no pi_settings.skills — auto-collected skills are excluded since #307; add pi_settings.skills to enable library skills`
     );
   }
   const settingsManager = SettingsManager.inMemory({
@@ -231,13 +249,15 @@ export async function createAgentSessionForAgent(agent, agentDir, mem0, structur
   // to read SKILL.md via tools — but structured-output runs skip tool calls
   // (#248), so the full instructions (e.g. output format) never reach the
   // model. Appending the raw SKILL.md text keeps tool-using runs unaffected
-  // while making structured runs deterministic (#307).
+  // while making structured runs deterministic (#307). Only the body below
+  // the frontmatter is inlined — the YAML block is loader metadata, not
+  // instruction content.
   const skillDocs = [];
   for (const p of resolvedSkillPaths) {
     const skillMd = join(p, 'SKILL.md');
     if (!existsSync(skillMd)) continue;
     try {
-      skillDocs.push(readFileSync(skillMd, 'utf8'));
+      skillDocs.push(parseSkillFrontmatter(readFileSync(skillMd, 'utf8')).body);
     } catch (err) {
       console.warn(`[skills] agent ${agent.id} failed to read ${skillMd}: ${err?.message ?? err}`);
     }
@@ -288,7 +308,12 @@ export async function createAgentSessionForAgent(agent, agentDir, mem0, structur
     );
   }
   if (modelApi === 'openai-responses') {
-    extensionFactories.push(createResponsesStoreCompatExtension({ endpoint: provider.base_url }));
+    extensionFactories.push(
+      createResponsesStoreCompatExtension({
+        endpoint: provider.base_url,
+        store: provider.responses_store,
+      })
+    );
   }
   const resourceLoader = new DefaultResourceLoader({
     cwd: agentSessionDir,
@@ -385,6 +410,7 @@ class AgentExecutor {
   constructor({
     db,
     agentDir,
+    skillsDir = null,
     createSession = createAgentSessionForAgent,
     runAgentExecution = defaultRunAgentExecution,
     resolveTimeoutMs: resolveTimeoutMsFn = resolveTimeoutMs,
@@ -393,6 +419,7 @@ class AgentExecutor {
     this.type = 'llm';
     this.db = db;
     this.agentDir = agentDir;
+    this.skillsDir = skillsDir;
     this.createSession = createSession;
     this.runAgentExecution = runAgentExecution;
     this.resolveTimeoutMs = resolveTimeoutMsFn;
@@ -455,7 +482,7 @@ class AgentExecutor {
           }
         : undefined;
     const createSessionBound = (agentCfg, dir) =>
-      this.createSession(agentCfg, dir, mem0, structured);
+      this.createSession(agentCfg, dir, mem0, structured, this.skillsDir);
 
     // Phase 9 (#161): per-node timeout via a per-node AbortController.
     // AbortSignal.any combines the workflow signal (user cancel) with the
@@ -645,8 +672,8 @@ class FeishuBotExecutor {
 }
 
 // --- Register the custom executors (must be called before any TaskRun) ---
-export function initRuntime(db, agentDir, settingsProvider = null) {
-  registerNodeExecutor(createAgentExecutor({ db, agentDir, settingsProvider }));
+export function initRuntime(db, agentDir, settingsProvider = null, skillsDir = null) {
+  registerNodeExecutor(createAgentExecutor({ db, agentDir, settingsProvider, skillsDir }));
   registerNodeExecutor(new FeishuBotExecutor());
 }
 

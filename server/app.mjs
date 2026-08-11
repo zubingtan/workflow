@@ -301,6 +301,7 @@ export function createApp({
     runAgentExecution,
     createAgentSessionForAgent,
     agentDir,
+    skillsDir,
     ...(streamSSE ? { streamSSE } : {}),
     onTerminal: ({ terminal, agentConfig, startedAt, endedAt, sessionFile }) => {
       // Only persist executions for real agents (have id), not /agents/test
@@ -909,7 +910,24 @@ export function createApp({
     } catch {
       return c.json({ error: 'invalid JSON' }, 400);
     }
-    return withSkillErrors(() => c.json(renameSkill(library, c.req.param('name'), body?.new_name)))(c);
+    // Renaming breaks agent references (pi_settings.skills still holds the old
+    // name, which resolveSkillPaths would skip) — same guard as DELETE.
+    // No-op renames (old === new) are allowed since nothing changes.
+    const oldName = c.req.param('name');
+    if (oldName !== body?.new_name) {
+      const refs = skillReferences(db, oldName);
+      if (refs.length > 0) {
+        return c.json(
+          {
+            error: `skill is referenced by: ${refs.map((r) => r.name).join(', ')}`,
+            code: 'referenced',
+            referencedBy: refs.map((r) => r.name),
+          },
+          409
+        );
+      }
+    }
+    return withSkillErrors(() => c.json(renameSkill(library, oldName, body?.new_name)))(c);
   });
 
   app.get('/skills/:name/references', (c) => {

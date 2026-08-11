@@ -48,13 +48,19 @@ test('parseSkillFrontmatter reads name and description', () => {
   assert.equal(fm.name, 'my-skill');
   assert.equal(fm.description, 'Does things');
   assert.equal(fm.hasFrontmatter, true);
+  assert.equal(fm.body, 'Body');
 
   const none = parseSkillFrontmatter('no frontmatter here');
   assert.equal(none.hasFrontmatter, false);
   assert.equal(none.name, undefined);
+  assert.equal(none.body, 'no frontmatter here');
 
   const quoted = parseSkillFrontmatter('---\ndescription: "Quoted desc"\n---\nBody');
   assert.equal(quoted.description, 'Quoted desc');
+
+  // frontmatter followed by a blank line — the blank line is not part of body
+  const blank = parseSkillFrontmatter('---\nname: x\n---\n\nBody');
+  assert.equal(blank.body, 'Body');
 });
 
 test('syncFrontmatterName rewrites an existing name field only', () => {
@@ -113,6 +119,34 @@ test('writeSkillTree overwrite replaces the whole tree', () => {
   assert.ok(!tree.files.some((f) => f.path === 'scripts/run.sh'));
 });
 
+test('writeSkillTree size guard applies to decoded byte length', () => {
+  const dir = makeSkillsDir();
+  const big = Buffer.alloc(5 * 1024 * 1024 + 1, 0x41);
+
+  // text payload over the limit
+  assert.throws(
+    () => writeSkillTree(dir, 'big-text', [{ path: 'SKILL.md', content: big.toString('utf-8') }]),
+    (e) => e.code === 'file_too_large' && e.status === 413
+  );
+
+  // base64 payload whose DECODED size exceeds the limit (encoded string is
+  // even longer, so the old check would also reject it — verify the new one)
+  assert.throws(
+    () =>
+      writeSkillTree(dir, 'big-b64', [
+        { path: 'SKILL.md', content: big.toString('base64'), encoding: 'base64' },
+      ]),
+    (e) => e.code === 'file_too_large' && e.status === 413
+  );
+
+  // base64 with a long encoded string but small decoded payload passes
+  const small = Buffer.from('hi');
+  const padded = small.toString('base64') + '='.repeat(100); // valid-ish padding noise
+  assert.doesNotThrow(() =>
+    writeSkillTree(dir, 'pad-b64', [{ path: 'SKILL.md', content: padded, encoding: 'base64' }])
+  );
+});
+
 test('binary files round-trip as base64', () => {
   const dir = makeSkillsDir();
   const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01]);
@@ -153,6 +187,8 @@ test('renameSkill renames dir and syncs frontmatter name', () => {
   assert.throws(() => renameSkill(dir, 'new-name', 'other'), (e) => e.code === 'already_exists');
   assert.throws(() => renameSkill(dir, 'missing', 'target'), (e) => e.code === 'not_found');
   assert.throws(() => renameSkill(dir, 'new-name', 'Bad Name'), (e) => e.code === 'invalid_name');
+  // the old name is validated too — path traversal is rejected before any IO
+  assert.throws(() => renameSkill(dir, '..%2F', 'target'), (e) => e.code === 'invalid_name');
 });
 
 test('deleteSkillDir removes the directory', () => {
@@ -161,6 +197,19 @@ test('deleteSkillDir removes the directory', () => {
   deleteSkillDir(dir, 'gone');
   assert.ok(!existsSync(join(dir, 'gone')));
   assert.throws(() => deleteSkillDir(dir, 'gone'), (e) => e.code === 'not_found');
+});
+
+test('read/delete/rename reject traversal-style names before touching the fs', () => {
+  const dir = makeSkillsDir();
+  writeSkillTree(dir, 'safe', validTree);
+
+  for (const bad of ['..', '../etc', '..%2F', 'a/b', 'a\\b', '/etc', '.']) {
+    assert.throws(() => readSkillTree(dir, bad), (e) => e.code === 'invalid_name', `read ${bad}`);
+    assert.throws(() => deleteSkillDir(dir, bad), (e) => e.code === 'invalid_name', `delete ${bad}`);
+  }
+  // nothing was created or removed outside the library
+  assert.ok(!existsSync(join(dir, '..', 'etc')));
+  assert.ok(existsSync(join(dir, 'safe')));
 });
 
 test('skillReferences finds agents referencing a skill by name', () => {

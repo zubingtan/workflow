@@ -149,6 +149,30 @@ export function SkillsSection({ agent, config, saveConfig }: Props) {
           />
         </div>
       )}
+      {legacyPaths.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <Typography.Text
+            type="tertiary"
+            size="small"
+            style={{ display: 'flex', alignItems: 'center', gap: 4 }}
+          >
+            <IconAlertTriangle /> External skill paths (legacy)
+          </Typography.Text>
+          <List
+            dataSource={legacyPaths}
+            renderItem={(name) => (
+              <List.Item key={name} style={{ padding: '6px 0', opacity: 0.7 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <code>{name}</code>
+                  <Tag size="small" color="grey">
+                    external path
+                  </Tag>
+                </div>
+              </List.Item>
+            )}
+          />
+        </div>
+      )}
     </div>
   );
 }
