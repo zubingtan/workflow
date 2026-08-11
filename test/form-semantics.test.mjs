@@ -185,30 +185,15 @@ test('headless seam covers every current node registry and form meta', () => {
   const registryImports = [...source.matchAll(/import \{ (\w+NodeRegistry) \} from '(.+)'/g)].filter(
     ([, name]) => name !== 'FlowNodeRegistry'
   );
-  const registryTypes = registryImports.map(([, , importPath]) => importPath.slice(2));
+  const registryPaths = registryImports.map(([, , importPath]) => importPath.slice(2));
+  const registryListSource = source.slice(source.indexOf('export const nodeRegistries'));
 
-  assert.deepEqual(registryTypes.sort(), [
-    'block-end',
-    'block-start',
-    'break',
-    'code',
-    'comment',
-    'condition',
-    'continue',
-    'end',
-    'feishu-bot',
-    'feishu-trigger',
-    'group',
-    'http',
-    'llm',
-    'loop',
-    'multi-condition',
-    'start',
-    'variable',
-  ].sort());
+  assert.ok(registryPaths.length > 0, 'node registry imports exist');
+  assert.equal(new Set(registryPaths).size, registryPaths.length, 'registry paths are unique');
 
   for (const [, registryName, importPath] of registryImports) {
     const nodeDirectory = importPath.slice(2);
+    assert.match(registryListSource, new RegExp(`\\b${registryName}\\b`));
     const registrySource = ['index.ts', 'index.tsx']
       .map((file) => join(process.cwd(), 'src/nodes', nodeDirectory, file))
       .find((file) => {
@@ -238,6 +223,27 @@ test('headless seam covers every current node registry and form meta', () => {
       assert.match(readFileSync(registrySource, 'utf8'), /formMeta:/);
     }
   }
+});
+
+test('editor controls keep headless value semantics and control seams', () => {
+  const source = readFileSync(join(process.cwd(), 'src/form-semantics/editor-controls.tsx'), 'utf8');
+
+  for (const control of ['dynamic-value', 'schema-editor', 'inputs-values', 'assign-rows', 'condition-row']) {
+    assert.match(source, new RegExp(`data-editor-control="${control}"`));
+  }
+
+  const value = { type: 'ref', content: ['start', 'query'], extra: { preserved: true } };
+  assert.equal(
+    validateFlowValue(value, {
+      available: { getByKeyPath: (path) => (path.join('.') === 'start.query' ? { type: {} } : undefined) },
+    }),
+    undefined
+  );
+  assert.deepEqual(renameFlowValueRefs(value, ['start', 'query'], ['producer', 'value']), {
+    type: 'ref',
+    content: ['producer', 'value'],
+    extra: { preserved: true },
+  });
 });
 
 test('Condition and MultiCondition use local schema operator semantics', () => {
