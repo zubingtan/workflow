@@ -99,6 +99,7 @@
     "lint": "eslint ./src --cache",
     "lint:fix": "eslint ./src --fix",
     "lint:style": "stylelint \"src/**/*.less\" \"src/**/*.module.less\" \"src/**/styles.tsx\"",
+    "shadcn": "pnpm dlx --package=shadcn@4.16.2 --package=zod@3.25.76 shadcn",
     "ts-check": "tsc --noEmit",
     "start": "node scripts/check-node.mjs && cross-env NODE_ENV=production node --env-file-if-exists=.env server/index.mjs",
     "test": "node --test",
