@@ -170,7 +170,8 @@ export async function configureFakeProvider(
     | 'json_response'
     | 'invalid_json'
     | 'refusal'
-    | 'incomplete',
+    | 'incomplete'
+    | 'text_only',
   sleepMs?: number,
   rawDetail?: string
 ): Promise<void> {

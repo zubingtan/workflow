@@ -12,22 +12,26 @@ import {
 } from './helpers';
 
 /**
- * #250: structured outputs wired into FlowGram — downstream node-id.field
- * references, TaskReport projection, legacy-document compatibility.
+ * #320: structured outputs via the StructuredOutput tool route — the workflow's
+ * answer is a toolCall (never text JSON), the customTool validates inside the
+ * pi loop (field-level error feedback, retry capped at 5), and the execution
+ * layer re-validates defensively.
  *
  * Acceptance covered:
- *   - success only projects declared fields (extra fields in the provider
- *     response are dropped, never reach the report/variable tree)
+ *   - the provider receives tools:[StructuredOutput] with the compiled schema
+ *     as parameters and NO response_format on the wire
+ *   - success only projects declared fields (extra fields in the toolCall
+ *     arguments are rejected — after the retry cap, no half-baked outputs)
  *   - downstream nodes read declared fields by node-id.field with the exact
  *     primitive type
- *   - legacy workflows (outputs without `required`) keep working — the
- *     compile-time normalization treats the property list as the contract
- *   - failure semantics: invalid JSON corrects once then fails; refusal
- *     retries once then fails; incomplete fails — no half-baked outputs
- *     reach the report
+ *   - legacy workflows (outputs without `required`) keep working
+ *   - failure semantics: schema-invalid toolCalls exhaust the retry cap and
+ *     fail; a run that ends without calling the tool fails fast; refusal
+ *     retries once then succeeds; incomplete fails
  *
- * Fake provider (extended in #251) records lastPayload so the test also
- * asserts response_format.json_schema injection happened on the wire.
+ * Fake provider (extended in #320) emits tool_calls for StructuredOutput when
+ * the payload carries the tool, and records lastPayload so the test can assert
+ * the wire shape without a network proxy.
  */
 
 const FAKE_BASE = 'http://localhost:4011/v1';
@@ -94,8 +98,8 @@ function nodeOutputs(report: any, nodeId: string): any {
   return nodeReport?.outputs ?? null;
 }
 
-test.describe('Structured output FlowGram integration (#250)', () => {
-  test('success: response_format injected, outputs projected, downstream ref typed', async () => {
+test.describe('Structured output tool route (#320)', () => {
+  test('success: tools:[StructuredOutput] on the wire (no response_format), outputs projected, downstream ref typed', async () => {
     const correlationId = `e2e-so-success-${Date.now()}`;
     await configureFakeProvider(
       correlationId,
@@ -120,15 +124,18 @@ test.describe('Structured output FlowGram integration (#250)', () => {
     const terminal = await waitForTerminal(runID, 30_000);
     expect(terminal.status).toBe('succeeded');
 
-    // 1. The provider actually received a strict json_schema payload.
+    // 1. The wire shape: StructuredOutput tool with the compiled schema as
+    //    parameters, and NO response_format anywhere.
     const statsRes = await fetch('http://localhost:4011/test/stats');
     const stats = await statsRes.json();
-    const rf = stats.lastPayload?.response_format;
-    expect(rf?.type).toBe('json_schema');
-    expect(rf?.json_schema?.strict).toBe(true);
-    expect(rf?.json_schema?.schema?.additionalProperties).toBe(false);
-    expect(Object.keys(rf?.json_schema?.schema?.properties ?? {})).toEqual(['result', 'n']);
-    expect(rf?.json_schema?.schema?.required).toEqual(['result', 'n']);
+    expect(stats.lastPayload?.response_format).toBeUndefined();
+    const tools: any[] = stats.lastPayload?.tools ?? [];
+    const so = tools.find((t) => t?.function?.name === 'StructuredOutput');
+    expect(so).toBeTruthy();
+    expect(so.function.parameters.type).toBe('object');
+    expect(so.function.parameters.additionalProperties).toBe(false);
+    expect(Object.keys(so.function.parameters.properties ?? {})).toEqual(['result', 'n']);
+    expect(so.function.parameters.required).toEqual(['result', 'n']);
 
     // 2. The report carries only the declared fields.
     const run = await getRun(runID);
@@ -144,8 +151,11 @@ test.describe('Structured output FlowGram integration (#250)', () => {
     expect(endSnapshot?.result).toBe('hello world');
   });
 
-  test('extra fields in the provider response are rejected — failed, no consumable outputs', async () => {
+  test('extra fields in toolCall arguments exhaust the retry cap — failed, no consumable outputs', async () => {
     const correlationId = `e2e-so-extra-${Date.now()}`;
+    // The model (fake) keeps calling StructuredOutput with the extra field;
+    // the customTool rejects it each time → retry cap → terminate → the
+    // execution-layer second check fails. Nothing half-baked is consumable.
     await configureFakeProvider(
       correlationId,
       'json_response',
@@ -163,9 +173,6 @@ test.describe('Structured output FlowGram integration (#250)', () => {
     const workflowId = await createWorkflow(`E2E SO Extra ${Date.now()}`, schema);
     const runID = await submitRun(workflowId, schema);
 
-    // First response has the extra field → corrective turn (no correlationId
-    // → provider default text, also invalid) → failed. The contract rejects
-    // undeclared fields; nothing half-baked is consumable.
     const terminal = await waitForTerminal(runID, 30_000);
     expect(terminal.status).toBe('failed');
     const run = await getRun(runID);
@@ -173,9 +180,9 @@ test.describe('Structured output FlowGram integration (#250)', () => {
     expect(JSON.stringify(report)).toMatch(/unexpected extra field/);
   });
 
-  test('missing required field: corrected once, then failed with field-level reason', async () => {
+  test('missing required field: retry cap exhausted, failed with field-level reason', async () => {
     const correlationId = `e2e-so-missing-${Date.now()}`;
-    // Response omits the declared `n` field entirely.
+    // ToolCall arguments omit the declared `n` field entirely.
     await configureFakeProvider(
       correlationId,
       'json_response',
@@ -204,9 +211,11 @@ test.describe('Structured output FlowGram integration (#250)', () => {
     expect(nodeOutputs(report, 'llm_main')).toBeNull();
   });
 
-  test('type mismatch: integer not coerced, corrected once, then failed', async () => {
+  test('type mismatch: integer not coerced, retry cap exhausted, failed', async () => {
     const correlationId = `e2e-so-type-${Date.now()}`;
-    // Provider returns a string where an integer is declared — must not coerce.
+    // ToolCall arguments carry a string where an integer is declared — pi's
+    // schema path must not coerce it (our schema is strict JSON Schema, and
+    // validateStructuredOutput never coerces).
     await configureFakeProvider(
       correlationId,
       'json_response',
@@ -261,9 +270,11 @@ test.describe('Structured output FlowGram integration (#250)', () => {
     expect(llmOutputs?.result).toBe('legacy ok');
   });
 
-  test('invalid JSON corrects once, then fails with no consumable outputs', async () => {
-    const correlationId = `e2e-so-invalid-${Date.now()}`;
-    await configureFakeProvider(correlationId, 'invalid_json', undefined, 'this is not json');
+  test('fail-fast: model exits without calling StructuredOutput → no consumable outputs', async () => {
+    const correlationId = `e2e-so-no-call-${Date.now()}`;
+    // The model (fake) answers in plain text and never calls the tool — the
+    // MUST-call contract is violated; text JSON is NOT a substitute.
+    await configureFakeProvider(correlationId, 'text_only');
 
     const agentId = await createAgent();
     const schema = buildWorkflow(
@@ -272,21 +283,18 @@ test.describe('Structured output FlowGram integration (#250)', () => {
       ['llm_main', 'result'],
       `Run ${correlationId}`
     );
-    const workflowId = await createWorkflow(`E2E SO Invalid ${Date.now()}`, schema);
+    const workflowId = await createWorkflow(`E2E SO NoCall ${Date.now()}`, schema);
     const runID = await submitRun(workflowId, schema);
 
     const terminal = await waitForTerminal(runID, 30_000);
     expect(terminal.status).toBe('failed');
-
-    // The corrective prompt (no correlationId) hit the provider default text,
-    // which is also not JSON → failed. No half-baked outputs anywhere.
     const run = await getRun(runID);
     const report = typeof run.report === 'string' ? JSON.parse(run.report) : run.report;
-    const reportJson = JSON.stringify(report);
-    expect(reportJson).toMatch(/structured output validation failed|not valid JSON/);
+    expect(JSON.stringify(report)).toMatch(/without calling StructuredOutput/);
+    expect(nodeOutputs(report, 'llm_main')).toBeNull();
   });
 
-  test('refusal retries once, then fails (no fallback to plain text)', async () => {
+  test('refusal is asked again once, then succeeds via a StructuredOutput toolCall', async () => {
     const correlationId = `e2e-so-refusal-${Date.now()}`;
     await configureFakeProvider(correlationId, 'refusal', undefined, 'I refuse');
     await resetFakeProviderStats();
@@ -302,13 +310,13 @@ test.describe('Structured output FlowGram integration (#250)', () => {
     const runID = await submitRun(workflowId, schema);
 
     const terminal = await waitForTerminal(runID, 30_000);
-    expect(terminal.status).toBe('failed');
+    expect(terminal.status).toBe('succeeded');
     const run = await getRun(runID);
     const report = typeof run.report === 'string' ? JSON.parse(run.report) : run.report;
-    expect(JSON.stringify(report)).toMatch(/structured output validation failed|refused/);
-    // Pin the "asked again once" semantics: the refusal must have produced at
-    // least a second provider request (the retry turn). The retry prompt does
-    // not carry the correlationId, so count the GLOBAL counter.
+    expect(nodeOutputs(report, 'llm_main')?.result).toBe('ok');
+    // The refusal must have produced at least a second provider request (the
+    // retry turn — its prompt has no correlationId, so count the GLOBAL
+    // counter).
     expect(await getFakeProviderCalls()).toBeGreaterThanOrEqual(2);
   });
 
