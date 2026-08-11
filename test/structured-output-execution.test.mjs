@@ -5,16 +5,23 @@ import { runAgentExecution } from "../server/agent-execution.mjs";
 import { compileStrictSchema } from "../server/structured-output.mjs";
 
 /**
- * #249: strict parsing/validation + failure semantics for structured output.
+ * #320: StructuredOutput-tool-route terminal classification.
  *
- * Covers (acceptance): valid JSON, invalid JSON, missing fields, extra
- * fields, type errors, refusal, incomplete, correction success/failure,
- * cancellation, and the legacy (no-contract) path.
+ * The model's final answer is a StructuredOutput toolCall (arguments parsed by
+ * pi, never raw text JSON). Validation/self-correction happens inside the pi
+ * agent loop (customTool execute feedback); the execution layer only re-reads
+ * the LAST assistant message, extracts the final toolCall, and re-validates
+ * defensively (script-side second check).
+ *
+ * Covers (acceptance): toolCall success, toolCall validation failure, exit
+ * without calling the tool (fail-fast), refusal, incomplete, empty, no
+ * assistant message, provider error, cancellation, and the legacy (no-contract)
+ * path.
  *
  * The fake session scripts per-turn assistant messages: each turn's `messages`
  * are appended to session.messages (duck-typing the real session's `messages`
- * getter), and `prompt` records the text so tests can assert the corrective
- * prompt carries field-level reasons (never raw text/credentials).
+ * getter), and `prompt` records the text so tests can assert the refusal retry
+ * prompt semantics.
  */
 
 const COMPILED = compileStrictSchema({
@@ -24,6 +31,16 @@ const COMPILED = compileStrictSchema({
 
 function makeAssistant(text, { stopReason = "stop", errorMessage } = {}) {
   return { role: "assistant", content: [{ type: "text", text }], stopReason, errorMessage };
+}
+
+/** Assistant message whose content is a StructuredOutput toolCall block. */
+function makeToolCallAssistant(args, { stopReason = "toolUse", errorMessage } = {}) {
+  return {
+    role: "assistant",
+    content: [{ type: "toolCall", id: "call_so_1", name: "StructuredOutput", arguments: args }],
+    stopReason,
+    errorMessage,
+  };
 }
 
 /**
@@ -75,9 +92,11 @@ const BASE = {
   agentDir: "/tmp/x",
 };
 
-describe("structured output terminal classification (#249)", () => {
-  test("valid JSON with all declared fields → succeeded with projected outputs only", async () => {
-    const session = makeFakeSession([{ messages: [makeAssistant('{"result":"ok","n":3}')] }]);
+describe("structured output tool-route terminal classification (#320)", () => {
+  test("StructuredOutput toolCall with valid arguments → succeeded with projected outputs", async () => {
+    const session = makeFakeSession([
+      { messages: [makeToolCallAssistant({ result: "ok", n: 3 })] },
+    ]);
     const terminal = await collect({
       ...BASE,
       structured: COMPILED,
@@ -85,11 +104,13 @@ describe("structured output terminal classification (#249)", () => {
     });
     assert.equal(terminal.phase, "succeeded");
     assert.deepEqual(terminal.outputs, { result: "ok", n: 3 });
-    assert.equal(terminal.finalText, '{"result":"ok","n":3}');
+    assert.equal(terminal.finalText, "");
   });
 
-  test("extra fields in the response are rejected (projection only)", async () => {
-    const session = makeFakeSession([{ messages: [makeAssistant('{"result":"ok","n":3,"secret":"x"}')] }]);
+  test("extra fields in toolCall arguments are rejected (projection only)", async () => {
+    const session = makeFakeSession([
+      { messages: [makeToolCallAssistant({ result: "ok", n: 3, secret: "x" })] },
+    ]);
     const terminal = await collect({ ...BASE, structured: COMPILED, createSession: async () => session });
     assert.equal(terminal.phase, "failed");
     assert.equal(terminal.error.kind, "structured_output_error");
@@ -97,11 +118,10 @@ describe("structured output terminal classification (#249)", () => {
   });
 
   test("prototype-chain keys cannot smuggle extra fields", async () => {
-    // `constructor`/`toString`/`__proto__` live on Object.prototype; an `in`
-    // check would miss them and let them through. Object.hasOwn must reject.
     for (const key of ["constructor", "toString", "__proto__"]) {
-      const payload = JSON.stringify({ result: "ok", n: 3, [key]: "x" });
-      const session = makeFakeSession([{ messages: [makeAssistant(payload)] }]);
+      const session = makeFakeSession([
+        { messages: [makeToolCallAssistant({ result: "ok", n: 3, [key]: "x" })] },
+      ]);
       const terminal = await collect({ ...BASE, structured: COMPILED, createSession: async () => session });
       assert.equal(terminal.phase, "failed", `${key} must be rejected`);
       assert.equal(terminal.error.kind, "structured_output_error", `${key} must be a validation error`);
@@ -109,60 +129,44 @@ describe("structured output terminal classification (#249)", () => {
     }
   });
 
-  test("invalid JSON corrects once in the same session, then succeeds", async () => {
+  test("type mismatch in toolCall arguments fails with field-level reasons — no corrective turn", async () => {
+    // Self-correction lives inside the pi loop (customTool feedback); the
+    // execution layer never issues a second prompt.
     const session = makeFakeSession([
-      { messages: [makeAssistant("not json at all")] },
-      { messages: [makeAssistant('{"result":"fixed","n":1}')] },
-    ]);
-    const terminal = await collect({ ...BASE, structured: COMPILED, createSession: async () => session });
-    assert.equal(terminal.phase, "succeeded");
-    assert.deepEqual(terminal.outputs, { result: "fixed", n: 1 });
-    // The corrective prompt carries the field-level reason, and the retry is
-    // in the SAME session (two prompt calls on one session).
-    const calls = session._getPromptCalls();
-    assert.equal(calls.length, 2);
-    assert.match(calls[1], /did not match the required JSON schema/);
-    assert.match(calls[1], /not valid JSON/);
-  });
-
-  test("invalid JSON corrects once, then fails with field-level summary", async () => {
-    const session = makeFakeSession([
-      { messages: [makeAssistant("still not json")] },
-      { messages: [makeAssistant("still not json either")] },
-    ]);
-    const terminal = await collect({ ...BASE, structured: COMPILED, createSession: async () => session });
-    assert.equal(terminal.phase, "failed");
-    assert.equal(terminal.error.kind, "structured_output_error");
-    assert.match(terminal.error.message, /not valid JSON/);
-    assert.equal(session._getPromptCalls().length, 2, "at most one correction");
-  });
-
-  test("type mismatch corrects once (integer not coerced), then fails", async () => {
-    const session = makeFakeSession([
-      { messages: [makeAssistant('{"result":"ok","n":"3"}')] }, // string where integer required
-      { messages: [makeAssistant('{"result":"ok","n":true}')] }, // still wrong
+      { messages: [makeToolCallAssistant({ result: "ok", n: "3" })] },
     ]);
     const terminal = await collect({ ...BASE, structured: COMPILED, createSession: async () => session });
     assert.equal(terminal.phase, "failed");
     assert.match(terminal.error.message, /field "n" must be integer/);
-    assert.match(session._getPromptCalls()[1], /field "n" must be integer/);
+    assert.equal(session._getPromptCalls().length, 1, "no corrective prompt in the tool route");
   });
 
-  test("missing field corrects once then succeeds", async () => {
+  test("missing field in toolCall arguments fails with the missing field named", async () => {
     const session = makeFakeSession([
-      { messages: [makeAssistant('{"result":"ok"}')] }, // missing n
-      { messages: [makeAssistant('{"result":"ok","n":2}')] },
+      { messages: [makeToolCallAssistant({ result: "ok" })] },
     ]);
     const terminal = await collect({ ...BASE, structured: COMPILED, createSession: async () => session });
-    assert.equal(terminal.phase, "succeeded");
-    assert.deepEqual(terminal.outputs, { result: "ok", n: 2 });
-    assert.match(session._getPromptCalls()[1], /missing required field "n"/);
+    assert.equal(terminal.phase, "failed");
+    assert.match(terminal.error.message, /missing required field "n"/);
+    assert.equal(session._getPromptCalls().length, 1);
   });
 
-  test("refusal is asked again once in the same session, then succeeds", async () => {
+  test("exit without calling StructuredOutput (plain-text answer) → fail-fast", async () => {
+    // The model ignored the MUST-call instruction and answered in text.
+    const session = makeFakeSession([
+      { messages: [makeAssistant('{"result":"ok","n":3}')] },
+    ]);
+    const terminal = await collect({ ...BASE, structured: COMPILED, createSession: async () => session });
+    assert.equal(terminal.phase, "failed");
+    assert.equal(terminal.error.kind, "structured_output_error");
+    assert.match(terminal.error.message, /without calling StructuredOutput/);
+    assert.equal(session._getPromptCalls().length, 1, "text JSON is not accepted in the tool route");
+  });
+
+  test("refusal is asked again once in the same session, then succeeds via toolCall", async () => {
     const session = makeFakeSession([
       { messages: [makeAssistant("", { stopReason: "error", errorMessage: "Provider finish_reason: refusal" })] },
-      { messages: [makeAssistant('{"result":"fine","n":0}')] },
+      { messages: [makeToolCallAssistant({ result: "fine", n: 0 })] },
     ]);
     const terminal = await collect({ ...BASE, structured: COMPILED, createSession: async () => session });
     assert.equal(terminal.phase, "succeeded");
@@ -181,18 +185,18 @@ describe("structured output terminal classification (#249)", () => {
     assert.match(terminal.error.message, /refused/);
   });
 
-  test("incomplete (max tokens) fails directly — no correction", async () => {
+  test("incomplete (max tokens) fails directly — no retry", async () => {
     const session = makeFakeSession([
-      { messages: [makeAssistant('{"result":"trunc', { stopReason: "length" })] },
+      { messages: [makeToolCallAssistant({ result: "trunc", n: 1 }, { stopReason: "length" })] },
     ]);
     const terminal = await collect({ ...BASE, structured: COMPILED, createSession: async () => session });
     assert.equal(terminal.phase, "failed");
     assert.equal(terminal.error.kind, "structured_output_error");
     assert.match(terminal.error.message, /incomplete/);
-    assert.equal(session._getPromptCalls().length, 1, "incomplete never corrects");
+    assert.equal(session._getPromptCalls().length, 1, "incomplete never retries");
   });
 
-  test("empty text fails directly — no correction", async () => {
+  test("empty message (no toolCall, no text) fails directly", async () => {
     const session = makeFakeSession([
       { messages: [makeAssistant("   \n", { stopReason: "stop" })] },
     ]);
@@ -209,30 +213,13 @@ describe("structured output terminal classification (#249)", () => {
     assert.match(terminal.error.message, /no assistant response/);
   });
 
-  test("refusal retry then invalid JSON still gets its own correction (independent budgets)", async () => {
-    // refusal is re-asked once; the retry answer is invalid JSON, which
-    // deserves its own single correction; the corrected answer passes.
-    const session = makeFakeSession([
-      { messages: [makeAssistant("", { stopReason: "error", errorMessage: "refusal" })] },
-      { messages: [makeAssistant("not json")] },
-      { messages: [makeAssistant('{"result":"ok","n":1}')] },
-    ]);
-    const terminal = await collect({ ...BASE, structured: COMPILED, createSession: async () => session });
-    assert.equal(terminal.phase, "succeeded");
-    assert.deepEqual(terminal.outputs, { result: "ok", n: 1 });
-    assert.equal(session._getPromptCalls().length, 3);
-  });
-
   test("provider error stop reason fails as provider_error, not empty/structured", async () => {
-    // An endpoint rejecting response_format surfaces as stopReason=error +
-    // errorMessage on the final assistant message — never an empty-response
-    // or structured failure, and never a fake success.
     const session = makeFakeSession([
       {
         messages: [
-          makeAssistant("", {
+          makeToolCallAssistant({ result: "x", n: 1 }, {
             stopReason: "error",
-            errorMessage: "volcengine does not support parameters: ['response_format']",
+            errorMessage: "upstream rejected the request",
           }),
         ],
       },
@@ -240,9 +227,8 @@ describe("structured output terminal classification (#249)", () => {
     const terminal = await collect({ ...BASE, structured: COMPILED, createSession: async () => session });
     assert.equal(terminal.phase, "failed");
     assert.equal(terminal.error.kind, "provider_error");
-    assert.match(terminal.error.message, /response_format/);
-    assert.match(terminal.error.message, /structured output capability may be unsupported/);
-    assert.equal(session._getPromptCalls().length, 1, "provider error never corrects");
+    assert.match(terminal.error.message, /upstream rejected/);
+    assert.equal(session._getPromptCalls().length, 1, "provider error never retries");
   });
 
   test("cancellation mid-run stays cancelled even with a structured contract", async () => {
@@ -277,6 +263,41 @@ describe("structured output terminal classification (#249)", () => {
     assert.equal(terminal.phase, "failed");
     assert.equal(terminal.error.kind, "provider_error");
     assert.match(terminal.error.message, /upstream 500/);
+  });
+
+  test("tool-call budget: a model looping on other tools without StructuredOutput fails instead of hanging", async () => {
+    // pi's agent loop has no iteration cap (#320 hardening): 11 tool_start
+    // events (budget is 10) without a StructuredOutput call must abort and
+    // fail with the budget message — never hang, never fake-success.
+    const loopingEvents = Array.from({ length: 11 }, (_, i) => ({
+      type: "tool_execution_start",
+      toolName: `read_${i}`,
+      args: { path: `/tmp/${i}` },
+    }));
+    const session = makeFakeSession([
+      { events: loopingEvents, messages: [makeAssistant("still working...")] },
+    ]);
+    const terminal = await collect({ ...BASE, structured: COMPILED, createSession: async () => session });
+    assert.equal(terminal.phase, "failed");
+    assert.equal(terminal.error.kind, "structured_output_error");
+    assert.match(terminal.error.message, /tool-call budget \(10\)/);
+  });
+
+  test("tool-call budget does not trigger for legitimate sub-budget tool use", async () => {
+    // A normal read-then-StructuredOutput flow (2 tool starts) stays well
+    // under the budget and succeeds.
+    const session = makeFakeSession([
+      {
+        events: [
+          { type: "tool_execution_start", toolName: "read_file", args: { path: "/a" } },
+          { type: "tool_execution_end", toolName: "read_file", result: "content" },
+        ],
+        messages: [makeToolCallAssistant({ result: "ok", n: 1 })],
+      },
+    ]);
+    const terminal = await collect({ ...BASE, structured: COMPILED, createSession: async () => session });
+    assert.equal(terminal.phase, "succeeded");
+    assert.deepEqual(terminal.outputs, { result: "ok", n: 1 });
   });
 });
 

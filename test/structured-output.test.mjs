@@ -3,22 +3,28 @@ import { describe, test } from "node:test";
 
 import {
   compileStrictSchema,
-  createStructuredOutputExtension,
-  detectApiShape,
+  createStructuredOutputPayloadExtension,
+  createStructuredOutputTool,
+  extractFinalAssistantMessage,
   StructuredOutputCapabilityError,
 } from "../server/structured-output.mjs";
 
 /**
- * #248: provider-native structured output injection.
+ * #320: StructuredOutput-tool-route.
  *
  * Covers:
  *   - compileStrictSchema: FlowGram IJsonSchema → strict provider schema,
  *     including legacy-document normalization (missing required), empty
  *     declarations → null, and malformed declarations → throw.
- *   - detectApiShape: openai-completions vs openai-responses vs unknown.
- *   - createStructuredOutputExtension: per-API-shape injection and
- *     fail-fast capability error on unknown shapes.
- *   - per-run isolation: separate extension instances never share schemas.
+ *   - createStructuredOutputTool: the customTool registered into pi — loose
+ *     parameters ({type:"object"}) so pi's uncapped pre-validation never
+ *     loops; execute validates strictly and either accepts (terminate) or
+ *     feeds field-level errors back for the pi loop to retry, capped at
+ *     maxRetries.
+ *   - createStructuredOutputPayloadExtension: restores the STRICT compiled
+ *     schema on the wire (both API shapes).
+ *   - extractFinalAssistantMessage: last-assistant-message extraction incl.
+ *     the final StructuredOutput toolCall block (parsed arguments).
  */
 
 describe("compileStrictSchema", () => {
@@ -128,24 +134,64 @@ describe("compileStrictSchema", () => {
   });
 });
 
-describe("detectApiShape", () => {
-  test("openai-completions when payload has messages", () => {
-    assert.equal(detectApiShape({ model: "m", messages: [] }), "openai-completions");
+describe("createStructuredOutputTool (#320)", () => {
+  const compiled = compileStrictSchema({
+    type: "object",
+    properties: { result: { type: "string" }, n: { type: "integer" } },
   });
 
-  test("openai-responses when payload has input without messages", () => {
-    assert.equal(detectApiShape({ model: "m", input: [] }), "openai-responses");
+  /** Run one execute() against parsed arguments (pi passes parsed objects). */
+  const run = (tool, args) => tool.execute("call_1", args, undefined, undefined, {});
+
+  test("definition carries LOOSE parameters ({type:'object'}) — strict validation lives in execute", () => {
+    const tool = createStructuredOutputTool({ compiled });
+    assert.equal(tool.name, "StructuredOutput");
+    assert.deepEqual(tool.parameters, { type: "object" });
+    assert.match(tool.description, /exactly once/i);
+    assert.ok(Array.isArray(tool.promptGuidelines) && tool.promptGuidelines.length > 0);
+    assert.match(tool.promptGuidelines[0], /MUST call the StructuredOutput tool exactly once/i);
   });
 
-  test("unknown otherwise", () => {
-    assert.equal(detectApiShape({}), "unknown");
-    assert.equal(detectApiShape(undefined), "unknown");
-    assert.equal(detectApiShape(null), "unknown");
-    assert.equal(detectApiShape("x"), "unknown");
+  test("execute accepts valid arguments: terminate + projected outputs in details", async () => {
+    const tool = createStructuredOutputTool({ compiled });
+    const result = await run(tool, { result: "ok", n: 3 });
+    assert.equal(result.terminate, true, "accepted toolCall ends the agent turn");
+    assert.equal(result.details.ok, true);
+    assert.deepEqual(result.details.outputs, { result: "ok", n: 3 });
+  });
+
+  test("execute rejects invalid arguments with field-level reasons, no terminate (model retries)", async () => {
+    const tool = createStructuredOutputTool({ compiled });
+    const result = await run(tool, { result: "ok", n: "3" });
+    assert.equal(result.terminate, undefined, "a rejected call must NOT end the agent turn");
+    assert.equal(result.details.ok, false);
+    const text = result.content[0].text;
+    assert.match(text, /field "n" must be integer/);
+    assert.match(text, /call the tool again/i);
+  });
+
+  test("execute terminates after maxRetries with retry-cap error text", async () => {
+    const tool = createStructuredOutputTool({ compiled, maxRetries: 3 });
+    let last;
+    for (let i = 0; i < 3; i++) {
+      last = await run(tool, { result: "ok", n: "3" });
+    }
+    assert.equal(last.terminate, true, "retry cap forces termination");
+    assert.match(last.content[0].text, /retry cap \(3\) exceeded/i);
+  });
+
+  test("attempt budget is per-tool-instance (per-run isolation)", async () => {
+    const a = createStructuredOutputTool({ compiled, maxRetries: 2 });
+    const b = createStructuredOutputTool({ compiled, maxRetries: 2 });
+    await run(a, { result: "ok", n: "3" }); // a: attempt 1/2 — retryable
+    const aLast = await run(a, { result: "ok", n: "3" }); // a: attempt 2/2 — cap
+    assert.equal(aLast.terminate, true, "a exhausted its budget");
+    const bFirst = await run(b, { result: "ok", n: "3" }); // b: attempt 1/2 — fresh
+    assert.equal(bFirst.terminate, undefined, "b has its own budget");
   });
 });
 
-describe("createStructuredOutputExtension", () => {
+describe("createStructuredOutputPayloadExtension (#320)", () => {
   const compiled = compileStrictSchema({
     type: "object",
     properties: { result: { type: "string" }, n: { type: "integer" } },
@@ -159,72 +205,119 @@ describe("createStructuredOutputExtension", () => {
     return handler({ payload });
   }
 
-  test("openai-completions payload gets response_format.json_schema with strict schema", () => {
+  test("completions shape: StructuredOutput parameters replaced with the strict schema; other tools untouched", () => {
     const result = invokeExtension(
-      createStructuredOutputExtension({ compiled, provider: "p", model: "m", endpoint: "http://e" }),
-      { model: "m", messages: [{ role: "user", content: "hi" }], stream: true },
-    );
-    assert.deepEqual(result.response_format, {
-      type: "json_schema",
-      json_schema: {
-        name: compiled.name,
-        strict: true,
-        schema: compiled.schema,
+      createStructuredOutputPayloadExtension(compiled),
+      {
+        model: "m",
+        tools: [
+          { type: "function", function: { name: "read_file", parameters: { type: "object" } } },
+          { type: "function", function: { name: "StructuredOutput", parameters: { type: "object" } } },
+        ],
       },
-    });
-    // Original payload is preserved (only the response_format key added).
-    assert.deepEqual(result.messages, [{ role: "user", content: "hi" }]);
-    assert.equal(result.stream, true);
+    );
+    const so = result.tools.find((t) => t.function.name === "StructuredOutput");
+    assert.deepEqual(so.function.parameters, compiled.schema);
+    const read = result.tools.find((t) => t.function.name === "read_file");
+    assert.deepEqual(read.function.parameters, { type: "object" }, "other tools untouched");
   });
 
-  test("openai-responses payload gets text.format.json_schema (never mixed with response_format)", () => {
+  test("responses shape: tool.parameters replaced (no function wrapper)", () => {
     const result = invokeExtension(
-      createStructuredOutputExtension({ compiled, provider: "p", model: "m", endpoint: "http://e" }),
-      { model: "m", input: [{ role: "user", content: "hi" }] },
-    );
-    assert.equal("response_format" in result, false, "must not mix request shapes");
-    assert.deepEqual(result.text, {
-      format: {
-        type: "json_schema",
-        name: compiled.name,
-        strict: true,
-        schema: compiled.schema,
+      createStructuredOutputPayloadExtension(compiled),
+      {
+        model: "m",
+        tools: [{ type: "function", name: "StructuredOutput", parameters: { type: "object" } }],
       },
-    });
+    );
+    assert.deepEqual(result.tools[0].parameters, compiled.schema);
   });
 
-  test("unknown payload shape throws StructuredOutputCapabilityError with provider/model/endpoint/api", () => {
-    assert.throws(
-      () =>
-        invokeExtension(
-          createStructuredOutputExtension({ compiled, provider: "custom", model: "m9", endpoint: "http://e" }),
-          { instructions: "hi" },
-        ),
-      (err) => {
-        assert.ok(err instanceof StructuredOutputCapabilityError);
-        assert.equal(err.kind, "capability_error");
-        assert.match(err.message, /provider=custom/);
-        assert.match(err.message, /model=m9/);
-        assert.match(err.message, /endpoint=http:\/\/e/);
-        assert.match(err.message, /api=unknown/);
-        return true;
-      },
-    );
+  test("payload without the tool is returned unchanged (SSE runs carry no extension anyway)", () => {
+    // undefined return = "don't replace" in the runner's before_provider_request
+    // semantics — the original payload goes out untouched.
+    const payload = { model: "m", tools: [{ type: "function", function: { name: "read_file" } }] };
+    const result = invokeExtension(createStructuredOutputPayloadExtension(compiled), payload);
+    assert.equal(result, undefined, "no rewrite for payloads without the tool");
   });
 
   test("two extensions with different schemas never leak across runs (#248 per-run isolation)", () => {
     const compiledA = compileStrictSchema({ type: "object", properties: { result: { type: "string" } } });
     const compiledB = compileStrictSchema({ type: "object", properties: { count: { type: "integer" } } });
-    const resultA = invokeExtension(
-      createStructuredOutputExtension({ compiled: compiledA }),
-      { messages: [] },
-    );
-    const resultB = invokeExtension(
-      createStructuredOutputExtension({ compiled: compiledB }),
-      { messages: [] },
-    );
-    assert.deepEqual(resultA.response_format.json_schema.schema.properties, { result: { type: "string" } });
-    assert.deepEqual(resultB.response_format.json_schema.schema.properties, { count: { type: "integer" } });
-    assert.equal("count" in resultA.response_format.json_schema.schema.properties, false);
+    const payload = {
+      tools: [{ type: "function", function: { name: "StructuredOutput", parameters: { type: "object" } } }],
+    };
+    const resultA = invokeExtension(createStructuredOutputPayloadExtension(compiledA), payload);
+    const resultB = invokeExtension(createStructuredOutputPayloadExtension(compiledB), payload);
+    assert.deepEqual(resultA.tools[0].function.parameters.properties, { result: { type: "string" } });
+    assert.deepEqual(resultB.tools[0].function.parameters.properties, { count: { type: "integer" } });
+    assert.equal("count" in resultA.tools[0].function.parameters.properties, false);
+  });
+});
+
+describe("extractFinalAssistantMessage toolCall extraction (#320)", () => {
+  const toolCall = (name, args) => ({ type: "toolCall", id: "call_1", name, arguments: args });
+
+  test("pure toolCall message (content='') yields the LAST toolCall with parsed arguments", () => {
+    const session = {
+      messages: [
+        {
+          role: "assistant",
+          content: [toolCall("read_file", { path: "/a" }), toolCall("StructuredOutput", { result: "ok", n: 3 })],
+          stopReason: "toolUse",
+        },
+      ],
+    };
+    const msg = extractFinalAssistantMessage(session);
+    assert.equal(msg.text, "");
+    assert.deepEqual(msg.toolCall, { name: "StructuredOutput", arguments: { result: "ok", n: 3 } });
+  });
+
+  test("mixed text + toolCall keeps text and the LAST toolCall", () => {
+    const session = {
+      messages: [
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "thinking" }, toolCall("StructuredOutput", { result: "ok", n: 1 })],
+          stopReason: "stop",
+        },
+      ],
+    };
+    const msg = extractFinalAssistantMessage(session);
+    assert.equal(msg.text, "thinking");
+    assert.deepEqual(msg.toolCall, { name: "StructuredOutput", arguments: { result: "ok", n: 1 } });
+  });
+
+  test("a non-StructuredOutput toolCall never shadows the StructuredOutput candidate", () => {
+    // Mixed batch: read_file BEFORE and AFTER the StructuredOutput call — the
+    // extraction must keep the StructuredOutput call, not the last block.
+    const session = {
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            toolCall("read_file", { path: "/a" }),
+            toolCall("StructuredOutput", { result: "ok", n: 1 }),
+            toolCall("grep", { query: "x" }),
+          ],
+          stopReason: "toolUse",
+        },
+      ],
+    };
+    const msg = extractFinalAssistantMessage(session);
+    assert.deepEqual(msg.toolCall, { name: "StructuredOutput", arguments: { result: "ok", n: 1 } });
+  });
+
+  test("last assistant message wins; messages without toolCall yield null toolCall", () => {
+    const session = {
+      messages: [
+        { role: "assistant", content: [toolCall("StructuredOutput", { result: "old" })], stopReason: "toolUse" },
+        { role: "toolResult", toolCallId: "call_1", toolName: "StructuredOutput", content: [] },
+        { role: "assistant", content: [{ type: "text", text: "final" }], stopReason: "stop" },
+      ],
+    };
+    const msg = extractFinalAssistantMessage(session);
+    assert.equal(msg.text, "final");
+    assert.equal(msg.toolCall, null);
   });
 });

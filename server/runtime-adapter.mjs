@@ -27,7 +27,8 @@ import { persistExecution } from './execution-store.mjs';
 import { getMem0Host, getMem0ApiKey } from './settings.mjs';
 import {
   compileStrictSchema,
-  createStructuredOutputExtension,
+  createStructuredOutputPayloadExtension,
+  createStructuredOutputTool,
   StructuredOutputCapabilityError,
 } from './structured-output.mjs';
 import { executeFeishuBot } from './feishu-executor.mjs';
@@ -35,7 +36,9 @@ import { resolveSkillPaths, parseSkillFrontmatter } from './skills.mjs';
 
 // API shapes that can honor the structured output contract (#248).
 // The model registry pins `api` per registered model; anything outside these
-// two shapes fails fast at session creation with a capability error.
+// two shapes fails fast at session creation with a capability error. Since
+// #320 the contract rides the tools array (StructuredOutput customTool), but
+// the shape gate stays — unknown shapes can't carry tool loops either.
 const STRUCTURED_OUTPUT_API_SHAPES = new Set(['openai-completions', 'openai-responses']);
 
 // AsyncLocalStorage carries the workflow_run_id from the queue-adapter
@@ -176,9 +179,10 @@ export async function createAgentSessionForAgent(agent, agentDir, mem0, structur
   const model = provider.model || 'gpt-4o';
   const pricing = provider.pricing ?? { input: 0, output: 0 };
 
-  // 0. Capability check (#248): the model's API shape must expose a
-  // json_schema structured output slot. Fail fast BEFORE any provider request
-  // — no fallback to json_object or plain text.
+  // 0. Capability check (#248): the model's API shape must be able to carry
+  // the StructuredOutput tool loop (tools in the payload + toolCall results
+  // back). Fail fast BEFORE any provider request — no fallback to
+  // json_object or plain text.
   const modelApi = provider.api ?? 'openai-completions';
   if (structured && !STRUCTURED_OUTPUT_API_SHAPES.has(modelApi)) {
     throw new StructuredOutputCapabilityError({
@@ -186,7 +190,7 @@ export async function createAgentSessionForAgent(agent, agentDir, mem0, structur
       model,
       endpoint: provider.base_url,
       apiShape: modelApi,
-      detail: 'model API shape has no json_schema structured output slot',
+      detail: 'model API shape has no tool-calling loop for structured output',
     });
   }
 
@@ -285,9 +289,12 @@ export async function createAgentSessionForAgent(agent, agentDir, mem0, structur
   }
 
   // 5. ResourceLoader — inject systemPrompt + pick up skills/extensions from
-  // settings. When this run carries a structured output contract, register the
-  // request-scoped inline extension whose closure captures the schema (#243:
-  // per-run isolation via extensionFactories). Responses API providers also
+  // settings. The StructuredOutput contract no longer injects response_format
+  // (#320): pi never assembles it by itself, so the payload reaches the
+  // provider with tools only — the customTool registered in step 6 is
+  // serialized into the tools array by pi, and the model's answer arrives as
+  // a toolCall (channel-separated from text, immune to the
+  // response_format × tools mutual exclusion). Responses API providers still
   // get the store compat extension so tool loops survive LiteLLM/Azure
   // gateways (stateless function_call_output references are rejected there).
   //
@@ -298,14 +305,9 @@ export async function createAgentSessionForAgent(agent, agentDir, mem0, structur
   // resolved global-library paths as the sole source.
   const extensionFactories = [];
   if (structured) {
-    extensionFactories.push(
-      createStructuredOutputExtension({
-        compiled: structured,
-        provider: provider.name ?? 'custom',
-        model,
-        endpoint: provider.base_url,
-      })
-    );
+    // Restore the strict schema on the wire (the customTool's loose parameters
+    // keep pi's uncapped pre-validation out of the retry loop — #320).
+    extensionFactories.push(createStructuredOutputPayloadExtension(structured));
   }
   if (modelApi === 'openai-responses') {
     extensionFactories.push(
@@ -327,7 +329,12 @@ export async function createAgentSessionForAgent(agent, agentDir, mem0, structur
   });
   await resourceLoader.reload();
 
-  // 6. createAgentSession — full options
+  // 6. createAgentSession — full options. The StructuredOutput customTool is
+  // registered per run when the node declares a contract: pi serializes it
+  // into the provider payload tools and executes it on model calls (validate
+  // → accept/terminate or field-level error feedback, retry capped at 5). The
+  // factory closure captures THIS run's schema + attempt budget, so nothing
+  // can leak across sessions (#248 acceptance, preserved in the tool route).
   const sessionOpts = {
     cwd: agentSessionDir,
     agentDir: agentSessionDir,
@@ -337,6 +344,9 @@ export async function createAgentSessionForAgent(agent, agentDir, mem0, structur
     settingsManager,
     resourceLoader,
   };
+  if (structured) {
+    sessionOpts.customTools = [createStructuredOutputTool({ compiled: structured })];
+  }
 
   // thinkingLevel
   if (sessionOptions.thinkingLevel) {

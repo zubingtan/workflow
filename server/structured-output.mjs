@@ -1,31 +1,32 @@
 /**
- * Structured Output contract (#248/#249) — the schema side of the pi Agent
- * Node structured output pipeline.
+ * Structured Output contract (#248/#249, tool route #320) — the schema side
+ * of the pi Agent Node structured output pipeline.
  *
  * Owns:
  *   - compileStrictSchema: FlowGram IJsonSchema → strict provider schema
  *     (object, all properties required, additionalProperties:false,
  *     strict:true). Tolerates legacy documents that omit `required` — the
  *     property list itself is the contract (#246 normalization).
- *   - createStructuredOutputExtension: request-scoped inline extension that
- *     injects the schema into provider-native Structured Outputs payloads via
- *     before_provider_request (#243 decision: DefaultResourceLoader
- *     extensionFactories closure captures the per-run schema — inherently
- *     per-run isolated, no cross-session leakage).
+ *   - createStructuredOutputTool: the StructuredOutput customTool registered
+ *     into the pi session (CreateAgentSessionOptions.customTools, #320). The
+ *     compiled schema rides as the tool's `parameters` (pure JSON Schema — pi
+ *     validates non-TypeBox schemas via its JSON-Schema path); execute()
+ *     validates the model's arguments and either accepts (terminate:true, the
+ *     agent loop stops) or feeds field-level errors back for the model to
+ *     retry, capped at maxRetries.
  *   - StructuredOutputCapabilityError: fail-fast error raised BEFORE the
  *     provider request is sent, carrying provider/model/endpoint/API shape.
  *
- * Does NOT own: final-text extraction, JSON validation, retry/refusal
- * semantics — those live in the execution layer (server/agent-execution.mjs).
+ * Does NOT own: final extraction, strict validation, retry/refusal semantics —
+ * extraction lives here too (extractFinalAssistantMessage) but the execution
+ * layer (server/agent-execution.mjs) drives classification.
  */
 
-// Correction/refusal retry prompts (#243). These are semantic nudges only —
-// the schema injected via response_format is the structural guarantee.
+// Correction/refusal retry prompts (#243). Refusal re-ask stays in the
+// execution layer; schema correction is now the tool's job (#320), so the
+// corrective prompt below is gone.
 const REFUSAL_RETRY_PROMPT =
   "Your previous response refused to answer. Please provide the requested structured output instead.";
-const CORRECTION_PROMPT_PREFIX =
-  "Your previous response did not match the required JSON schema. " +
-  "Respond with ONLY valid JSON matching the schema. Errors: ";
 
 /** Flat primitive types allowed by the structured output contract (#242). */
 export const ALLOWED_FIELD_TYPES = new Set(["string", "integer", "number", "boolean"]);
@@ -149,80 +150,113 @@ export function compileStrictSchema(outputs) {
 }
 
 /**
- * Detect the provider request API shape from the outgoing payload.
- *   - OpenAI Chat Completions: has `messages`
- *   - OpenAI Responses: has `input` (and no `messages`)
- *   - anything else: unknown → capability error
- */
-export function detectApiShape(payload) {
-  if (!payload || typeof payload !== "object") return "unknown";
-  if (Array.isArray(payload.messages)) return "openai-completions";
-  if (Array.isArray(payload.input)) return "openai-responses";
-  return "unknown";
-}
-
-/**
- * Create the inline extension factory for one run's structured schema.
+ * Create the StructuredOutput customTool (#320, Qoder `agent({schema})`
+ * mechanism). Registered into CreateAgentSessionOptions.customTools so pi:
+ *   - serializes its definition into the provider payload `tools` array,
+ *   - executes it when the model calls it: validate the arguments; accept with
+ *     terminate:true on success; otherwise return field-level errors as the
+ *     tool result so the pi agent loop feeds them back and the model retries
+ *     (capped at maxRetries, then terminate so the run ends fail-fast).
  *
- * The factory is passed to DefaultResourceLoader.extensionFactories; the
- * loaded extension's `before_provider_request` handler rewrites the outgoing
- * provider payload. Because the factory closure captures THIS run's schema
- * and the resource loader is built per session (per run), schemas can never
- * leak across sessions (#248 acceptance).
+ * `parameters` is deliberately LOOSE ({type:"object"}): pi's own
+ * validateToolArguments runs BEFORE execute and would reject strict-schema
+ * violations with an uncapped error-feedback loop (pi's agent loop has no
+ * retry cap). All strict validation therefore lives in execute — which owns
+ * the capped retry — while the STRICT compiled schema is restored on the
+ * wire by createStructuredOutputPayloadExtension so the model still sees the
+ * full contract.
  *
- * Injection per API shape:
- *   - openai-completions → response_format: { type:"json_schema", json_schema:{ name, strict:true, schema } }
- *   - openai-responses   → text: { format: { type:"json_schema", name, strict:true, schema } }
- *   - unknown            → StructuredOutputCapabilityError (fail fast, no fallback)
+ * The attempt counter lives in the factory closure, so every session (every
+ * run) gets its own budget — schemas and counters can never leak across runs
+ * (#248 per-run isolation, preserved in the tool route).
  *
  * @param {object} opts
  * @param {{ schema: object, name: string }} opts.compiled - compileStrictSchema result
- * @param {string} [opts.provider] - provider label for capability errors
- * @param {string} [opts.model] - model id for capability errors
- * @param {string} [opts.endpoint] - provider base_url for capability errors
- * @returns {(api: ExtensionAPI) => void} extension factory — the resource
- *   loader invokes it as `factory(api)` (loadExtensionFromFactory), so the
- *   returned function must REGISTER handlers, not return another function.
+ * @param {number} [opts.maxRetries=5] - validation-failure retry cap
+ * @returns {object} pi ToolDefinition (duck-typed: name/label/description/
+ *   promptGuidelines/parameters/execute)
  */
-export function createStructuredOutputExtension({ compiled, provider, model, endpoint }) {
+export function createStructuredOutputTool({ compiled, maxRetries = 5 }) {
+  let attempts = 0;
+  return {
+    name: "StructuredOutput",
+    label: "Structured Output",
+    description:
+      "Return the structured output requested by the workflow. You MUST call this tool exactly once successfully. If validation fails, call again with corrected shape.",
+    // Injected into the system prompt's Guidelines section while the tool is
+    // active (#320): the protocol-level MUST-call contract. `tool_choice`
+    // forced is unavailable on DashScope models (400, thinking mode), so the
+    // prompt + validation-retry loop is the enforcement mechanism.
+    promptGuidelines: [
+      "You MUST call the StructuredOutput tool exactly once to return your final answer. The tool's input schema defines the required shape.",
+      "Do your work, then call StructuredOutput with your answer.",
+      "Do NOT put your answer in a text response. The workflow reads ONLY the StructuredOutput tool call.",
+      "If validation fails, read the error and call StructuredOutput again with a corrected shape.",
+    ],
+    // Loose on purpose — see the module doc comment above.
+    parameters: { type: "object" },
+    execute: async (toolCallId, params) => {
+      attempts += 1;
+      const result = validateStructuredOutput(params, compiled);
+      if (result.ok) {
+        return {
+          content: [{ type: "text", text: "Structured output accepted." }],
+          details: { ok: true, outputs: result.outputs },
+          terminate: true,
+        };
+      }
+      const errorText =
+        `StructuredOutput validation failed: ${result.errors.join("; ")}. ` +
+        "Call the tool again with corrected arguments matching the schema.";
+      if (attempts >= maxRetries) {
+        return {
+          content: [{ type: "text", text: `${errorText} Retry cap (${maxRetries}) exceeded.` }],
+          details: { ok: false, errors: result.errors },
+          terminate: true,
+        };
+      }
+      return {
+        content: [{ type: "text", text: errorText }],
+        details: { ok: false, errors: result.errors },
+      };
+    },
+  };
+}
+
+/**
+ * Create the request-scoped inline extension that restores the STRICT compiled
+ * schema on the wire (#320). pi serializes the customTool's loose parameters
+ * ({type:"object"}) into the provider payload tools; this handler replaces the
+ * StructuredOutput tool's parameters with compiled.schema (all required,
+ * additionalProperties:false) so the model still sees the full contract while
+ * pi's uncapped pre-validation stays out of the loop.
+ *
+ * Works for both API shapes: completions (tool.function.parameters) and
+ * responses (tool.parameters). Factory closure captures THIS run's schema
+ * (per-run isolation, same pattern as the old response_format extension).
+ *
+ * @param {{ schema: object, name: string }} compiled - compileStrictSchema result
+ * @returns {(api: ExtensionAPI) => void} extension factory
+ */
+export function createStructuredOutputPayloadExtension(compiled) {
   return (api) => {
     api.on("before_provider_request", (event) => {
       const payload = event.payload;
-      const apiShape = detectApiShape(payload);
-      if (apiShape === "openai-completions") {
-        return {
-          ...payload,
-          response_format: {
-            type: "json_schema",
-            json_schema: {
-              name: compiled.name,
-              strict: true,
-              schema: compiled.schema,
-            },
-          },
-        };
-      }
-      if (apiShape === "openai-responses") {
-        return {
-          ...payload,
-          text: {
-            ...(payload.text ?? {}),
-            format: {
-              type: "json_schema",
-              name: compiled.name,
-              strict: true,
-              schema: compiled.schema,
-            },
-          },
-        };
-      }
-      throw new StructuredOutputCapabilityError({
-        provider,
-        model,
-        endpoint,
-        apiShape,
-        detail: "provider request shape does not expose a json_schema structured output slot",
+      if (!payload || !Array.isArray(payload.tools)) return;
+      let changed = false;
+      const tools = payload.tools.map((tool) => {
+        if (tool?.function?.name === "StructuredOutput") {
+          changed = true;
+          return { ...tool, function: { ...tool.function, parameters: compiled.schema } };
+        }
+        if (tool?.name === "StructuredOutput") {
+          changed = true;
+          return { ...tool, parameters: compiled.schema };
+        }
+        return tool;
       });
+      if (!changed) return;
+      return { ...payload, tools };
     });
   };
 }
@@ -234,8 +268,13 @@ export function createStructuredOutputExtension({ compiled, provider, model, end
  * (#243: the LAST assistant message at agent_end — never the accumulated
  * partialText, which is only a streaming projection).
  *
+ * Since #320 the message may carry toolCall blocks (the StructuredOutput
+ * route); the LAST toolCall block (pi parses arguments into an object) is
+ * surfaced as `toolCall` so the execution layer can classify the run.
+ *
  * @param {object} session - pi AgentSession (duck-typed: `messages` getter)
- * @returns {{ text: string, stopReason: string|undefined, errorMessage: string|undefined }|null}
+ * @returns {{ text: string, stopReason: string|undefined, errorMessage: string|undefined,
+ *             toolCall: { name: string, arguments: object }|null }|null}
  *   null when the session has no assistant message at all.
  */
 export function extractFinalAssistantMessage(session) {
@@ -247,9 +286,28 @@ export function extractFinalAssistantMessage(session) {
       text: extractTextContent(msg),
       stopReason: msg.stopReason,
       errorMessage: msg.errorMessage,
+      toolCall: extractToolCall(msg),
     };
   }
   return null;
+}
+
+/**
+ * Extract the LAST StructuredOutput toolCall block from an assistant message's
+ * content. Other toolCall blocks (e.g. read_file in a mixed batch) never
+ * overwrite an already-found StructuredOutput candidate — the classification
+ * layer must never mistake them for the contract channel.
+ */
+function extractToolCall(msg) {
+  const content = msg.content;
+  if (!Array.isArray(content)) return null;
+  let last = null;
+  for (const part of content) {
+    if (part?.type === "toolCall" && part.name === "StructuredOutput") {
+      last = { name: part.name, arguments: part.arguments };
+    }
+  }
+  return last;
 }
 
 /** Concatenate the text parts of an assistant message (any content shape). */
@@ -340,11 +398,6 @@ function jsonTypeName(value) {
   if (value === null) return "null";
   if (Array.isArray(value)) return "array";
   return typeof value;
-}
-
-/** Build the one-time correction prompt from field-level validation errors. */
-export function buildCorrectionPrompt(errors) {
-  return CORRECTION_PROMPT_PREFIX + errors.join("; ");
 }
 
 export { REFUSAL_RETRY_PROMPT };

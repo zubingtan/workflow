@@ -22,7 +22,6 @@
  */
 
 import {
-  buildCorrectionPrompt,
   extractFinalAssistantMessage,
   isIncompleteMessage,
   isRefusalMessage,
@@ -46,10 +45,12 @@ import {
  * @param {string} opts.agentDir
  * @param {{ schema: object, name: string }|null} [opts.structured] - compiled
  *   structured output contract for this run (#248). When set, the terminal
- *   carries validated `outputs` (only declared fields) and the final
- *   assistant text is taken from the LAST assistant message, not the
- *   streaming partialText (#243). Refusal retries once in the same session;
- *   invalid JSON / field mismatch corrects once; incomplete/empty fails.
+ *   carries validated `outputs` (only declared fields) and the final answer
+ *   is the LAST StructuredOutput toolCall's arguments, not the streaming
+ *   partialText (#243/#320). Refusal retries once in the same session;
+ *   schema self-correction happens inside the pi agent loop (the customTool
+ *   feeds field-level errors back, capped at 5); a run that ends without
+ *   calling the tool fails fast.
  * @returns {AsyncGenerator<AgentExecutionEvent>}
  */
 export async function* runAgentExecution({
@@ -100,12 +101,20 @@ export async function* runAgentExecution({
   let unsubscribe;
   let partialText = "";
   const toolEvents = [];
+  // Tool-call budget for structured runs (#320, code-review hardening): pi's
+  // agent loop has NO iteration cap — a model that keeps calling tools (e.g.
+  // read_file) without ever calling StructuredOutput would loop forever, and
+  // `timeoutOverride: 0` (no node timeout) would hang permanently. Budget = 5
+  // StructuredOutput retries + room for the tools the workflow legitimately
+  // needs (skill reads etc.); exceeding it aborts the session and fails.
+  const MAX_STRUCTURED_TOOL_CALLS = 10;
 
   // Run one prompt cycle: submit, stream until settle, drain leftovers after
   // waitForIdle. Closure-captured state (queue/promptSettled/closed) is reset
-  // per turn so a structured contract can drive at most one corrective turn
-  // in the SAME session. Non-terminal events are yielded for streaming; the
-  // resolved turn result ({ promptError }) is the generator's return value.
+  // per turn so a structured contract can drive at most one refusal re-ask
+  // in the SAME session (#243/#320). Non-terminal events are yielded for
+  // streaming; the resolved turn result ({ promptError }) is the generator's
+  // return value.
   async function* runTurn(promptText) {
     promptSettled.value = false;
     closed.value = false;
@@ -148,7 +157,6 @@ export async function* runAgentExecution({
         push(ev);
       }
     });
-
     // Bridge cancellation: when signal aborts, call session.abort() (awaitable).
     let abortRequested = false;
     const onAbort = () => {
@@ -160,16 +168,16 @@ export async function* runAgentExecution({
     signal?.addEventListener("abort", onAbort, { once: true });
 
     // Run the agent loop. A structured contract may drive at most one extra
-    // turn in the SAME session (#243/#249): a refusal is asked again once
-    // (refusalRetried), and an invalid/unparseable response gets one
-    // corrective prompt carrying only field-level reasons (correctionUsed,
-    // never credentials or raw text). The two budgets are independent — a
-    // refusal re-ask may still deserve its own correction afterwards.
+    // turn in the SAME session (#243/#320): a refusal is asked again once
+    // (refusalRetried). Schema correction is NOT an execution-layer concern
+    // anymore — the StructuredOutput customTool rejects bad arguments inside
+    // the pi loop and the model self-corrects there (capped at 5); the
+    // execution layer only reads the final toolCall and re-validates
+    // defensively.
     let turnPrompt = prompt;
     let refusalRetried = false;
-    let correctionUsed = false;
     let finalMessage = null;
-    let lastValidation = null; // { ok, outputs?, errors? } for the final turn
+    let toolBudgetExceeded = false;
 
     while (true) {
       const turnGen = runTurn(turnPrompt);
@@ -181,38 +189,27 @@ export async function* runAgentExecution({
           break;
         }
         yield value; // non-terminal streaming event
+        // Structured tool budget (#320): count tool_start events as they
+        // stream; when the model keeps calling tools without ever terminating
+        // via StructuredOutput, abort the session so the run fails instead of
+        // hanging (pi's agent loop has no iteration cap).
+        if (structured && value.type === "tool_start" && toolEvents.length > MAX_STRUCTURED_TOOL_CALLS) {
+          toolBudgetExceeded = true;
+          void session.abort?.();
+        }
       }
       if (turnResult.promptError) {
         promptError = turnResult.promptError;
         break;
       }
+      if (toolBudgetExceeded) break;
       if (!structured) break;
 
       finalMessage = extractFinalAssistantMessage(session);
       if (!finalMessage) break;
-
       if (isRefusalMessage(finalMessage) && !refusalRetried) {
         refusalRetried = true;
         turnPrompt = REFUSAL_RETRY_PROMPT;
-        continue;
-      }
-      if (isIncompleteMessage(finalMessage)) break;
-      if (!finalMessage.text.trim()) break; // empty response — classified below
-
-      let parsed;
-      try {
-        parsed = JSON.parse(finalMessage.text);
-      } catch {
-        parsed = null;
-      }
-      const result =
-        parsed === null
-          ? { ok: false, errors: ["response is not valid JSON"] }
-          : validateStructuredOutput(parsed, structured);
-      lastValidation = result;
-      if (!result.ok && !correctionUsed) {
-        correctionUsed = true;
-        turnPrompt = buildCorrectionPrompt(result.errors);
         continue;
       }
       break;
@@ -269,11 +266,22 @@ export async function* runAgentExecution({
       return;
     }
 
-    // Structured classification (#249): fail/terminate on anything that is not
-    // a validated projection of the declared fields. `outputs` only ever
-    // contains verified declared fields; the raw final text stays available
-    // for diagnostics via `finalText` (never part of the outputs contract).
+    // Structured classification (#249/#320): fail/terminate on anything that
+    // is not a validated projection of the declared fields. `outputs` only
+    // ever contains verified declared fields; the raw final text stays
+    // available for diagnostics via `finalText` (never part of the outputs
+    // contract).
     if (structured) {
+      if (toolBudgetExceeded) {
+        yield {
+          type: "terminal", phase: "failed", partialText, toolEvents, stats, sessionFile,
+          error: {
+            kind: "structured_output_error",
+            message: `agent exceeded the tool-call budget (${MAX_STRUCTURED_TOOL_CALLS}) without calling StructuredOutput`,
+          },
+        };
+        return;
+      }
       if (!finalMessage) {
         yield {
           type: "terminal", phase: "failed", partialText, toolEvents, stats, sessionFile,
@@ -295,20 +303,42 @@ export async function* runAgentExecution({
         };
         return;
       }
-      // Provider error surfaced as an assistant message (e.g. an endpoint
-      // rejecting response_format) — classify as provider_error, never as an
-      // empty/structured failure, and never as a structured success.
+      // Provider error surfaced as an assistant message — classify as
+      // provider_error, never as an empty/structured failure, and never as a
+      // structured success.
       if (finalMessage.stopReason === "error") {
         const providerMessage =
           finalMessage.errorMessage || "provider returned an error stop reason";
-        const capabilityHint = /json_schema|response_format|structured output/i.test(providerMessage)
-          ? "; structured output capability may be unsupported"
-          : "";
+        yield {
+          type: "terminal", phase: "failed", partialText, toolEvents, stats, sessionFile,
+          error: { kind: "provider_error", message: providerMessage },
+        };
+        return;
+      }
+      // Tool route (#320): the answer is the LAST StructuredOutput toolCall.
+      // Re-validate defensively — the customTool already validated inside the
+      // loop, but the execution layer never trusts the transcript blindly.
+      const toolCall = finalMessage.toolCall;
+      if (toolCall?.name === "StructuredOutput") {
+        const result = validateStructuredOutput(toolCall.arguments, structured);
+        if (result.ok) {
+          yield {
+            type: "terminal",
+            phase: "succeeded",
+            partialText,
+            toolEvents,
+            stats,
+            sessionFile,
+            outputs: result.outputs,
+            finalText: finalMessage.text,
+          };
+          return;
+        }
         yield {
           type: "terminal", phase: "failed", partialText, toolEvents, stats, sessionFile,
           error: {
-            kind: "provider_error",
-            message: `${providerMessage}${capabilityHint}`,
+            kind: "structured_output_error",
+            message: `structured output validation failed: ${result.errors.join("; ")}`,
           },
         };
         return;
@@ -320,23 +350,15 @@ export async function* runAgentExecution({
         };
         return;
       }
-      if (!lastValidation?.ok) {
-        const summary = lastValidation?.errors?.join("; ") ?? "response is not valid JSON";
-        yield {
-          type: "terminal", phase: "failed", partialText, toolEvents, stats, sessionFile,
-          error: { kind: "structured_output_error", message: `structured output validation failed: ${summary}` },
-        };
-        return;
-      }
+      // The model ended its turn without calling StructuredOutput — the
+      // MUST-call contract was violated. Fail fast; never parse text JSON as
+      // a substitute (the tool is the only channel, #320).
       yield {
-        type: "terminal",
-        phase: "succeeded",
-        partialText,
-        toolEvents,
-        stats,
-        sessionFile,
-        outputs: lastValidation.outputs,
-        finalText: finalMessage.text,
+        type: "terminal", phase: "failed", partialText, toolEvents, stats, sessionFile,
+        error: {
+          kind: "structured_output_error",
+          message: "agent completed without calling StructuredOutput",
+        },
       };
       return;
     }
