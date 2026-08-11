@@ -150,6 +150,23 @@ export function compileStrictSchema(outputs) {
 }
 
 /**
+ * The protocol-level MUST-call contract (#320). pi's buildSystemPrompt injects
+ * promptGuidelines into the system prompt's Guidelines section ONLY in its
+ * default-prompt branch — when a customPrompt (agent system_prompt) is set,
+ * the guidelines are dropped entirely, so the model never sees the contract.
+ * The session factory therefore appends these to the system prompt directly
+ * when a run carries a structured contract (see runtime-adapter.mjs).
+ * `tool_choice` forced is unavailable on DashScope models (400, thinking
+ * mode), so the prompt + validation-retry loop is the enforcement mechanism.
+ */
+export const STRUCTURED_OUTPUT_GUIDELINES = [
+  "You MUST call the StructuredOutput tool exactly once to return your final answer. The tool's input schema defines the required shape.",
+  "Do your work, then call StructuredOutput with your answer.",
+  "Do NOT put your answer in a text response. The workflow reads ONLY the StructuredOutput tool call.",
+  "If validation fails, read the error and call StructuredOutput again with a corrected shape.",
+];
+
+/**
  * Create the StructuredOutput customTool (#320, Qoder `agent({schema})`
  * mechanism). Registered into CreateAgentSessionOptions.customTools so pi:
  *   - serializes its definition into the provider payload `tools` array,
@@ -183,16 +200,10 @@ export function createStructuredOutputTool({ compiled, maxRetries = 5 }) {
     label: "Structured Output",
     description:
       "Return the structured output requested by the workflow. You MUST call this tool exactly once successfully. If validation fails, call again with corrected shape.",
-    // Injected into the system prompt's Guidelines section while the tool is
-    // active (#320): the protocol-level MUST-call contract. `tool_choice`
-    // forced is unavailable on DashScope models (400, thinking mode), so the
-    // prompt + validation-retry loop is the enforcement mechanism.
-    promptGuidelines: [
-      "You MUST call the StructuredOutput tool exactly once to return your final answer. The tool's input schema defines the required shape.",
-      "Do your work, then call StructuredOutput with your answer.",
-      "Do NOT put your answer in a text response. The workflow reads ONLY the StructuredOutput tool call.",
-      "If validation fails, read the error and call StructuredOutput again with a corrected shape.",
-    ],
+    // The MUST-call contract lives in STRUCTURED_OUTPUT_GUIDELINES — see the
+    // constant doc comment for why the session factory also injects it into
+    // the system prompt.
+    promptGuidelines: STRUCTURED_OUTPUT_GUIDELINES,
     // Loose on purpose — see the module doc comment above.
     parameters: { type: "object" },
     execute: async (toolCallId, params) => {
