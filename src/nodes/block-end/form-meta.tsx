@@ -4,7 +4,6 @@
  */
 
 import { FormRenderProps, FormMeta } from '@flowgram.ai/free-layout-editor';
-import { Avatar } from '@douyinfe/semi-ui';
 
 import { FlowNodeJSON } from '../../typings';
 import iconEnd from '../../assets/icon-end.jpg';
@@ -20,15 +19,9 @@ export const renderForm = ({ form }: FormRenderProps<FlowNodeJSON>) => (
         justifyContent: 'center',
       }}
     >
-      <Avatar
-        shape="circle"
-        style={{
-          width: 40,
-          height: 40,
-          borderRadius: '50%',
-          cursor: 'move',
-        }}
-        alt="Icon"
+      <img
+        style={{ width: 40, height: 40, borderRadius: '50%', cursor: 'move' }}
+        alt="End"
         src={iconEnd}
       />
     </div>

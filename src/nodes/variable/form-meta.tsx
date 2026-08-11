@@ -5,7 +5,7 @@
 
 import { FormMeta, FormRenderProps } from '@flowgram.ai/free-layout-editor';
 
-import { AssignRows, DisplayOutputs } from '@/form-semantics/legacy-adapter';
+import { AssignRows, DisplayOutputs } from '@/form-semantics';
 import { createInferAssignPlugin } from '@/form-semantics';
 
 import { FormHeader, FormContent } from '../../form-components';

@@ -17,7 +17,7 @@ export const FormWrapper = styled.div`
 `;
 
 export const FormTitleDescription = styled.div`
-  color: var(--semi-color-text-2);
+  color: var(--muted-foreground);
   font-size: 12px;
   line-height: 20px;
   padding: 0px 4px;

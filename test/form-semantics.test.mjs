@@ -273,7 +273,7 @@ test('document save preserves unknown top-level fields while canonical fields wi
   );
 });
 
-test('legacy form-materials access is isolated to one explicit adapter', () => {
+test('legacy form-materials access is removed from the editor', () => {
   const root = join(process.cwd(), 'src');
   const files = [];
 
@@ -290,5 +290,5 @@ test('legacy form-materials access is isolated to one explicit adapter', () => {
     .filter((path) => readFileSync(path, 'utf8').includes('@flowgram.ai/form-materials'))
     .map((path) => relative(process.cwd(), path));
 
-  assert.deepEqual(imports, ['src/form-semantics/legacy-adapter.tsx']);
+  assert.deepEqual(imports, []);
 });

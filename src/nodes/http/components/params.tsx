@@ -5,7 +5,7 @@
 
 import { Field } from '@flowgram.ai/free-layout-editor';
 
-import { DisplayInputsValues, InputsValues } from '@/form-semantics/legacy-adapter';
+import { DisplayInputsValues, InputsValues } from '@/form-semantics';
 import type { IFlowValue } from '@/form-semantics';
 
 import { useIsSidebar, useNodeRenderContext } from '../../../hooks';

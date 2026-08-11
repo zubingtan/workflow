@@ -16,8 +16,9 @@
  */
 import { useEffect, useRef, useState } from 'react';
 
-import { Button, Input, Select, Tag, Typography } from '@douyinfe/semi-ui';
-import { IconMinusCircle, IconPlusCircle } from '@douyinfe/semi-icons';
+import { MinusCircle, PlusCircle } from 'lucide-react';
+
+import { Button, Input, Select } from '@/components/ui';
 
 import type { JsonSchema } from '../../typings/json-schema';
 import {
@@ -106,9 +107,7 @@ export function StructuredOutputEditor({
 
   return (
     <div style={{ marginTop: 4 }}>
-      <Typography.Text size="small" strong style={{ display: 'block', marginBottom: 6 }}>
-        Structured Output Schema
-      </Typography.Text>
+      <div className="mb-1.5 block text-xs font-medium">Structured Output Schema</div>
 
       {/* Field rows — continuous block (Variant A) */}
       <div
@@ -119,8 +118,8 @@ export function StructuredOutputEditor({
         }}
       >
         {fields.length === 0 && (
-          <div style={{ ...rowBase, borderBottom: 'none', color: 'var(--semi-color-text-2)' }}>
-            <Typography.Text size="small">No fields declared</Typography.Text>
+          <div style={{ ...rowBase, borderBottom: 'none', color: 'var(--muted-foreground)' }}>
+            <span className="text-xs">No fields declared</span>
           </div>
         )}
         {fields.map((field, idx) => {
@@ -130,44 +129,53 @@ export function StructuredOutputEditor({
             <div
               key={field.id}
               style={{
-                background: err ? 'var(--semi-color-danger-light-default)' : undefined,
+                background: err
+                  ? 'color-mix(in oklch, var(--destructive) 10%, transparent)'
+                  : undefined,
               }}
             >
               <div
                 style={{
                   ...rowBase,
-                  borderLeftColor: err ? 'var(--semi-color-danger)' : 'transparent',
-                  borderBottom: isLast ? 'none' : '1px solid var(--semi-color-border)',
+                  borderLeftColor: err ? 'var(--destructive)' : 'transparent',
+                  borderBottom: isLast ? 'none' : '1px solid var(--border)',
                 }}
               >
-                <Tag type="light" size="small" style={{ minWidth: 24, textAlign: 'center' }}>
+                <span className="min-w-6 rounded-md bg-muted px-1.5 py-0.5 text-center text-[10px]">
                   {idx + 1}
-                </Tag>
+                </span>
                 <Input
                   value={field.name}
-                  onChange={(v) => updateField(field.id, { name: v })}
+                  onChange={(event) => updateField(field.id, { name: event.target.value })}
                   placeholder="field_name"
-                  size="small"
-                  style={{ flex: 1, border: 'none', background: 'transparent' }}
+                  className="flex-1 border-0 bg-transparent"
                   disabled={readonly}
                 />
                 <Select
                   value={field.type}
-                  onChange={(v) => updateField(field.id, { type: v as SchemaField['type'] })}
-                  optionList={TYPE_OPTIONS}
-                  size="small"
-                  style={{ width: 110 }}
+                  onChange={(event) =>
+                    updateField(field.id, {
+                      type: event.currentTarget.value as SchemaField['type'],
+                    })
+                  }
+                  className="w-[110px]"
                   disabled={readonly}
-                />
+                >
+                  {TYPE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </Select>
                 <Button
-                  icon={<IconMinusCircle />}
-                  theme="borderless"
-                  size="small"
-                  type="danger"
+                  variant="destructive"
+                  size="icon-sm"
                   onClick={() => removeField(field.id)}
                   disabled={readonly}
                   aria-label={`Remove field ${field.name || idx + 1}`}
-                />
+                >
+                  <MinusCircle />
+                </Button>
               </div>
               {/* Field-level error right under its row — the reason is always
                   visible next to the offending field, never a bare red row. */}
@@ -175,7 +183,7 @@ export function StructuredOutputEditor({
                 <div
                   style={{
                     padding: '0 8px 6px 11px',
-                    color: 'var(--semi-color-danger)',
+                    color: 'var(--destructive)',
                     fontSize: 12,
                     borderBottom: isLast ? 'none' : '1px solid var(--semi-color-border)',
                   }}
@@ -202,24 +210,18 @@ export function StructuredOutputEditor({
             marginTop: 4,
             borderRadius: 6,
             cursor: 'pointer',
-            color: 'var(--semi-color-text-2)',
-            border: '1px dashed var(--semi-color-border)',
+            color: 'var(--muted-foreground)',
+            border: '1px dashed var(--border)',
           }}
         >
-          <IconPlusCircle size="small" />
-          <Typography.Text size="small">Add Field</Typography.Text>
+          <PlusCircle />
+          <span className="text-xs">Add Field</span>
         </div>
       )}
 
       {/* Global error (block-level, e.g. last-field deletion guard) */}
       {globalError && (
-        <Typography.Text
-          type="danger"
-          size="small"
-          style={{ display: 'block', marginTop: 4, marginLeft: 10 }}
-        >
-          {globalError}
-        </Typography.Text>
+        <span className="mt-1 ml-2 block text-xs text-destructive">{globalError}</span>
       )}
 
       {/* Live output JSON preview */}
@@ -228,20 +230,18 @@ export function StructuredOutputEditor({
           style={{
             marginTop: 10,
             padding: 8,
-            background: 'var(--semi-color-fill-1)',
+            background: 'var(--muted)',
             borderRadius: 6,
           }}
         >
-          <Typography.Text size="small" strong style={{ display: 'block', marginBottom: 4 }}>
-            Output JSON Preview
-          </Typography.Text>
+          <div className="mb-1 block text-xs font-medium">Output JSON Preview</div>
           <pre
             style={{
               margin: 0,
               fontSize: 11,
               whiteSpace: 'pre-wrap',
               wordBreak: 'break-all',
-              color: hasErrors(errors) ? 'var(--semi-color-danger)' : 'var(--semi-color-text-0)',
+              color: hasErrors(errors) ? 'var(--destructive)' : 'var(--foreground)',
             }}
           >
             {JSON.stringify(

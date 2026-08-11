@@ -16,16 +16,16 @@ export const ToolContainer = styled.div`
   pointer-events: none;
   gap: var(--app-space-2);
 
-  z-index: 20;
+  z-index: 1000;
 `;
 
 export const ToolSection = styled.div`
   display: flex;
   align-items: center;
-  background-color: var(--app-color-surface);
-  border: 1px solid var(--app-color-border);
-  border-radius: var(--app-radius-md);
-  box-shadow: var(--app-shadow-md);
+  background-color: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: var(--shadow-lg);
   column-gap: 2px;
   height: 40px;
   padding: 0 var(--app-space-1);

@@ -4,7 +4,7 @@
  */
 
 import styled from 'styled-components';
-import { IconInfoCircle } from '@douyinfe/semi-icons';
+import { CircleAlert } from 'lucide-react';
 
 export const NodeWrapperStyle = styled.div`
   align-items: flex-start;
@@ -25,7 +25,8 @@ export const NodeWrapperStyle = styled.div`
 `;
 
 export const ErrorIcon = () => (
-  <IconInfoCircle
+  <CircleAlert
+    size={16}
     style={{
       position: 'absolute',
       color: 'var(--app-color-danger)',

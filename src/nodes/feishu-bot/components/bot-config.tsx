@@ -1,8 +1,8 @@
 import { Field } from '@flowgram.ai/free-layout-editor';
-import { Select, Typography } from '@douyinfe/semi-ui';
 
-import { PromptEditorWithVariables } from '@/form-semantics/legacy-adapter';
+import { PromptEditorWithVariables } from '@/form-semantics';
 import type { IFlowTemplateValue } from '@/form-semantics';
+import { Select } from '@/components/ui';
 
 import { useNodeRenderContext, useIsSidebar } from '../../../hooks';
 import { FormItem } from '../../../form-components';
@@ -24,15 +24,12 @@ export function BotConfig() {
           {({ field }) => (
             <Select
               value={field.value}
-              onChange={(v) => field.onChange(v as string)}
-              style={{ width: '100%' }}
-              size="small"
+              onChange={(event) => field.onChange(event.currentTarget.value)}
               disabled={readonly_}
-              optionList={[
-                { label: 'Custom Bot (Webhook)', value: 'webhook' },
-                { label: 'App Bot', value: 'app' },
-              ]}
-            />
+            >
+              <option value="webhook">Custom Bot (Webhook)</option>
+              <option value="app">App Bot</option>
+            </Select>
           )}
         </Field>
       </FormItem>
@@ -57,9 +54,9 @@ export function BotConfig() {
                 </Field>
               </FormItem>
               <div style={{ marginTop: 8 }}>
-                <Typography.Text size="small" strong>
+                <label className="text-xs font-medium">
                   Secret (optional, for signature verification)
-                </Typography.Text>
+                </label>
                 <Field<string> name="webhook.secret" defaultValue="">
                   {({ field }) => (
                     <input
@@ -68,14 +65,7 @@ export function BotConfig() {
                       onChange={(e) => field.onChange(e.target.value)}
                       disabled={readonly_}
                       placeholder="Leave empty to skip signing"
-                      style={{
-                        width: '100%',
-                        padding: '4px 8px',
-                        fontSize: 12,
-                        border: '1px solid var(--semi-color-border)',
-                        borderRadius: 4,
-                        marginTop: 4,
-                      }}
+                      className="mt-1"
                     />
                   )}
                 </Field>
@@ -84,9 +74,7 @@ export function BotConfig() {
           ) : (
             <div style={{ marginTop: 8 }}>
               <div style={{ marginBottom: 8 }}>
-                <Typography.Text size="small" strong>
-                  App ID
-                </Typography.Text>
+                <label className="text-xs font-medium">App ID</label>
                 <Field<string> name="app.appId" defaultValue="">
                   {({ field }) => (
                     <input
@@ -95,22 +83,13 @@ export function BotConfig() {
                       onChange={(e) => field.onChange(e.target.value)}
                       disabled={readonly_}
                       placeholder="cli_xxxxxxxxxxxx"
-                      style={{
-                        width: '100%',
-                        padding: '4px 8px',
-                        fontSize: 12,
-                        border: '1px solid var(--semi-color-border)',
-                        borderRadius: 4,
-                        marginTop: 4,
-                      }}
+                      className="mt-1"
                     />
                   )}
                 </Field>
               </div>
               <div style={{ marginBottom: 8 }}>
-                <Typography.Text size="small" strong>
-                  App Secret
-                </Typography.Text>
+                <label className="text-xs font-medium">App Secret</label>
                 <Field<string> name="app.appSecret" defaultValue="">
                   {({ field }) => (
                     <input
@@ -119,38 +98,27 @@ export function BotConfig() {
                       onChange={(e) => field.onChange(e.target.value)}
                       disabled={readonly_}
                       placeholder="App secret from developer console"
-                      style={{
-                        width: '100%',
-                        padding: '4px 8px',
-                        fontSize: 12,
-                        border: '1px solid var(--semi-color-border)',
-                        borderRadius: 4,
-                        marginTop: 4,
-                      }}
+                      className="mt-1"
                     />
                   )}
                 </Field>
               </div>
               <div style={{ marginBottom: 8 }}>
-                <Typography.Text size="small" strong>
-                  Receive ID Type
-                </Typography.Text>
+                <label className="text-xs font-medium">Receive ID Type</label>
                 <Field<string> name="app.receiveIdType" defaultValue="chat_id">
                   {({ field }) => (
                     <Select
                       value={field.value}
-                      onChange={(v) => field.onChange(v as string)}
-                      style={{ width: '100%', marginTop: 4 }}
-                      size="small"
+                      onChange={(event) => field.onChange(event.currentTarget.value)}
+                      className="mt-1"
                       disabled={readonly_}
-                      optionList={[
-                        { label: 'Chat ID (group)', value: 'chat_id' },
-                        { label: 'Open ID', value: 'open_id' },
-                        { label: 'User ID', value: 'user_id' },
-                        { label: 'Union ID', value: 'union_id' },
-                        { label: 'Email', value: 'email' },
-                      ]}
-                    />
+                    >
+                      <option value="chat_id">Chat ID (group)</option>
+                      <option value="open_id">Open ID</option>
+                      <option value="user_id">User ID</option>
+                      <option value="union_id">Union ID</option>
+                      <option value="email">Email</option>
+                    </Select>
                   )}
                 </Field>
               </div>

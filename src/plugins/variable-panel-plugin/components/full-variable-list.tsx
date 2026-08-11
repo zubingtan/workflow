@@ -3,12 +3,12 @@
  * SPDX-License-Identifier: MIT
  */
 
-import { Tree } from '@douyinfe/semi-ui';
-
-import { useVariableTree } from '@/form-semantics/legacy-adapter';
+import { useVariableTree } from '@/form-semantics';
 
 export function FullVariableList() {
-  const treeData = useVariableTree({});
+  const treeData = useVariableTree();
 
-  return <Tree treeData={treeData} />;
+  if (!treeData.length)
+    return <div className="text-xs text-muted-foreground">No variables available yet.</div>;
+  return <pre className="text-xs">{JSON.stringify(treeData, null, 2)}</pre>;
 }

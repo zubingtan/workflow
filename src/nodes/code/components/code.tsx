@@ -4,9 +4,9 @@
  */
 
 import { Field } from '@flowgram.ai/free-layout-editor';
-import { Divider } from '@douyinfe/semi-ui';
 
-import { TypeScriptCodeEditor } from '@/form-semantics/legacy-adapter';
+import { TypeScriptCodeEditor } from '@/form-semantics';
+import { Separator } from '@/components/ui';
 
 import { useTheme } from '../../../theme';
 import { useIsSidebar, useNodeRenderContext } from '../../../hooks';
@@ -22,7 +22,7 @@ export function Code() {
 
   return (
     <>
-      <Divider />
+      <Separator />
       <Field<string> name="script.content">
         {({ field }) => (
           <TypeScriptCodeEditor

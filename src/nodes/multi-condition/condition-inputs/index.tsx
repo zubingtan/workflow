@@ -7,14 +7,14 @@ import { createPortal } from 'react-dom';
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { nanoid } from 'nanoid';
-import { Field, FieldArray, I18n, WorkflowNodePortsData } from '@flowgram.ai/free-layout-editor';
+import { Plus, Trash2, X } from 'lucide-react';
 import type { WorkflowNodeEntity } from '@flowgram.ai/free-layout-editor';
-import { Button, Select, Space } from '@douyinfe/semi-ui';
-import { IconCrossCircleStroked, IconDelete, IconPlus } from '@douyinfe/semi-icons';
+import { Field, FieldArray, I18n, WorkflowNodePortsData } from '@flowgram.ai/free-layout-editor';
 
-import { ConditionRow } from '@/form-semantics/legacy-adapter';
+import { ConditionRow } from '@/form-semantics';
 import { conditionRowRuleConfig } from '@/form-semantics';
 import type { ConditionRowValueType } from '@/form-semantics';
+import { Button, Select } from '@/components/ui';
 
 import { useConditionPortOrder } from '../../condition/condition-inputs/use-condition-port-order';
 import { useConditionPortLocation } from '../../condition/condition-inputs/use-condition-port-location';
@@ -118,18 +118,16 @@ function MultiConditionBranches({
                 {field.value.conditions.length > 1 && (
                   <ConditionBranchLogic>
                     <Select
-                      size="small"
                       value={field.value.logic}
-                      style={{ backgroundColor: 'var(--semi-color-bg-0)' }}
                       onChange={(v) =>
                         field.onChange({
                           ...field.value,
-                          logic: (v as string) ?? 'and',
+                          logic: v.currentTarget.value ?? 'and',
                         })
                       }
                     >
-                      <Select.Option value="and">{I18n.t('AND')}</Select.Option>
-                      <Select.Option value="or">{I18n.t('OR')}</Select.Option>
+                      <option value="and">{I18n.t('AND')}</option>
+                      <option value="or">{I18n.t('OR')}</option>
                     </Select>
                   </ConditionBranchLogic>
                 )}
@@ -140,7 +138,7 @@ function MultiConditionBranches({
                       key={condition.key}
                     >
                       {({ field: conditionField }) => (
-                        <Space align="center" style={{ padding: '6px 0', width: '100%' }}>
+                        <div className="flex items-center gap-1.5 py-1.5">
                           <div style={{ flex: 1 }}>
                             <ConditionRow
                               readonly={readonly}
@@ -157,9 +155,7 @@ function MultiConditionBranches({
                           {/*remove current branch condition*/}
                           {isSidebar && !readonly && (
                             <Button
-                              theme="borderless"
                               disabled={field.value?.conditions.length === 1}
-                              icon={<IconCrossCircleStroked />}
                               onClick={() =>
                                 field.onChange({
                                   ...field.value,
@@ -168,9 +164,11 @@ function MultiConditionBranches({
                                   ),
                                 })
                               }
-                            />
+                            >
+                              <X />
+                            </Button>
                           )}
-                        </Space>
+                        </div>
                       )}
                     </Field>
                   ))}
@@ -190,9 +188,8 @@ function MultiConditionBranches({
               {isSidebar && !readonly && (
                 <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                   <Button
-                    size="small"
-                    theme="borderless"
-                    icon={<IconPlus />}
+                    size="sm"
+                    variant="ghost"
                     onClick={() => {
                       field.onChange({
                         ...field.value,
@@ -206,15 +203,15 @@ function MultiConditionBranches({
                       });
                     }}
                   >
-                    {I18n.t('Add condition')}
+                    <Plus /> {I18n.t('Add condition')}
                   </Button>
                   <Button
                     disabled={conditions.value?.length === 1}
-                    size="small"
-                    theme="borderless"
-                    icon={<IconDelete />}
+                    size="sm"
+                    variant="ghost"
                     onClick={() => conditions.remove(index)}
                   >
+                    <Trash2 />
                     {I18n.t('Remove branch')}
                   </Button>
                 </div>
@@ -240,8 +237,7 @@ function MultiConditionBranches({
       {!readonly && (
         <div>
           <Button
-            theme="borderless"
-            icon={<IconPlus />}
+            variant="ghost"
             onClick={() =>
               conditions.append({
                 logic: 'and',
@@ -254,7 +250,7 @@ function MultiConditionBranches({
               })
             }
           >
-            {I18n.t('Add branch')}
+            <Plus /> {I18n.t('Add branch')}
           </Button>
         </div>
       )}

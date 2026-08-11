@@ -7,14 +7,14 @@ import { createPortal } from 'react-dom';
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { nanoid } from 'nanoid';
-import { Field, FieldArray, I18n } from '@flowgram.ai/free-layout-editor';
+import { Plus, X } from 'lucide-react';
 import type { WorkflowNodeEntity } from '@flowgram.ai/free-layout-editor';
-import { Button } from '@douyinfe/semi-ui';
-import { IconPlus, IconCrossCircleStroked } from '@douyinfe/semi-icons';
+import { Field, FieldArray } from '@flowgram.ai/free-layout-editor';
 
-import { ConditionRow } from '@/form-semantics/legacy-adapter';
+import { ConditionRow } from '@/form-semantics';
 import { conditionRowRuleConfig } from '@/form-semantics';
 import type { ConditionRowValueType } from '@/form-semantics';
+import { Button } from '@/components/ui';
 
 import { hasTargetElement, rotatePortLocation } from '../../../utils/rotate-ports';
 import { useNodeRenderContext } from '../../../hooks';
@@ -111,12 +111,9 @@ function ConditionBranches({
                 />
 
                 {!readonly && (
-                  <Button
-                    theme="borderless"
-                    disabled={readonly}
-                    icon={<IconCrossCircleStroked />}
-                    onClick={() => field.delete(index)}
-                  />
+                  <Button variant="ghost" disabled={readonly} onClick={() => field.delete(index)}>
+                    <X />
+                  </Button>
                 )}
               </div>
 
@@ -146,8 +143,8 @@ function ConditionBranches({
       {!readonly && (
         <div>
           <Button
-            theme="borderless"
-            icon={<IconPlus />}
+            variant="ghost"
+            aria-label="plus Add"
             onClick={() =>
               field.append({
                 key: `if_${nanoid(6)}`,
@@ -155,7 +152,7 @@ function ConditionBranches({
               })
             }
           >
-            {I18n.t('Add')}
+            <Plus /> Add
           </Button>
         </div>
       )}

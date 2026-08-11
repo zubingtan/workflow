@@ -5,11 +5,12 @@
 
 import { FC, useState, useEffect } from 'react';
 
+import { LoaderCircle, Play, X } from 'lucide-react';
 import classnames from 'classnames';
 import { WorkflowInputs, WorkflowOutputs } from '@flowgram.ai/runtime-interface';
 import { useService } from '@flowgram.ai/free-layout-editor';
-import { Button, Switch } from '@douyinfe/semi-ui';
-import { IconClose, IconPlay, IconSpin } from '@douyinfe/semi-icons';
+
+import { Button } from '@/components/ui/button';
 
 import { TestRunJsonInput } from '../testrun-json-input';
 import { TestRunForm } from '../testrun-form';
@@ -77,7 +78,7 @@ export const TestRunSidePanel: FC<TestRunSidePanelProps> = () => {
 
   const renderRunning = (
     <div className={styles['testrun-panel-running']}>
-      <IconSpin spin size="large" />
+      <LoaderCircle className="animate-spin" aria-hidden="true" />
       <div className={styles.text}>
         {queuePosition > 0 ? `Queued, position ${queuePosition}` : 'Running...'}
       </div>
@@ -89,10 +90,12 @@ export const TestRunSidePanel: FC<TestRunSidePanelProps> = () => {
       <div className={styles['testrun-panel-input']}>
         <div className={styles.title}>Input Form</div>
         <div>JSON Mode</div>
-        <Switch
+        <input
+          aria-label="JSON Mode"
+          className="h-4 w-4 accent-primary"
+          type="checkbox"
           checked={inputJSONMode}
-          onChange={(checked: boolean) => setInputJSONMode(checked)}
-          size="small"
+          onChange={(event) => setInputJSONMode(event.target.checked)}
         />
       </div>
       {inputJSONMode ? (
@@ -114,12 +117,14 @@ export const TestRunSidePanel: FC<TestRunSidePanelProps> = () => {
     <Button
       onClick={onTestRun}
       disabled={workflowDeleted}
-      icon={isRunning ? <IconCancel /> : <IconPlay size="small" />}
+      variant={isRunning ? 'destructive' : 'default'}
+      size="sm"
       className={classnames(styles.button, {
         [styles.running]: isRunning,
         [styles.default]: !isRunning,
       })}
     >
+      {isRunning ? <IconCancel /> : <Play aria-hidden="true" />}
       {isRunning ? 'Cancel' : 'Test Run'}
     </Button>
   );
@@ -199,12 +204,13 @@ export const TestRunSidePanel: FC<TestRunSidePanelProps> = () => {
         <div className={styles['testrun-panel-title']}>Test Run</div>
         <Button
           className={styles['testrun-panel-title']}
-          type="tertiary"
-          icon={<IconClose />}
-          size="small"
-          theme="borderless"
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Close"
           onClick={onClose}
-        />
+        >
+          <X aria-hidden="true" />
+        </Button>
       </div>
       <div className={styles['testrun-panel-content']}>
         {workflowDeleted && (

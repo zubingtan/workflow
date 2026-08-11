@@ -6,9 +6,9 @@
 import { FC } from 'react';
 
 import classNames from 'classnames';
-import { Input, Switch, InputNumber } from '@douyinfe/semi-ui';
 
-import { DisplaySchemaTag } from '@/form-semantics/legacy-adapter';
+import { DisplaySchemaTag } from '@/form-semantics';
+import { Input } from '@/components/ui/input';
 
 import { JsonValueEditor } from '../json-value-editor';
 import { useFormMeta } from '../hooks/use-form-meta';
@@ -42,16 +42,25 @@ export const TestRunForm: FC<TestRunFormProps> = ({ values, setValues }) => {
       case 'boolean':
         return (
           <div className={styles.fieldInput}>
-            <Switch checked={field.value} onChange={(checked) => field.onChange(checked)} />
+            <input
+              aria-label={`${field.name} value`}
+              className="h-4 w-4 accent-primary"
+              type="checkbox"
+              checked={Boolean(field.value)}
+              onChange={(event) => field.onChange(event.target.checked)}
+            />
           </div>
         );
       case 'integer':
         return (
           <div className={styles.fieldInput}>
-            <InputNumber
-              precision={0}
-              value={field.value}
-              onChange={(value) => field.onChange(value)}
+            <Input
+              type="number"
+              step="1"
+              value={field.value ?? ''}
+              onChange={(event) =>
+                field.onChange(event.target.value === '' ? undefined : Number(event.target.value))
+              }
               placeholder="Please input integer"
             />
           </div>
@@ -59,9 +68,13 @@ export const TestRunForm: FC<TestRunFormProps> = ({ values, setValues }) => {
       case 'number':
         return (
           <div className={styles.fieldInput}>
-            <InputNumber
-              value={field.value}
-              onChange={(value) => field.onChange(value)}
+            <Input
+              type="number"
+              step="any"
+              value={field.value ?? ''}
+              onChange={(event) =>
+                field.onChange(event.target.value === '' ? undefined : Number(event.target.value))
+              }
               placeholder="Please input number"
             />
           </div>
@@ -82,8 +95,8 @@ export const TestRunForm: FC<TestRunFormProps> = ({ values, setValues }) => {
         return (
           <div className={styles.fieldInput}>
             <Input
-              value={field.value}
-              onChange={(value) => field.onChange(value)}
+              value={field.value ?? ''}
+              onChange={(event) => field.onChange(event.target.value)}
               placeholder="Please input text"
             />
           </div>

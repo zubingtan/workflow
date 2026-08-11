@@ -6,11 +6,7 @@
 import { FormRenderProps, FlowNodeJSON, Field, FormMeta } from '@flowgram.ai/free-layout-editor';
 import { SubCanvasRender } from '@flowgram.ai/free-container-plugin';
 
-import {
-  BatchOutputs,
-  BatchVariableSelector,
-  DisplayOutputs,
-} from '@/form-semantics/legacy-adapter';
+import { BatchOutputs, BatchVariableSelector, DisplayOutputs } from '@/form-semantics';
 import { createBatchOutputsFormPlugin, provideBatchInputEffect } from '@/form-semantics';
 import type { IFlowRefValue } from '@/form-semantics';
 

@@ -4,13 +4,10 @@
  */
 
 import { Field } from '@flowgram.ai/free-layout-editor';
-import { Select } from '@douyinfe/semi-ui';
 
-import {
-  JsonEditorWithVariables,
-  PromptEditorWithVariables,
-} from '@/form-semantics/legacy-adapter';
+import { JsonEditorWithVariables, PromptEditorWithVariables } from '@/form-semantics';
 import type { IFlowTemplateValue } from '@/form-semantics';
+import { Select } from '@/components/ui';
 
 import { useNodeRenderContext } from '../../../hooks';
 import { FormItem } from '../../../form-components';
@@ -78,14 +75,16 @@ export function Body() {
           <FormItem name="Body" vertical type="object">
             <Select
               value={field.value}
-              onChange={(value) => {
-                field.onChange(value as string);
-              }}
-              style={{ width: '100%', marginBottom: 10 }}
+              onChange={(event) => field.onChange(event.currentTarget.value)}
+              className="mb-2"
               disabled={readonly}
-              size="small"
-              optionList={BODY_TYPE_OPTIONS}
-            />
+            >
+              {BODY_TYPE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
             {renderBodyEditor(field.value)}
           </FormItem>
         </div>

@@ -16,7 +16,6 @@ import {
   Workflow,
 } from 'lucide-react';
 
-import { unstableSetCreateRoot } from '@/form-semantics/legacy-adapter';
 import { preserveWorkflowDocumentFields } from '@/form-semantics';
 
 // Semi CSS must load before semi-bridge.css so the bridge overrides win.
@@ -59,8 +58,6 @@ import {
 import { AgentMillerColumns } from './components/agent-miller';
 import { AdminSettings } from './components/admin-settings';
 import * as api from './api';
-
-unstableSetCreateRoot(createRoot);
 
 type View = 'workflows' | 'agents' | 'settings' | 'editor';
 
@@ -446,15 +443,32 @@ function App() {
         ) : view === 'settings' ? (
           <AdminSettings />
         ) : (
-          <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+          <div
+            style={{
+              height: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              position: 'relative',
+            }}
+          >
             <div
+              data-ui="floating-editor-header"
+              aria-label="Workflow editor controls"
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: 'var(--app-space-2)',
-                padding: 'var(--app-space-2) var(--app-space-4)',
-                borderBottom: '1px solid var(--app-color-border)',
-                background: 'var(--app-color-canvas)',
+                position: 'absolute',
+                top: 12,
+                left: 12,
+                right: 12,
+                zIndex: 1000,
+                padding: '6px 8px',
+                border: '1px solid var(--border)',
+                borderRadius: 999,
+                boxShadow: 'var(--shadow-lg)',
+                background: 'color-mix(in oklch, var(--background) 94%, transparent)',
+                backdropFilter: 'blur(12px)',
               }}
             >
               <Button variant="ghost" size="sm" onClick={() => requestNavigation(backToList)}>
@@ -497,7 +511,11 @@ function App() {
                   <Pencil size={14} style={{ opacity: 0.5, flexShrink: 0 }} />
                 </span>
               )}
-              <div style={{ marginLeft: 'auto' }}>
+              <span style={{ color: 'var(--muted-foreground)', opacity: 0.55 }}>/</span>
+              <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ color: 'var(--muted-foreground)', fontSize: 12 }}>
+                  {dirty ? 'Unsaved changes' : 'Saved'}
+                </span>
                 <Button size="sm" disabled={!dirty || saving} onClick={saveWorkflow}>
                   {saving ? <LoaderCircle className="animate-spin" /> : <Save />}
                   {saving ? 'Saving...' : 'Save'}

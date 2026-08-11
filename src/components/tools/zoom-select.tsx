@@ -1,46 +1,57 @@
-/**
- * Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
- * SPDX-License-Identifier: MIT
- */
-
 import { useState } from 'react';
 
 import { usePlayground, usePlaygroundTools } from '@flowgram.ai/free-layout-editor';
-import { Divider, Dropdown } from '@douyinfe/semi-ui';
 
-import { SelectZoom } from './styles';
+import { Button } from '@/components/ui';
 
 export const ZoomSelect = () => {
   const tools = usePlaygroundTools({ maxZoom: 2, minZoom: 0.25 });
   const playground = usePlayground();
-  const [dropDownVisible, openDropDown] = useState(false);
+  const [open, setOpen] = useState(false);
   return (
-    <Dropdown
-      position="top"
-      trigger="custom"
-      visible={dropDownVisible}
-      onClickOutSide={() => openDropDown(false)}
-      render={
-        <Dropdown.Menu>
-          <Dropdown.Item onClick={() => tools.zoomin()}>Zoom in</Dropdown.Item>
-          <Dropdown.Item onClick={() => tools.zoomout()}>Zoom out</Dropdown.Item>
-          <Divider layout="horizontal" />
-          <Dropdown.Item onClick={() => playground.config.updateZoom(0.5)}>
-            Zoom to 50%
-          </Dropdown.Item>
-          <Dropdown.Item onClick={() => playground.config.updateZoom(1)}>
-            Zoom to 100%
-          </Dropdown.Item>
-          <Dropdown.Item onClick={() => playground.config.updateZoom(1.5)}>
-            Zoom to 150%
-          </Dropdown.Item>
-          <Dropdown.Item onClick={() => playground.config.updateZoom(2.0)}>
-            Zoom to 200%
-          </Dropdown.Item>
-        </Dropdown.Menu>
-      }
-    >
-      <SelectZoom onClick={() => openDropDown(true)}>{Math.floor(tools.zoom * 100)}%</SelectZoom>
-    </Dropdown>
+    <div className="relative">
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => setOpen((value) => !value)}
+        aria-label="Zoom level"
+      >
+        {Math.floor(tools.zoom * 100)}%
+      </Button>
+      {open && (
+        <div className="absolute bottom-full left-0 z-50 mb-1 flex w-32 flex-col rounded-lg border border-border bg-popover p-1 shadow-xl">
+          <Button
+            size="sm"
+            variant="ghost"
+            className="justify-start"
+            onClick={() => tools.zoomin()}
+          >
+            Zoom in
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="justify-start"
+            onClick={() => tools.zoomout()}
+          >
+            Zoom out
+          </Button>
+          {[0.5, 1, 1.5, 2].map((zoom) => (
+            <Button
+              key={zoom}
+              size="sm"
+              variant="ghost"
+              className="justify-start"
+              onClick={() => {
+                playground.config.updateZoom(zoom);
+                setOpen(false);
+              }}
+            >
+              Zoom to {zoom * 100}%
+            </Button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 };

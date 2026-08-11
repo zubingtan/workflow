@@ -1,14 +1,9 @@
-/**
- * Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
- * SPDX-License-Identifier: MIT
- */
+import { useContext, useEffect, useState } from 'react';
 
-import { useState, useEffect, useContext } from 'react';
+import { History, Redo2, Undo2 } from 'lucide-react';
+import { useClientContext, useRefresh } from '@flowgram.ai/free-layout-editor';
 
-import { useRefresh } from '@flowgram.ai/free-layout-editor';
-import { useClientContext } from '@flowgram.ai/free-layout-editor';
-import { Tooltip, IconButton, Divider, Button } from '@douyinfe/semi-ui';
-import { IconUndo, IconRedo, IconHistory } from '@douyinfe/semi-icons';
+import { Button } from '@/components/ui';
 
 import { TestRunButton } from '../testrun/testrun-button';
 import { AddNode } from '../add-node';
@@ -35,30 +30,23 @@ export const DemoTools = () => {
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [minimapVisible, setMinimapVisible] = useState(true);
-  // #190: layout direction now lives in LayoutDirectionContext (provided by
-  // the Editor), so AutoLayout and LayoutDirectionSwitch read from it instead
-  // of a local useState. This lets the useEditorProps ADD_NODE listener
-  // (registered in onInit) see the latest direction via a ref mirror.
-  // Phase 7 (#159): History Modal entry from the editor toolbar.
-  const workflowId = useWorkflowId();
   const [historyVisible, setHistoryVisible] = useState(false);
+  const workflowId = useWorkflowId();
+  const refresh = useRefresh();
   useEffect(() => {
-    const disposable = history.undoRedoService.onChange(() => {
+    const dispose = history.undoRedoService.onChange(() => {
       setCanUndo(history.canUndo());
       setCanRedo(history.canRedo());
     });
-    return () => disposable.dispose();
+    return () => dispose.dispose();
   }, [history]);
-  const refresh = useRefresh();
-
   useEffect(() => {
-    const disposable = playground.config.onReadonlyOrDisabledChange(() => refresh());
-    return () => disposable.dispose();
-  }, [playground]);
-
+    const dispose = playground.config.onReadonlyOrDisabledChange(() => refresh());
+    return () => dispose.dispose();
+  }, [playground, refresh]);
   return (
     <ToolContainer className="workflow-tools">
-      <ToolSection>
+      <ToolSection aria-label="Canvas tools">
         <Interactive />
         <AutoLayout />
         <LayoutDirectionSwitch />
@@ -67,52 +55,40 @@ export const DemoTools = () => {
         <FitView />
         <MinimapSwitch minimapVisible={minimapVisible} setMinimapVisible={setMinimapVisible} />
         <Minimap visible={minimapVisible} />
-        {/* Phase 8 (#160): hide the Readonly toggle in history view — the
-            user must not be able to un-disable edit affordances on a
-            historical snapshot. */}
         {!isHistoryView && <Readonly />}
         <Comment />
-        <Tooltip content="Undo">
-          <IconButton
-            type="tertiary"
-            theme="borderless"
-            icon={<IconUndo />}
-            disabled={!canUndo || playground.config.readonly}
-            onClick={() => history.undo()}
-          />
-        </Tooltip>
-        <Tooltip content="Redo">
-          <IconButton
-            type="tertiary"
-            theme="borderless"
-            icon={<IconRedo />}
-            disabled={!canRedo || playground.config.readonly}
-            onClick={() => history.redo()}
-          />
-        </Tooltip>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Undo"
+          disabled={!canUndo || playground.config.readonly}
+          onClick={() => history.undo()}
+        >
+          <Undo2 />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Redo"
+          disabled={!canRedo || playground.config.readonly}
+          onClick={() => history.redo()}
+        >
+          <Redo2 />
+        </Button>
         <ProblemButton />
         <DownloadTool />
-        <Divider layout="vertical" style={{ height: '16px' }} margin={3} />
+        <span className="mx-1 h-5 w-px bg-border" />
         <AddNode disabled={playground.config.readonly} />
-        <Divider layout="vertical" style={{ height: '16px' }} margin={3} />
-        {/* Phase 7 (#159): History entry — to the RIGHT of Add Node per spec.
-            Phase 8 (#160): hidden in history view (the viewer is already the
-            history detail; reopening the Modal from inside it is a no-op footgun). */}
         {!isHistoryView && (
           <Button
-            icon={<IconHistory />}
-            color="highlight"
-            style={{
-              backgroundColor: 'var(--app-color-primary-light-default)',
-              borderRadius: 'var(--app-radius-md)',
-            }}
+            variant="ghost"
+            size="sm"
             disabled={!workflowId}
             onClick={() => setHistoryVisible(true)}
           >
-            History
+            <History /> History
           </Button>
         )}
-        <Divider layout="vertical" style={{ height: '16px' }} margin={3} />
         <TestRunButton disabled={playground.config.readonly} />
       </ToolSection>
       <HistoryModal

@@ -1,21 +1,12 @@
 import { Field, FormMeta, FormRenderProps } from '@flowgram.ai/free-layout-editor';
-import { Divider, Select, Switch, Typography } from '@douyinfe/semi-ui';
 
-import { DisplayOutputs } from '@/form-semantics/legacy-adapter';
+import { DisplayOutputs } from '@/form-semantics';
+import { Input, Select, Separator } from '@/components/ui';
 
 import { defaultFormMeta } from '../default-form-meta';
 import { useIsSidebar, useNodeRenderContext } from '../../hooks';
 import { FormContent, FormHeader, FormItem } from '../../form-components';
 import { FeishuTriggerNodeJSON } from './types';
-
-const inputStyle = {
-  width: '100%',
-  padding: '4px 8px',
-  fontSize: 12,
-  border: '1px solid var(--semi-color-border)',
-  borderRadius: 4,
-  marginTop: 4,
-};
 
 function TextField({
   name,
@@ -31,23 +22,20 @@ function TextField({
   readonly: boolean;
 }) {
   return (
-    <div style={{ marginBottom: 8 }}>
-      <Typography.Text size="small" strong>
-        {label}
-      </Typography.Text>
-      <Field<string> name={name} defaultValue="">
-        {({ field }) => (
-          <input
+    <Field<string> name={name} defaultValue="">
+      {({ field }) => (
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium">{label}</label>
+          <Input
             type={type}
             value={field.value ?? ''}
-            onChange={(e) => field.onChange(e.target.value)}
+            onChange={(event) => field.onChange(event.target.value)}
             disabled={readonly}
             placeholder={placeholder}
-            style={inputStyle}
           />
-        )}
-      </Field>
-    </div>
+        </div>
+      )}
+    </Field>
   );
 }
 
@@ -63,23 +51,20 @@ function NumberField({
   readonly: boolean;
 }) {
   return (
-    <div style={{ marginBottom: 8 }}>
-      <Typography.Text size="small" strong>
-        {label}
-      </Typography.Text>
-      <Field<number> name={name}>
-        {({ field }) => (
-          <input
+    <Field<number> name={name}>
+      {({ field }) => (
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium">{label}</label>
+          <Input
             type="number"
             min={min}
             value={field.value ?? min}
-            onChange={(e) => field.onChange(Number(e.target.value))}
+            onChange={(event) => field.onChange(Number(event.target.value))}
             disabled={readonly}
-            style={inputStyle}
           />
-        )}
-      </Field>
-    </div>
+        </div>
+      )}
+    </Field>
   );
 }
 
@@ -95,15 +80,17 @@ export const FormRender = ({ form }: FormRenderProps<FeishuTriggerNodeJSON>) => 
         <FormItem name="Enabled" vertical type="boolean">
           <Field<boolean> name="enabled" defaultValue>
             {({ field }) => (
-              <Switch
+              <input
+                type="checkbox"
+                aria-label="Enabled"
                 checked={field.value !== false}
-                onChange={field.onChange}
+                onChange={(event) => field.onChange(event.target.checked)}
                 disabled={readonly_}
               />
             )}
           </Field>
         </FormItem>
-        <Divider />
+        <Separator />
         <TextField
           name="appId"
           label="App ID"
@@ -117,13 +104,15 @@ export const FormRender = ({ form }: FormRenderProps<FeishuTriggerNodeJSON>) => 
           placeholder="Used to fetch Feishu context"
           readonly={readonly_}
         />
-        <Divider />
+        <Separator />
         <FormItem name="Only When Mentioned" vertical type="boolean">
           <Field<boolean> name="onlyWhenMentioned" defaultValue>
             {({ field }) => (
-              <Switch
+              <input
+                type="checkbox"
+                aria-label="Only When Mentioned"
                 checked={field.value !== false}
-                onChange={field.onChange}
+                onChange={(event) => field.onChange(event.target.checked)}
                 disabled={readonly_}
               />
             )}
@@ -140,22 +129,19 @@ export const FormRender = ({ form }: FormRenderProps<FeishuTriggerNodeJSON>) => 
             {({ field }) => (
               <Select
                 value={field.value}
-                onChange={(v) => field.onChange(v as string)}
-                style={{ width: '100%' }}
-                size="small"
+                onChange={(event) => field.onChange(event.currentTarget.value)}
                 disabled={readonly_}
-                optionList={[
-                  { label: 'Auto', value: 'auto' },
-                  { label: 'Thread replies', value: 'thread' },
-                  { label: 'Chat time window', value: 'chat_window' },
-                ]}
-              />
+              >
+                <option value="auto">Auto</option>
+                <option value="thread">Thread replies</option>
+                <option value="chat_window">Chat time window</option>
+              </Select>
             )}
           </Field>
         </FormItem>
         <NumberField name="maxMessages" label="Max Messages" min={1} readonly={readonly_} />
         <NumberField name="windowMinutes" label="Window Minutes" min={1} readonly={readonly_} />
-        <Divider />
+        <Separator />
         <DisplayOutputs displayFromScope />
       </FormContent>
     </>

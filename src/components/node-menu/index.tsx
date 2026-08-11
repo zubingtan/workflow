@@ -1,10 +1,6 @@
-/**
- * Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
- * SPDX-License-Identifier: MIT
- */
-
 import { FC, useCallback, useState, type MouseEvent } from 'react';
 
+import { MoreHorizontal } from 'lucide-react';
 import {
   delay,
   useClientContext,
@@ -15,8 +11,8 @@ import {
   WorkflowSelectService,
 } from '@flowgram.ai/free-layout-editor';
 import { NodeIntoContainerService } from '@flowgram.ai/free-container-plugin';
-import { IconButton, Dropdown } from '@douyinfe/semi-ui';
-import { IconMore } from '@douyinfe/semi-icons';
+
+import { Button } from '@/components/ui';
 
 import { FlowNodeRegistry } from '../../typings';
 import { PasteShortcut } from '../../shortcuts/paste';
@@ -29,117 +25,115 @@ interface NodeMenuProps {
 }
 
 export const NodeMenu: FC<NodeMenuProps> = ({ node, deleteNode, updateTitleEdit }) => {
-  const [visible, setVisible] = useState(true);
+  const [visible, setVisible] = useState(false);
   const clientContext = useClientContext();
   const registry = node.getNodeRegistry<FlowNodeRegistry>();
   const nodeIntoContainerService = useService(NodeIntoContainerService);
   const selectService = useService(WorkflowSelectService);
   const dragService = useService(WorkflowDragService);
-  const canMoveOut = nodeIntoContainerService.canMoveOutContainer(node);
   const tools = usePlaygroundTools();
-
-  const rerenderMenu = useCallback(() => {
-    // force destroy component to trigger a re-render
-    setVisible(false);
-    requestAnimationFrame(() => {
-      setVisible(true);
-    });
-  }, []);
+  const canMoveOut = nodeIntoContainerService.canMoveOutContainer(node);
 
   const handleMoveOut = useCallback(
-    async (e: MouseEvent) => {
-      e.stopPropagation();
+    async (event: MouseEvent) => {
+      event.stopPropagation();
       const sourceParent = node.parent;
-      // move out of container
       nodeIntoContainerService.moveOutContainer({ node });
       await delay(16);
-      // clear invalid lines
-      await nodeIntoContainerService.clearInvalidLines({
-        dragNode: node,
-        sourceParent,
-      });
-      rerenderMenu();
-      // select node
+      await nodeIntoContainerService.clearInvalidLines({ dragNode: node, sourceParent });
       selectService.selectNode(node);
-      // start drag node
-      dragService.startDragSelectedNodes(e);
+      dragService.startDragSelectedNodes(event);
+      setVisible(false);
     },
-    [nodeIntoContainerService, node, rerenderMenu]
+    [dragService, node, nodeIntoContainerService, selectService]
   );
 
   const handleCopy = useCallback(
-    (e: React.MouseEvent) => {
+    (event: MouseEvent) => {
       const copyShortcut = new CopyShortcut(clientContext);
-      const pasteShortcut = new PasteShortcut(clientContext);
-      const data = copyShortcut.toClipboardData([node]);
-      pasteShortcut.apply(data);
-      e.stopPropagation(); // Disable clicking prevents the sidebar from opening
+      new PasteShortcut(clientContext).apply(copyShortcut.toClipboardData([node]));
+      event.stopPropagation();
+      setVisible(false);
     },
     [clientContext, node]
   );
-
-  const handleDelete = useCallback(
-    (e: React.MouseEvent) => {
-      deleteNode();
-      e.stopPropagation(); // Disable clicking prevents the sidebar from opening
-    },
-    [clientContext, node]
-  );
-  const handleEditTitle = useCallback(
-    (e: React.MouseEvent) => {
-      updateTitleEdit?.(true);
-      e.stopPropagation(); // Disable clicking prevents the sidebar from opening
-    },
-    [updateTitleEdit]
-  );
-
-  const handleAutoLayout = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation(); // Disable clicking prevents the sidebar from opening
-      tools.autoLayout({
-        containerNode: node,
-        enableAnimation: true,
-        animationDuration: 1000,
-        disableFitView: true,
-      });
-    },
-    [tools]
-  );
-
-  if (!visible) {
-    return <></>;
-  }
 
   return (
-    <Dropdown
-      trigger="hover"
-      position="bottomRight"
-      render={
-        <Dropdown.Menu>
-          <Dropdown.Item onClick={handleEditTitle}>Edit Title</Dropdown.Item>
-          {canMoveOut && <Dropdown.Item onClick={handleMoveOut}>Move out</Dropdown.Item>}
-          <Dropdown.Item onClick={handleCopy} disabled={registry.meta!.copyDisable === true}>
-            Create Copy
-          </Dropdown.Item>
-          {registry.meta.isContainer && (
-            <Dropdown.Item onClick={handleAutoLayout}>Auto Layout</Dropdown.Item>
+    <div className="relative">
+      <Button
+        size="icon-sm"
+        variant="ghost"
+        aria-label="Node actions"
+        onClick={(event) => {
+          event.stopPropagation();
+          setVisible((current) => !current);
+        }}
+      >
+        <MoreHorizontal />
+      </Button>
+      {visible && (
+        <div
+          className="absolute top-full right-0 z-50 mt-1 flex w-40 flex-col rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-xl"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <Button
+            size="sm"
+            variant="ghost"
+            className="justify-start"
+            onClick={() => {
+              updateTitleEdit?.(true);
+              setVisible(false);
+            }}
+          >
+            Edit title
+          </Button>
+          {canMoveOut && (
+            <Button size="sm" variant="ghost" className="justify-start" onClick={handleMoveOut}>
+              Move out
+            </Button>
           )}
-          <Dropdown.Item
-            onClick={handleDelete}
-            disabled={!!(registry.canDelete?.(clientContext, node) || registry.meta!.deleteDisable)}
+          <Button
+            size="sm"
+            variant="ghost"
+            className="justify-start"
+            disabled={registry.meta.copyDisable === true}
+            onClick={handleCopy}
+          >
+            Create copy
+          </Button>
+          {registry.meta.isContainer && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="justify-start"
+              onClick={() => {
+                tools.autoLayout({
+                  containerNode: node,
+                  enableAnimation: true,
+                  animationDuration: 1000,
+                  disableFitView: true,
+                });
+                setVisible(false);
+              }}
+            >
+              Auto layout
+            </Button>
+          )}
+          <Button
+            size="sm"
+            variant="destructive"
+            className="justify-start"
+            disabled={!!(registry.canDelete?.(clientContext, node) || registry.meta.deleteDisable)}
+            onClick={(event) => {
+              deleteNode();
+              event.stopPropagation();
+              setVisible(false);
+            }}
           >
             Delete
-          </Dropdown.Item>
-        </Dropdown.Menu>
-      }
-    >
-      <IconButton
-        color="secondary"
-        size="small"
-        theme="borderless"
-        icon={<IconMore />}
-        onClick={(e) => e.stopPropagation()}
-      />
-    </Dropdown>
+          </Button>
+        </div>
+      )}
+    </div>
   );
 };

@@ -5,7 +5,7 @@
 
 import { Field, FormMeta } from '@flowgram.ai/free-layout-editor';
 
-import { DisplayInputsValues, InputsValues } from '@/form-semantics/legacy-adapter';
+import { DisplayInputsValues, InputsValues } from '@/form-semantics';
 import { createInferInputsPlugin } from '@/form-semantics';
 import type { IFlowValue } from '@/form-semantics';
 

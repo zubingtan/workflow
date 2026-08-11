@@ -3,15 +3,11 @@
  * SPDX-License-Identifier: MIT
  */
 
-import React, { useCallback } from 'react';
+import React from 'react';
 
-import { Typography, Tooltip } from '@douyinfe/semi-ui';
-
-import { DisplaySchemaTag } from '@/form-semantics/legacy-adapter';
+import { DisplaySchemaTag } from '@/form-semantics';
 
 import './index.css';
-
-const { Text } = Typography;
 
 interface FormItemProps {
   children: React.ReactNode;
@@ -35,19 +31,6 @@ export function FormItem({
   vertical,
   style,
 }: FormItemProps): JSX.Element {
-  const renderTitle = useCallback(
-    (showTooltip?: boolean) => (
-      <div style={{ width: '0', display: 'flex', flex: '1' }}>
-        <Text style={{ width: '100%' }} ellipsis={{ showTooltip: !!showTooltip }}>
-          {name}
-          {required && (
-            <span style={{ color: 'var(--app-color-danger)', paddingLeft: '2px' }}>*</span>
-          )}
-        </Text>
-      </div>
-    ),
-    []
-  );
   return (
     <div
       style={{
@@ -70,7 +53,7 @@ export function FormItem({
         style={{
           justifyContent: 'center',
           alignItems: 'center',
-          color: 'var(--semi-color-text-0)',
+          color: 'var(--app-color-text-3)',
           width: labelWidth || 118,
           minWidth: labelWidth || 118,
           maxWidth: labelWidth || 118,
@@ -82,7 +65,10 @@ export function FormItem({
         }}
       >
         {type && <DisplaySchemaTag value={{ type }} />}
-        {description ? <Tooltip content={description}>{renderTitle()}</Tooltip> : renderTitle(true)}
+        <span className="min-w-0 flex-1 truncate" title={description || name}>
+          {name}
+          {required && <span className="pl-0.5 text-destructive">*</span>}
+        </span>
       </div>
 
       <div

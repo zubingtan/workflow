@@ -5,13 +5,12 @@
 
 import { useState, useEffect, useCallback } from 'react';
 
+import { Play } from 'lucide-react';
 import { useClientContext, FlowNodeEntity } from '@flowgram.ai/free-layout-editor';
-import { Button, Badge } from '@douyinfe/semi-ui';
-import { IconPlay } from '@douyinfe/semi-icons';
+
+import { Button } from '@/components/ui';
 
 import { useTestRunFormPanel } from '../../../plugins/panel-manager-plugin/hooks';
-
-import styles from './index.module.less';
 
 export function TestRunButton(props: { disabled: boolean }) {
   const [errorCount, setErrorCount] = useState(0);
@@ -50,29 +49,13 @@ export function TestRunButton(props: { disabled: boolean }) {
     return () => dispose.dispose();
   }, [clientContext]);
 
-  const button =
-    errorCount === 0 ? (
-      <Button
-        disabled={props.disabled}
-        onClick={onTestRun}
-        icon={<IconPlay size="small" />}
-        className={styles.testrunSuccessButton}
-      >
-        Test Run
-      </Button>
-    ) : (
-      <Badge count={errorCount} position="rightTop" type="danger">
-        <Button
-          type="danger"
-          disabled={props.disabled}
-          onClick={onTestRun}
-          icon={<IconPlay size="small" />}
-          className={styles.testrunErrorButton}
-        >
-            Test Run
-        </Button>
-      </Badge>
-    );
-
-  return button;
+  return (
+    <Button
+      variant={errorCount ? 'destructive' : 'default'}
+      disabled={props.disabled}
+      onClick={onTestRun}
+    >
+      <Play /> Test Run{errorCount ? ` (${errorCount})` : ''}
+    </Button>
+  );
 }
