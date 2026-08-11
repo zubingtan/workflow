@@ -598,7 +598,11 @@ export function AdminSettings() {
                     <Typography.Title heading={5} style={{ margin: 0 }}>
                       Skills
                     </Typography.Title>
-                    <Typography.Paragraph type="tertiary" size="small" style={{ margin: '4px 0 0' }}>
+                    <Typography.Paragraph
+                      type="tertiary"
+                      size="small"
+                      style={{ margin: '4px 0 0' }}
+                    >
                       Global skill library. Each skill is a folder containing SKILL.md. Agents
                       enable skills via their own Skills section.
                     </Typography.Paragraph>
@@ -705,8 +709,8 @@ export function AdminSettings() {
           {deleteBlockedBy ? (
             <>
               <Typography.Text>
-                &quot;{deleteTarget.name}&quot; is enabled for:{' '}
-                {deleteBlockedBy.join(', ')}. Disable it in those agents first.
+                &quot;{deleteTarget.name}&quot; is enabled for: {deleteBlockedBy.join(', ')}.
+                Disable it in those agents first.
               </Typography.Text>
             </>
           ) : (

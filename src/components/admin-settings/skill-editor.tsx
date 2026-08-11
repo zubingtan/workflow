@@ -1,19 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import CodeMirror from '@uiw/react-codemirror';
-import { Button, Input, Modal, Radio, RadioGroup, Toast, Typography } from '@douyinfe/semi-ui';
 import {
-  IconEdit,
-  IconFolder,
-  IconFile,
-  IconUpload,
-  IconSave,
-  IconDelete,
-} from '@douyinfe/semi-icons';
+  Edit3 as IconEdit,
+  File as IconFile,
+  Folder as IconFolder,
+  Save as IconSave,
+  Trash2 as IconDelete,
+  Upload as IconUpload,
+} from 'lucide-react';
+import CodeMirror from '@uiw/react-codemirror';
 import { markdown } from '@codemirror/lang-markdown';
 import { json } from '@codemirror/lang-json';
 import { javascript } from '@codemirror/lang-javascript';
 
+import { Button, Input, Modal, Radio, RadioGroup, Toast, Typography } from '../ui/management';
 import * as api from '../../api';
 
 /**
@@ -253,7 +253,6 @@ function NameMismatchDialog({
         <code>{folderName}</code>. Which name should the skill use?
       </Typography.Paragraph>
       <RadioGroup
-        type="button"
         value={choice}
         onChange={(e) => setChoice(e.target.value as 'sync' | 'frontmatter' | 'custom')}
         style={{
@@ -306,6 +305,10 @@ export function SkillEditor({ initialName, existingNames, onClose, onSaved }: Pr
     name: string;
     files: api.SkillFile[];
   } | null>(null);
+  const [discardOpen, setDiscardOpen] = useState(false);
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [newFileOpen, setNewFileOpen] = useState(false);
+  const [newFileName, setNewFileName] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -332,69 +335,60 @@ export function SkillEditor({ initialName, existingNames, onClose, onSaved }: Pr
 
   const closeWithCheck = () => {
     if (dirty) {
-      Modal.confirm({
-        title: 'Discard draft?',
-        content: 'You have unsaved changes. Closing will discard them.',
-        okText: 'Discard',
-        cancelText: 'Keep editing',
-        onOk: onClose,
-      });
+      setDiscardOpen(true);
     } else {
       onClose();
     }
   };
 
   const handleSave = () => {
-    const targetName = name.trim();
-    if (!targetName) {
+    if (!name.trim()) {
       Toast.error('Skill name is required');
       return;
     }
-    Modal.confirm({
-      title: 'Save skill',
-      content: `Save as "${targetName}" skill?`,
-      okText: 'Save',
-      onOk: async () => {
-        setSaving(true);
-        let renamed = false;
+    setSaveOpen(true);
+  };
+
+  const doSave = async () => {
+    const targetName = name.trim();
+    setSaving(true);
+    let renamed = false;
+    try {
+      // Rename first when the editor is open on an existing skill with a
+      // different name (folder rename + frontmatter sync happen server-side).
+      if (originalName && originalName !== targetName) {
+        await api.renameSkill(originalName, targetName);
+        renamed = true;
+      }
+      // Keep the submitted tree in sync with the folder name: the server
+      // synced the frontmatter during rename, but the draft may still hold
+      // the old name — rewriting it locally prevents an overwrite that
+      // would revert the sync.
+      const filesToSave = renamed
+        ? files.map((f) =>
+            f.path === 'SKILL.md'
+              ? { ...f, content: rewriteFrontmatterName(f.content, targetName) }
+              : f
+          )
+        : files;
+      await api.saveSkillTree(targetName, filesToSave);
+      Toast.success(`Saved "${targetName}"`);
+      onSaved();
+      onClose();
+    } catch (err: any) {
+      // The rename landed but the tree save failed — roll the folder name
+      // back so the editor state and the library stay consistent.
+      if (renamed) {
         try {
-          // Rename first when the editor is open on an existing skill with a
-          // different name (folder rename + frontmatter sync happen server-side).
-          if (originalName && originalName !== targetName) {
-            await api.renameSkill(originalName, targetName);
-            renamed = true;
-          }
-          // Keep the submitted tree in sync with the folder name: the server
-          // synced the frontmatter during rename, but the draft may still hold
-          // the old name — rewriting it locally prevents an overwrite that
-          // would revert the sync.
-          const filesToSave = renamed
-            ? files.map((f) =>
-                f.path === 'SKILL.md'
-                  ? { ...f, content: rewriteFrontmatterName(f.content, targetName) }
-                  : f
-              )
-            : files;
-          await api.saveSkillTree(targetName, filesToSave);
-          Toast.success(`Saved "${targetName}"`);
-          onSaved();
-          onClose();
-        } catch (err: any) {
-          // The rename landed but the tree save failed — roll the folder name
-          // back so the editor state and the library stay consistent.
-          if (renamed) {
-            try {
-              await api.renameSkill(targetName, originalName!);
-            } catch {
-              // best-effort rollback; the library may temporarily hold both names
-            }
-          }
-          Toast.error(err?.message || 'Save failed');
-        } finally {
-          setSaving(false);
+          await api.renameSkill(targetName, originalName!);
+        } catch {
+          // best-effort rollback; the library may temporarily hold both names
         }
-      },
-    });
+      }
+      Toast.error(err?.message || 'Save failed');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const readImportFolder = (input: HTMLInputElement) => {
@@ -490,23 +484,18 @@ export function SkillEditor({ initialName, existingNames, onClose, onSaved }: Pr
   };
 
   const handleNewFile = () => {
-    Modal.info({
-      title: 'New file',
-      content: (
-        <Input
-          defaultValue=""
-          placeholder="path/inside/skill.md"
-          onEnterPress={(e) => {
-            const p = ((e.target as HTMLInputElement).value ?? '').trim();
-            if (p && !files.some((f) => f.path === p)) {
-              setFiles((prev) => [...prev, { path: p, content: '' }]);
-              setSelectedPath(p);
-              setDirty(true);
-            }
-          }}
-        />
-      ),
-    });
+    setNewFileName('');
+    setNewFileOpen(true);
+  };
+
+  const confirmNewFile = () => {
+    const p = newFileName.trim();
+    if (p && !files.some((f) => f.path === p)) {
+      setFiles((prev) => [...prev, { path: p, content: '' }]);
+      setSelectedPath(p);
+      setDirty(true);
+    }
+    setNewFileOpen(false);
   };
 
   const hasChanges = dirty;
@@ -669,7 +658,9 @@ export function SkillEditor({ initialName, existingNames, onClose, onSaved }: Pr
           onCancel={() => setConfirmOverride(null)}
           footer={
             <>
-              <Button onClick={() => setConfirmOverride(null)}>Cancel</Button>
+              <Button theme="borderless" onClick={() => setConfirmOverride(null)}>
+                Cancel
+              </Button>
               <Button
                 theme="solid"
                 onClick={() => applyImport(confirmOverride.name, confirmOverride.files)}
@@ -683,6 +674,71 @@ export function SkillEditor({ initialName, existingNames, onClose, onSaved }: Pr
           Continue?
         </Modal>
       )}
+
+      <Modal
+        visible={discardOpen}
+        title="Discard draft?"
+        onCancel={() => setDiscardOpen(false)}
+        footer={
+          <>
+            <Button theme="borderless" onClick={() => setDiscardOpen(false)}>
+              Keep editing
+            </Button>
+            <Button
+              theme="solid"
+              onClick={() => {
+                setDiscardOpen(false);
+                onClose();
+              }}
+            >
+              Discard
+            </Button>
+          </>
+        }
+      >
+        You have unsaved changes. Closing will discard them.
+      </Modal>
+
+      <Modal
+        visible={saveOpen}
+        title="Save skill"
+        onCancel={() => setSaveOpen(false)}
+        footer={
+          <>
+            <Button theme="borderless" onClick={() => setSaveOpen(false)}>
+              Cancel
+            </Button>
+            <Button theme="solid" loading={saving} onClick={() => void doSave()}>
+              Save
+            </Button>
+          </>
+        }
+      >
+        Save as &quot;{name.trim()}&quot; skill?
+      </Modal>
+
+      <Modal
+        visible={newFileOpen}
+        title="New file"
+        onCancel={() => setNewFileOpen(false)}
+        footer={
+          <>
+            <Button theme="borderless" onClick={() => setNewFileOpen(false)}>
+              Cancel
+            </Button>
+            <Button theme="solid" onClick={confirmNewFile}>
+              Add
+            </Button>
+          </>
+        }
+      >
+        <Input
+          value={newFileName}
+          onChange={setNewFileName}
+          onEnterPress={confirmNewFile}
+          placeholder="path/inside/skill.md"
+        />
+      </Modal>
     </Modal>
   );
 }

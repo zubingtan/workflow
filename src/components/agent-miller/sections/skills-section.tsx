@@ -80,7 +80,12 @@ export function SkillsSection({ agent, config, saveConfig }: Props) {
                 </Typography.Text>
                 <Typography.Text
                   type="tertiary"
-                  style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                  style={{
+                    display: 'block',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
                 >
                   {skill.description || '(no description)'}
                 </Typography.Text>
@@ -106,7 +111,11 @@ export function SkillsSection({ agent, config, saveConfig }: Props) {
           <List
             dataSource={missing}
             renderItem={(name) => (
-              <List.Item key={name} style={{ padding: '6px 0', opacity: 0.7 }} className="justify-between gap-3">
+              <List.Item
+                key={name}
+                style={{ padding: '6px 0', opacity: 0.7 }}
+                className="justify-between gap-3"
+              >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <code>{name}</code>
                   <Tag size="small" color="red">
