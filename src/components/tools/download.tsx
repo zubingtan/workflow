@@ -1,3 +1,8 @@
+/**
+ * Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
+ * SPDX-License-Identifier: MIT
+ */
+
 import { useEffect, useState, type FC } from 'react';
 
 import { Download } from 'lucide-react';
@@ -35,7 +40,7 @@ export const DownloadTool: FC = () => {
         <Download />
       </Button>
       {visible && (
-        <div className="absolute bottom-full left-0 z-50 mb-1 flex w-28 flex-col rounded-lg border border-border bg-popover p-1 shadow-xl">
+        <div className="absolute bottom-full left-0 z-50 mb-1 flex w-28 flex-col rounded-lg border border-border bg-popover p-1 shadow-md">
           {formatOptions.map((format) => (
             <Button
               key={format}

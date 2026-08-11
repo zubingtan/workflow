@@ -5,7 +5,7 @@
 
 export const NodePlaceholder = () => (
   <div
-    className="w-[360px] rounded-xl border border-border bg-card p-3 shadow-lg"
+    className="w-[360px] rounded-lg border border-border bg-card p-3 shadow-md"
     data-testid="workflow.detail.node-panel.placeholder"
   >
     <div className="flex animate-pulse items-center gap-2">

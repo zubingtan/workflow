@@ -1,7 +1,7 @@
 import { Field, FormMeta, FormRenderProps } from '@flowgram.ai/free-layout-editor';
 
 import { DisplayOutputs } from '@/form-semantics';
-import { Input, Select, Separator } from '@/components/ui';
+import { Checkbox, Input, Select, Separator } from '@/components/ui';
 
 import { defaultFormMeta } from '../default-form-meta';
 import { useIsSidebar, useNodeRenderContext } from '../../hooks';
@@ -80,11 +80,10 @@ export const FormRender = ({ form }: FormRenderProps<FeishuTriggerNodeJSON>) => 
         <FormItem name="Enabled" vertical type="boolean">
           <Field<boolean> name="enabled" defaultValue>
             {({ field }) => (
-              <input
-                type="checkbox"
+              <Checkbox
                 aria-label="Enabled"
                 checked={field.value !== false}
-                onChange={(event) => field.onChange(event.target.checked)}
+                onCheckedChange={(checked) => field.onChange(checked)}
                 disabled={readonly_}
               />
             )}
@@ -108,11 +107,10 @@ export const FormRender = ({ form }: FormRenderProps<FeishuTriggerNodeJSON>) => 
         <FormItem name="Only When Mentioned" vertical type="boolean">
           <Field<boolean> name="onlyWhenMentioned" defaultValue>
             {({ field }) => (
-              <input
-                type="checkbox"
+              <Checkbox
                 aria-label="Only When Mentioned"
                 checked={field.value !== false}
-                onChange={(event) => field.onChange(event.target.checked)}
+                onCheckedChange={(checked) => field.onChange(checked)}
                 disabled={readonly_}
               />
             )}

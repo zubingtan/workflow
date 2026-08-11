@@ -52,7 +52,6 @@ export function Body() {
           <Field<IFlowTemplateValue> name="body.rawText">
             {({ field }) => (
               <PromptEditorWithVariables
-                disableMarkdownHighlight
                 readonly={readonly}
                 style={{ flexGrow: 1 }}
                 placeholder="Input raw text, use var by '{'"

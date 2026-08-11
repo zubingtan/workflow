@@ -30,7 +30,7 @@ export const GroupBackground: FC<GroupBackgroundProps> = ({ node, style, selecte
       }
 
       .workflow-group-render.selected[data-group-id="${node.id}"] .workflow-group-background {
-        border: 1px solid #4e40e5;
+        border: 1px solid var(--app-color-primary);
       }
     `;
 

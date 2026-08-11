@@ -41,9 +41,9 @@ interface SchemaField {
 const rowBase: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  gap: 8,
-  padding: '6px 8px',
-  borderBottom: '1px solid var(--semi-color-border)',
+  gap: 'var(--app-space-2)',
+  padding: 'var(--app-space-2)',
+  borderBottom: '1px solid var(--border)',
   borderLeft: '3px solid transparent',
 };
 
@@ -112,8 +112,8 @@ export function StructuredOutputEditor({
       {/* Field rows — continuous block (Variant A) */}
       <div
         style={{
-          border: '1px solid var(--semi-color-border)',
-          borderRadius: 6,
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--app-radius-md)',
           overflow: 'hidden',
         }}
       >
@@ -141,7 +141,7 @@ export function StructuredOutputEditor({
                   borderBottom: isLast ? 'none' : '1px solid var(--border)',
                 }}
               >
-                <span className="min-w-6 rounded-md bg-muted px-1.5 py-0.5 text-center text-[10px]">
+                <span className="min-w-6 rounded-md bg-muted px-1.5 py-0.5 text-center text-xs">
                   {idx + 1}
                 </span>
                 <Input
@@ -182,10 +182,10 @@ export function StructuredOutputEditor({
               {err && (
                 <div
                   style={{
-                    padding: '0 8px 6px 11px',
+                    padding: '0 var(--app-space-2) var(--app-space-2) 11px',
                     color: 'var(--destructive)',
-                    fontSize: 12,
-                    borderBottom: isLast ? 'none' : '1px solid var(--semi-color-border)',
+                    fontSize: 'var(--app-font-size-xs)',
+                    borderBottom: isLast ? 'none' : '1px solid var(--border)',
                   }}
                 >
                   {err}
@@ -205,10 +205,10 @@ export function StructuredOutputEditor({
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: 8,
-            padding: '4px 8px',
-            marginTop: 4,
-            borderRadius: 6,
+            gap: 'var(--app-space-2)',
+            padding: 'var(--app-space-1) var(--app-space-2)',
+            marginTop: 'var(--app-space-1)',
+            borderRadius: 'var(--app-radius-md)',
             cursor: 'pointer',
             color: 'var(--muted-foreground)',
             border: '1px dashed var(--border)',
@@ -228,17 +228,17 @@ export function StructuredOutputEditor({
       {fields.length > 0 && (
         <div
           style={{
-            marginTop: 10,
-            padding: 8,
+            marginTop: 'var(--app-space-2)',
+            padding: 'var(--app-space-2)',
             background: 'var(--muted)',
-            borderRadius: 6,
+            borderRadius: 'var(--app-radius-md)',
           }}
         >
           <div className="mb-1 block text-xs font-medium">Output JSON Preview</div>
           <pre
             style={{
               margin: 0,
-              fontSize: 11,
+              fontSize: 'var(--app-font-size-xs)',
               whiteSpace: 'pre-wrap',
               wordBreak: 'break-all',
               color: hasErrors(errors) ? 'var(--destructive)' : 'var(--foreground)',

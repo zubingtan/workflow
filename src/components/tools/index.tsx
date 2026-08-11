@@ -1,3 +1,8 @@
+/**
+ * Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
+ * SPDX-License-Identifier: MIT
+ */
+
 import { useContext, useEffect, useState } from 'react';
 
 import { History, Redo2, Undo2 } from 'lucide-react';
@@ -80,12 +85,7 @@ export const DemoTools = () => {
         <span className="mx-1 h-5 w-px bg-border" />
         <AddNode disabled={playground.config.readonly} />
         {!isHistoryView && (
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={!workflowId}
-            onClick={() => setHistoryVisible(true)}
-          >
+          <Button variant="ghost" disabled={!workflowId} onClick={() => setHistoryVisible(true)}>
             <History /> History
           </Button>
         )}

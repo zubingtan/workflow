@@ -2,7 +2,7 @@ import { Field } from '@flowgram.ai/free-layout-editor';
 
 import { PromptEditorWithVariables } from '@/form-semantics';
 import type { IFlowTemplateValue } from '@/form-semantics';
-import { Select } from '@/components/ui';
+import { Input, Select } from '@/components/ui';
 
 import { useNodeRenderContext, useIsSidebar } from '../../../hooks';
 import { FormItem } from '../../../form-components';
@@ -43,7 +43,6 @@ export function BotConfig() {
                 <Field<IFlowTemplateValue> name="webhook.url">
                   {({ field }) => (
                     <PromptEditorWithVariables
-                      disableMarkdownHighlight
                       readonly={readonly_}
                       style={{ flexGrow: 1 }}
                       placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/{token}"
@@ -59,7 +58,7 @@ export function BotConfig() {
                 </label>
                 <Field<string> name="webhook.secret" defaultValue="">
                   {({ field }) => (
-                    <input
+                    <Input
                       type="password"
                       value={field.value ?? ''}
                       onChange={(e) => field.onChange(e.target.value)}
@@ -77,7 +76,7 @@ export function BotConfig() {
                 <label className="text-xs font-medium">App ID</label>
                 <Field<string> name="app.appId" defaultValue="">
                   {({ field }) => (
-                    <input
+                    <Input
                       type="text"
                       value={field.value ?? ''}
                       onChange={(e) => field.onChange(e.target.value)}
@@ -92,7 +91,7 @@ export function BotConfig() {
                 <label className="text-xs font-medium">App Secret</label>
                 <Field<string> name="app.appSecret" defaultValue="">
                   {({ field }) => (
-                    <input
+                    <Input
                       type="password"
                       value={field.value ?? ''}
                       onChange={(e) => field.onChange(e.target.value)}
@@ -126,7 +125,6 @@ export function BotConfig() {
                 <Field<IFlowTemplateValue> name="inputsValues.receiveId">
                   {({ field }) => (
                     <PromptEditorWithVariables
-                      disableMarkdownHighlight
                       readonly={readonly_}
                       style={{ flexGrow: 1 }}
                       placeholder="Recipient ID, use var by '{'"
@@ -140,7 +138,6 @@ export function BotConfig() {
                 <Field<IFlowTemplateValue> name="inputsValues.replyToMessageId">
                   {({ field }) => (
                     <PromptEditorWithVariables
-                      disableMarkdownHighlight
                       readonly={readonly_}
                       style={{ flexGrow: 1 }}
                       placeholder="Original message ID, e.g. {{start_0.messageId}}"

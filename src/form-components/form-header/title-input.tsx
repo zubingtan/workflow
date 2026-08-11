@@ -38,6 +38,8 @@ export function TitleInput(props: {
           >
             {titleEditing ? (
               <Input
+                aria-label="Node title"
+                className="h-7 border-0 bg-transparent px-1 text-xs font-semibold shadow-none focus-visible:ring-0"
                 value={value}
                 onChange={onChange}
                 ref={ref}

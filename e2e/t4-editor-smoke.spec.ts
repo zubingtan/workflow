@@ -5,6 +5,8 @@ test('T4 creates, edits, saves, reloads and validates an editor workflow', async
 }, testInfo) => {
   const workflowName = `E2E T4 Editor Smoke ${Date.now()}`;
 
+  await page.addInitScript(() => localStorage.setItem('workflow-theme', 'light'));
+  await page.emulateMedia({ colorScheme: 'light' });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/#/workflows');
   await expect(page.getByRole('heading', { name: 'Workflows' })).toBeVisible();
@@ -19,6 +21,34 @@ test('T4 creates, edits, saves, reloads and validates an editor workflow', async
   await expect(page.locator('[data-node-id="llm_main"]')).toBeVisible();
   await expect(page.locator('[data-node-id="end_0"]')).toBeVisible();
   await expect(page.locator('.gedit-flow-activity-edge')).toHaveCount(2);
+
+  // Add an unconnected node and create a real port-to-port connection. The
+  // seeded edges above only prove serialization; this drag exercises the
+  // editor's connection gesture and edge creation path.
+  await page.getByRole('button', { name: 'Add Node', exact: true }).click();
+  await page.getByTestId('demo-free-node-list-condition').click();
+  const addedCondition = page.locator('[data-node-id^="condition_"]').last();
+  await expect(addedCondition).toBeVisible();
+  const conditionOutput = addedCondition.locator('[data-port-id][data-port-type="output"]').last();
+  const endNode = page.locator('[data-node-id="end_0"]');
+  const endInput = endNode.locator('[data-port-entity-type="input"]').first();
+  const [sourceCenter, targetCenter] = await Promise.all([
+    conditionOutput.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+    }),
+    endInput.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+    }),
+  ]);
+  expect(sourceCenter.x).toBeGreaterThan(0);
+  expect(targetCenter.x).toBeGreaterThan(0);
+  await page.mouse.move(sourceCenter.x, sourceCenter.y);
+  await page.mouse.down();
+  await page.mouse.move(targetCenter.x, targetCenter.y, { steps: 12 });
+  await page.mouse.up();
+  await expect(page.locator('.gedit-flow-activity-edge')).toHaveCount(3);
   await page.screenshot({
     path: testInfo.outputPath('t4-editor-1440x900-light.png'),
     fullPage: true,
@@ -34,7 +64,8 @@ test('T4 creates, edits, saves, reloads and validates an editor workflow', async
   await expect(page.locator('[data-node-id="start_0"]')).toBeVisible({ timeout: 10_000 });
   await expect(page.locator('[data-node-id="llm_main"]')).toBeVisible();
   await expect(page.locator('[data-node-id="end_0"]')).toBeVisible();
-  await expect(page.locator('.gedit-flow-activity-edge')).toHaveCount(2);
+  await expect(page.locator('.gedit-flow-activity-edge')).toHaveCount(3);
+  await expect(page.locator('[data-node-id^="condition_"]').last()).toBeVisible();
 
   await page.setViewportSize({ width: 720, height: 900 });
   await page.screenshot({

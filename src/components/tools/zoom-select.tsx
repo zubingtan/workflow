@@ -1,3 +1,8 @@
+/**
+ * Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
+ * SPDX-License-Identifier: MIT
+ */
+
 import { useState } from 'react';
 
 import { usePlayground, usePlaygroundTools } from '@flowgram.ai/free-layout-editor';
@@ -19,7 +24,7 @@ export const ZoomSelect = () => {
         {Math.floor(tools.zoom * 100)}%
       </Button>
       {open && (
-        <div className="absolute bottom-full left-0 z-50 mb-1 flex w-32 flex-col rounded-lg border border-border bg-popover p-1 shadow-xl">
+        <div className="absolute bottom-full left-0 z-50 mb-1 flex w-32 flex-col rounded-lg border border-border bg-popover p-1 shadow-md">
           <Button
             size="sm"
             variant="ghost"

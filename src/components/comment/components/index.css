@@ -17,9 +17,9 @@
   justify-content: flex-start;
   width: 100%;
   height: 100%;
-  border-radius: 8px;
+  border-radius: var(--app-radius-md);
   outline: 1px solid;
-  padding: 6px 2px 6px 10px;
+  padding: var(--app-space-2) var(--app-space-1) var(--app-space-2) var(--app-space-3);
   overflow: hidden;
 }
 
@@ -52,8 +52,8 @@
   margin: 0;
   position: absolute;
   pointer-events: none;
-  color: rgba(55, 67, 106, 0.38);
-  font-weight: 500;
+  color: color-mix(in oklch, var(--foreground) 40%, transparent);
+  font-weight: var(--app-font-weight-medium);
 }
 
 .workflow-comment-editor-textarea {
@@ -68,7 +68,7 @@
   background: none;
   color: inherit;
   font-family: inherit;
-  font-size: 16px;
+  font-size: var(--app-font-size-lg);
   resize: none;
   outline: none;
 }
@@ -78,31 +78,31 @@
   right: 6px;
 }
 
-.workflow-comment-more-button > .semi-button {
+.workflow-comment-more-button > [data-slot='button'] {
   color: rgba(255, 255, 255, 0);
   background: none;
 }
 
-.workflow-comment-more-button > .semi-button:hover {
-  color: #ffa100;
-  background: #fbf2d2cc;
+.workflow-comment-more-button > [data-slot='button']:hover {
+  color: var(--app-color-warning);
+  background: color-mix(in oklch, var(--app-color-warning) 18%, transparent);
   backdrop-filter: blur(1px);
 }
 
-.workflow-comment-more-button-focused > .semi-button:hover {
-  color: #ff811a;
-  background: #ffe3cecc;
+.workflow-comment-more-button-focused > [data-slot='button']:hover {
+  color: var(--app-color-primary);
+  background: color-mix(in oklch, var(--app-color-primary) 16%, transparent);
   backdrop-filter: blur(1px);
 }
 
-.workflow-comment-more-button > .semi-button:active {
-  color: #f2b600;
-  background: #ede5c7cc;
+.workflow-comment-more-button > [data-slot='button']:active {
+  color: var(--app-color-warning);
+  background: color-mix(in oklch, var(--app-color-warning) 24%, transparent);
   backdrop-filter: blur(1px);
 }
 
-.workflow-comment-more-button-focused > .semi-button:active {
-  color: #ff811a;
-  background: #eed5c1cc;
+.workflow-comment-more-button-focused > [data-slot='button']:active {
+  color: var(--app-color-primary);
+  background: color-mix(in oklch, var(--app-color-primary) 22%, transparent);
   backdrop-filter: blur(1px);
 }

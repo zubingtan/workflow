@@ -4,19 +4,19 @@
  */
 
 .formContainer {
-  margin: 8px 0;
+  margin: var(--app-space-2) 0;
 }
 
 .formTitle {
-  font-size: 20px;
-  font-weight: 600;
+  font-size: var(--app-font-size-xl);
+  font-weight: var(--app-font-weight-strong);
   color: var(--app-color-text-1);
-  margin-bottom: 24px;
+  margin-bottom: var(--app-space-6);
   text-align: center;
 }
 
 .fieldGroup {
-  margin-bottom: 8px;
+  margin-bottom: var(--app-space-2);
 
   &:last-child {
     margin-bottom: 0;
@@ -25,39 +25,15 @@
 
 .fieldLabel {
   display: block;
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--app-font-size-md);
+  font-weight: var(--app-font-weight-medium);
   color: var(--app-color-text-1);
-  margin-bottom: 8px;
+  margin-bottom: var(--app-space-2);
   line-height: 1.4;
 }
 
 .fieldInput {
   width: 100%;
-
-  :global(.semi-input) {
-    &:hover {
-      border-color: var(--app-color-primary);
-    }
-
-    &:focus {
-      border-color: var(--app-color-primary);
-      box-shadow: 0 0 0 2px var(--app-color-primary-light-default);
-    }
-  }
-
-  :global(.semi-input-number) {
-    width: 100%;
-
-    &:hover {
-      border-color: var(--app-color-primary);
-    }
-
-    &:focus-within {
-      border-color: var(--app-color-primary);
-      box-shadow: 0 0 0 2px var(--app-color-primary-light-default);
-    }
-  }
 }
 
 .codeEditorWrapper {

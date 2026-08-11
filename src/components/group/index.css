@@ -4,20 +4,20 @@
  */
 
 .workflow-group-render {
-  border-radius: 8px;
+  border-radius: var(--app-radius-md);
   pointer-events: none;
 }
 
 .workflow-group-background {
-  box-shadow: 0 2px 6px 0 rgba(0, 0, 0, 0.04), 0 4px 12px 0 rgba(0, 0, 0, 0.02);
+  box-shadow: var(--app-shadow-sm);
 }
 .workflow-group-header {
   height: 30px;
   width: fit-content;
-  background-color: #fefce8;
-  border: 1px solid #facc15;
-  border-radius: 8px;
-  padding-right: 8px;
+  background-color: color-mix(in oklch, var(--app-color-warning) 12%, var(--background));
+  border: 1px solid color-mix(in oklch, var(--app-color-warning) 48%, var(--border));
+  border-radius: var(--app-radius-md);
+  padding-right: var(--app-space-2);
   pointer-events: auto;
 }
 
@@ -30,42 +30,42 @@
   position: absolute;
   top: 35px;
   right: 0;
-  border-radius: 8px;
+  border-radius: var(--app-radius-md);
   cursor: pointer;
   pointer-events: auto;
 }
 
-.workflow-group-ungroup .semi-button {
-  color: #9ca3af;
+.workflow-group-ungroup [data-slot='button'] {
+  color: var(--muted-foreground);
 }
 
-.workflow-group-ungroup:hover .semi-button {
-  color: #374151;
+.workflow-group-ungroup:hover [data-slot='button'] {
+  color: var(--foreground);
 }
 
 .workflow-group-background {
   position: absolute;
   pointer-events: none;
   top: 0;
-  background-color: #fddf4729;
-  border: 1px solid #fde047;
-  border-radius: 8px;
+  background-color: color-mix(in oklch, var(--app-color-warning) 16%, transparent);
+  border: 1px solid color-mix(in oklch, var(--app-color-warning) 48%, var(--border));
+  border-radius: var(--app-radius-md);
   width: 100%;
 }
 
 .workflow-group-render.selected .workflow-group-background {
-  border: 1px solid #facc15;
+  border-color: var(--app-color-primary);
 }
 
 .workflow-group-tools {
   display: flex;
   justify-content: flex-start;
   align-items: center;
-  gap: 4px;
+  gap: var(--app-space-1);
   height: 100%;
   cursor: move;
-  color: oklch(44.6% 0.043 257.281);
-  font-size: 14px;
+  color: var(--foreground);
+  font-size: var(--app-font-size-md);
 }
 .workflow-group-title {
   margin: 0;
@@ -81,37 +81,5 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  padding-left: 4px;
-}
-
-.workflow-group-color {
-  width: 16px;
-  height: 16px;
-  border-radius: 8px;
-  background-color: #fde047;
-  margin-left: 4px;
-  cursor: pointer;
-}
-
-.workflow-group-title-input {
-  width: 242px;
-  border: none;
-  color: #374151;
-}
-
-.workflow-group-color-palette {
-  display: grid;
-  grid-template-columns: repeat(6, 24px);
-  gap: 12px;
-  margin: 8px;
-  padding: 8px;
-}
-
-.workflow-group-color-item {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  background-color: #fde047;
-  cursor: pointer;
-  border: 3px solid;
+  padding-left: var(--app-space-1);
 }

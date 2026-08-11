@@ -1,3 +1,8 @@
+/**
+ * Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
+ * SPDX-License-Identifier: MIT
+ */
+
 import { FunctionComponent } from 'react';
 
 import { Copy, Expand, Minimize2, Trash2 } from 'lucide-react';

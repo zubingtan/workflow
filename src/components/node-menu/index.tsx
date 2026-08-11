@@ -1,3 +1,8 @@
+/**
+ * Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
+ * SPDX-License-Identifier: MIT
+ */
+
 import { FC, useCallback, useState, type MouseEvent } from 'react';
 
 import { MoreHorizontal } from 'lucide-react';
@@ -73,7 +78,7 @@ export const NodeMenu: FC<NodeMenuProps> = ({ node, deleteNode, updateTitleEdit 
       </Button>
       {visible && (
         <div
-          className="absolute top-full right-0 z-50 mt-1 flex w-40 flex-col rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-xl"
+          className="absolute top-full right-0 z-50 mt-1 flex w-40 flex-col rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-md"
           onClick={(event) => event.stopPropagation()}
         >
           <Button

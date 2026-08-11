@@ -3,11 +3,6 @@
  * SPDX-License-Identifier: MIT
  */
 
-/**
- * Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
- * SPDX-License-Identifier: MIT
- */
-
 import styled from 'styled-components';
 
 // #190: share the single ConditionPort anchor (see
@@ -31,8 +26,8 @@ export const ConditionBranchLogic = styled.div`
     content: '';
     position: absolute;
     width: 50%;
-    border: 1px solid var(--semi-color-tertiary-light-active);
-    border-radius: 6px 0 0 6px;
+    border: 1px solid var(--border);
+    border-radius: var(--app-radius-md) 0 0 var(--app-radius-md);
     border-right: none;
     left: 50%;
     top: 32px;
