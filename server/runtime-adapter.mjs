@@ -115,6 +115,25 @@ export function resolveApiKey(rawValue) {
 }
 
 /**
+ * Responses API store compatibility: pi streams Responses requests with
+ * store:false (stateless, OpenAI-official behavior). LiteLLM/Azure gateways
+ * reject function_call_output items whose originating response was not
+ * persisted ("Item with id ... not found"), which breaks multi-turn tool
+ * loops. Force store:true for non-OpenAI endpoints so tool calls survive;
+ * official OpenAI keeps the stateless default.
+ */
+export function createResponsesStoreCompatExtension({ endpoint }) {
+  const isOfficialOpenAI = /api\.openai\.com/i.test(endpoint ?? '');
+  return (api) => {
+    api.on('before_provider_request', (event) => {
+      const payload = event.payload;
+      if (!payload || payload.store === undefined || isOfficialOpenAI) return;
+      return { ...payload, store: true };
+    });
+  };
+}
+
+/**
  * Create a pi-coding-agent session from an agent record.
  * @param {object} agent - DB row or constructed object with { name, config (string|object) }
  * @param {string} agentDir - working directory for the agent
@@ -248,13 +267,29 @@ export async function createAgentSessionForAgent(agent, agentDir, mem0, structur
   // 5. ResourceLoader — inject systemPrompt + pick up skills/extensions from
   // settings. When this run carries a structured output contract, register the
   // request-scoped inline extension whose closure captures the schema (#243:
-  // per-run isolation via extensionFactories).
+  // per-run isolation via extensionFactories). Responses API providers also
+  // get the store compat extension so tool loops survive LiteLLM/Azure
+  // gateways (stateless function_call_output references are rejected there).
   //
   // noSkills + additionalSkillPaths: pi auto-collects user-level skills
   // (~/.agents/skills, ~/.pi/agent/skills) and project-level ones by default —
   // an agent must only see the skills explicitly enabled in its config (#307).
   // noSkills drops the auto-collected set; additionalSkillPaths re-injects the
   // resolved global-library paths as the sole source.
+  const extensionFactories = [];
+  if (structured) {
+    extensionFactories.push(
+      createStructuredOutputExtension({
+        compiled: structured,
+        provider: provider.name ?? 'custom',
+        model,
+        endpoint: provider.base_url,
+      })
+    );
+  }
+  if (modelApi === 'openai-responses') {
+    extensionFactories.push(createResponsesStoreCompatExtension({ endpoint: provider.base_url }));
+  }
   const resourceLoader = new DefaultResourceLoader({
     cwd: agentSessionDir,
     agentDir: agentSessionDir,
@@ -263,16 +298,7 @@ export async function createAgentSessionForAgent(agent, agentDir, mem0, structur
     noThemes: true,
     noSkills: true,
     additionalSkillPaths: resolvedSkillPaths,
-    extensionFactories: structured
-      ? [
-          createStructuredOutputExtension({
-            compiled: structured,
-            provider: provider.name ?? 'custom',
-            model,
-            endpoint: provider.base_url,
-          }),
-        ]
-      : [],
+    extensionFactories,
   });
   await resourceLoader.reload();
 
