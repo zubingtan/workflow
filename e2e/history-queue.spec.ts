@@ -54,8 +54,8 @@ test.describe('History + serial queue', () => {
     // --- Open History Modal via manager list ---
     await page.goto('/');
     await page.getByText('Workflows', { exact: true }).first().click();
-    const wfRow = page.locator('tr', { hasText: 'E2E Queue WF' }).first();
-    await wfRow.getByRole('button', { name: 'History' }).click();
+    const wfRow = page.locator('[data-testid="workflow-row"]', { hasText: 'E2E Queue WF' }).first();
+    await wfRow.getByRole('button', { name: 'History for E2E Queue WF' }).click();
 
     // --- Assert the Modal renders ---
     await expect(page.getByText('Run History').first()).toBeVisible({ timeout: 5_000 });
@@ -85,7 +85,7 @@ test.describe('History + serial queue', () => {
     // History Modal opens and closes cleanly on a saved workflow.
     await page.goto('/');
     await page.getByText('Workflows', { exact: true }).first().click();
-    const firstRow = page.locator('tbody tr').first();
+    const firstRow = page.locator('[data-testid="workflow-row"]').first();
     await firstRow.getByRole('button', { name: 'Open' }).click();
     await expect(page.getByRole('button', { name: 'History' })).toBeVisible({ timeout: 10_000 });
     await page.getByRole('button', { name: 'History' }).click();

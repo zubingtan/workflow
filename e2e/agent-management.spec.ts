@@ -33,7 +33,9 @@ test.describe('Agent management', () => {
     await page.getByRole('button', { name: 'New Agent' }).click();
 
     // The new agent should appear in the list as "Untitled"
-    await expect(page.getByText('Untitled', { exact: true })).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByRole('heading', { name: 'Untitled', exact: true })).toBeVisible({
+      timeout: 5_000,
+    });
 
     // --- Edit name: find the name input in the General section (Col 4) ---
     // The General section should be visible after auto-selection.
@@ -48,12 +50,14 @@ test.describe('Agent management', () => {
     await page.waitForTimeout(1200);
 
     // --- List: the edited name appears in the list ---
-    await expect(page.getByText(AGENT_NAME, { exact: true })).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByRole('heading', { name: AGENT_NAME, exact: true })).toBeVisible({
+      timeout: 5_000,
+    });
 
     // --- Reload: SQLite persistence ---
     await page.reload();
     await page.goto('/#/agents');
-    await expect(page.getByText(AGENT_NAME, { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: AGENT_NAME, exact: true })).toBeVisible();
 
     // --- Delete: remove the agent ---
     // Click the agent to select it, then use keyboard or context to delete
@@ -94,12 +98,11 @@ test.describe('Agent management', () => {
 
     await page.reload();
     await page.goto(`/#/agents/${agent.id}/provider`);
-    await expect(page.getByRole('heading', { name: 'Provider' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Provider', exact: true })).toBeVisible();
     await page.getByLabel('Provider Base URL').fill('http://localhost:4011/v1');
     await page.getByLabel('API Key').fill('fake-provider-local');
     await page.getByRole('button', { name: 'Load Models' }).click();
-    await page.locator('#provider-model').click();
-    await page.getByText('fake-m0', { exact: true }).last().click();
+    await page.locator('#provider-model').selectOption('fake-m0');
     await expect(page.getByText('Context window', { exact: true })).toBeVisible();
     await expect(page.getByText('32,768', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Test Provider' }).click();

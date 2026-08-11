@@ -50,22 +50,20 @@ test.describe('Delete workflow with active runs', () => {
     // run_status event (or the initial list reflects the active run).
     await page.goto('/');
     await page.getByText('Workflows', { exact: true }).first().click();
-    const wfRow = page.locator('tr', { hasText: 'E2E Delete WF' }).first();
+    const wfRow = page
+      .locator('[data-testid="workflow-row"]', { hasText: 'E2E Delete WF' })
+      .first();
     await expect(wfRow).toBeVisible({ timeout: 5_000 });
 
-    // The Delete button should be disabled. Use a precise selector targeting
-    // the icon button whose accessible name is "delete Delete" (the IconDelete
-    // img + "Delete" text), avoiding the workflow-name button which also
-    // contains the substring "Delete".
-    const deleteBtn = wfRow.getByRole('button', { name: 'delete Delete' });
+    // The Delete button should be disabled. Scope it to the workflow row.
+    const deleteBtn = wfRow.getByRole('button', { name: 'Delete E2E Delete WF' });
     // Give the SSE subscription time to receive the init frame + run_status.
-    await expect(deleteBtn).toHaveAttribute('aria-disabled', 'true', { timeout: 10_000 });
-    // The tooltip explains why. Hover the Delete button to reveal it (Semi
-    // Tooltip shows on hover by default).
-    await deleteBtn.hover();
-    await expect(page.getByText('This workflow has running or queued runs').first()).toBeVisible({
-      timeout: 5_000,
-    });
+    await expect(deleteBtn).toBeDisabled({ timeout: 10_000 });
+    // The disabled wrapper carries the reason as a title for keyboard and
+    // pointer users without making the disabled button itself hoverable.
+    await expect(
+      wfRow.getByTitle('This workflow has running or queued runs — cancel them first')
+    ).toBeVisible();
 
     // --- Cancel the run ---
     await cancelRun(runID);
@@ -76,7 +74,7 @@ test.describe('Delete workflow with active runs', () => {
       .toBe('terminated');
 
     // --- Assert Delete button is now re-enabled ---
-    await expect(deleteBtn).toHaveAttribute('aria-disabled', 'false', { timeout: 10_000 });
+    await expect(deleteBtn).toBeEnabled({ timeout: 10_000 });
 
     // --- Delete the workflow (via API — Popconfirm click is flaky in CI) ---
     const delRes = await fetch(`http://localhost:4099/workflows/${workflowId}`, {
@@ -96,7 +94,9 @@ test.describe('Delete workflow with active runs', () => {
     // --- Assert the workflow is gone from the UI list ---
     await page.reload();
     await page.getByText('Workflows', { exact: true }).first().click();
-    await expect(page.locator('tr', { hasText: 'E2E Delete WF' })).toHaveCount(0, {
+    await expect(
+      page.locator('[data-testid="workflow-row"]', { hasText: 'E2E Delete WF' })
+    ).toHaveCount(0, {
       timeout: 5_000,
     });
   });

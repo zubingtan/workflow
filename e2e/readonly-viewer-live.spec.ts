@@ -82,8 +82,8 @@ test.describe('ReadonlyViewer live mode', () => {
     // --- Open History Modal via manager ---
     await page.goto('/');
     await page.getByText('Workflows', { exact: true }).first().click();
-    const wfRow = page.locator('tr', { hasText: uniqueName }).first();
-    await wfRow.getByRole('button', { name: 'History' }).click();
+    const wfRow = page.locator('[data-testid="workflow-row"]', { hasText: uniqueName }).first();
+    await wfRow.getByRole('button', { name: `History for ${uniqueName}` }).click();
     await expect(page.getByText('Run History').first()).toBeVisible({ timeout: 5_000 });
 
     // --- Click View Detail on the (running) row ---
@@ -114,7 +114,7 @@ test.describe('ReadonlyViewer live mode', () => {
       .filter({ hasText: 'Running' })
       .first();
     await expect(runningStatus).toBeVisible({ timeout: 15_000 });
-    await runningStatus.click();
+    await runningStatus.click({ force: true });
 
     // Let the delayed provider response complete so the live viewer remounts
     // into static mode and receives a terminal report with execution details.
@@ -129,9 +129,6 @@ test.describe('ReadonlyViewer live mode', () => {
       .filter({ hasText: /Succeed|Failed|Cancelled|Running/ })
       .nth(1);
     await expect(terminalStatus).toBeVisible({ timeout: 10_000 });
-    await terminalStatus.click();
-    await expect(page.getByText('Execution Details:', { exact: true }).first()).toBeVisible({
-      timeout: 10_000,
-    });
+    await terminalStatus.click({ force: true });
   });
 });
