@@ -39,7 +39,6 @@ export function Api() {
           <Field<IFlowTemplateValue> name="api.url">
             {({ field }) => (
               <PromptEditorWithVariables
-                disableMarkdownHighlight
                 readonly={readonly}
                 style={{ flexGrow: 1 }}
                 placeholder="Input URL, use var by '{'"

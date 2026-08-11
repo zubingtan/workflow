@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: MIT
  */
 
+import { Button } from '@/components/ui';
+
 import { useControlTips } from './use-control';
 import { GroupTipsStyle } from './style';
 import { isMacOS } from './is-mac-os';
@@ -28,12 +30,18 @@ export const GroupTips = () => {
           />
         </div>
         <div className="actions">
-          <p className="close-forever" onClick={closeForever}>
+          <Button variant="ghost" size="xs" className="close-forever" onClick={closeForever}>
             Never Remind
-          </p>
-          <div className="close" onClick={close}>
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className="close"
+            aria-label="Close"
+            onClick={close}
+          >
             <IconClose />
-          </div>
+          </Button>
         </div>
       </div>
     </GroupTipsStyle>

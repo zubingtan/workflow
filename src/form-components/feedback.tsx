@@ -19,7 +19,9 @@ export const Feedback = ({ errors, warnings, invalid }: StatePanelProps) => {
   return (
     <div className="text-xs">
       {errors?.length ? <div className="text-destructive">{renderFeedbacks(errors)}</div> : null}
-      {warnings?.length ? <div className="text-amber-600">{renderFeedbacks(warnings)}</div> : null}
+      {warnings?.length ? (
+        <div style={{ color: 'var(--app-color-warning)' }}>{renderFeedbacks(warnings)}</div>
+      ) : null}
     </div>
   );
 };

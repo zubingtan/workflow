@@ -17,7 +17,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 6px;
+    padding: var(--app-space-2);
 
     &-opened {
       padding-bottom: 0;
@@ -27,27 +27,15 @@
       height: 24px;
       display: flex;
       align-items: center;
-      column-gap: 8px;
+      column-gap: var(--app-space-2);
       min-width: 0;
-
-      :global(.coz-tag) {
-        height: 20px;
-      }
-      :global(.semi-tag-content) {
-        font-weight: 500;
-        line-height: 16px;
-        font-size: 12px;
-      }
-      :global(.semi-tag-suffix-icon > div) {
-        font-size: 14px;
-      }
     }
 
     .status-btns {
       height: 24px;
       display: flex;
       align-items: center;
-      column-gap: 4px;
+      column-gap: var(--app-space-1);
 
       .is-show-detail {
         transform: rotate(180deg);

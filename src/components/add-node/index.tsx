@@ -71,7 +71,7 @@ export const AddNode = (props: { disabled: boolean }) => {
       </Button>
       {panelRect && (
         <div
-          className="fixed z-[1001] w-72 rounded-xl border border-border bg-popover p-2 text-popover-foreground shadow-xl"
+          className="fixed z-[1001] w-72 rounded-lg border border-border bg-popover p-2 text-popover-foreground shadow-md"
           style={{
             left: Math.max(8, Math.min(panelRect.left, window.innerWidth - 296)),
             top: Math.max(8, panelRect.top - 300),

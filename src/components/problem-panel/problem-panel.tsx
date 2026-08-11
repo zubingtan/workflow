@@ -21,7 +21,7 @@ export const ProblemPanel = () => {
 
   return (
     <div
-      className="h-full w-full rounded-xl border border-border bg-background"
+      className="h-full w-full rounded-lg border border-border bg-background"
       style={{ color: 'var(--app-color-text-1)' }}
     >
       <div className="flex h-12 items-center justify-between border-b px-3">

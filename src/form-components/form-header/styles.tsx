@@ -15,14 +15,14 @@ export const Header = styled.div`
   border-radius: var(--app-radius-md) var(--app-radius-md) 0 0;
   cursor: move;
 
-  background: linear-gradient(var(--app-color-node-header-from) 0%, var(--app-color-surface) 100%);
+  background: linear-gradient(var(--app-color-node-header-from) 0%, var(--card) 100%);
   overflow: hidden;
 
   padding: var(--app-space-2);
 `;
 
 export const Title = styled.div`
-  font-size: 20px;
+  font-size: var(--app-font-size-md);
   flex: 1;
   width: 0;
 `;
@@ -37,5 +37,5 @@ export const Icon = styled.img`
 export const Operators = styled.div`
   display: flex;
   align-items: center;
-  column-gap: 4px;
+  column-gap: var(--app-space-1);
 `;

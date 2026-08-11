@@ -8,7 +8,7 @@ import { FC } from 'react';
 import classNames from 'classnames';
 
 import { DisplaySchemaTag } from '@/form-semantics';
-import { Input } from '@/components/ui/input';
+import { Checkbox, Input } from '@/components/ui';
 
 import { JsonValueEditor } from '../json-value-editor';
 import { useFormMeta } from '../hooks/use-form-meta';
@@ -42,12 +42,10 @@ export const TestRunForm: FC<TestRunFormProps> = ({ values, setValues }) => {
       case 'boolean':
         return (
           <div className={styles.fieldInput}>
-            <input
+            <Checkbox
               aria-label={`${field.name} value`}
-              className="h-4 w-4 accent-primary"
-              type="checkbox"
               checked={Boolean(field.value)}
-              onChange={(event) => field.onChange(event.target.checked)}
+              onCheckedChange={(checked) => field.onChange(checked)}
             />
           </div>
         );

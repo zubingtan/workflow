@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
+import { Plus, X } from 'lucide-react';
 import { JsonSchemaUtils } from '@flowgram.ai/json-schema';
 import { Field } from '@flowgram.ai/free-layout-editor';
 import { useAvailableVariables, useScopeAvailable } from '@flowgram.ai/editor';
@@ -8,6 +9,7 @@ import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
 import { Select } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 
 import type {
@@ -163,7 +165,6 @@ export function PromptEditorWithVariables({
   placeholder?: string;
   hasError?: boolean;
   style?: React.CSSProperties;
-  disableMarkdownHighlight?: boolean;
 }) {
   return (
     <Textarea
@@ -196,7 +197,7 @@ export function JsonEditorWithVariables({
   return (
     <Textarea
       aria-label="JSON value"
-      className="min-h-28 resize-y font-mono text-[11px]"
+      className="min-h-28 resize-y font-mono text-xs"
       spellCheck={false}
       value={value ?? ''}
       placeholder={placeholder ?? activeLinePlaceholder ?? '{\n  "key": "value"\n}'}
@@ -214,12 +215,11 @@ export function TypeScriptCodeEditor({
   value?: string;
   onChange: (value: string) => void;
   readonly?: boolean;
-  theme?: string;
 }) {
   return (
     <Textarea
       aria-label="Code"
-      className="min-h-44 resize-y bg-muted/40 font-mono text-[11px]"
+      className="min-h-44 resize-y bg-muted/40 font-mono text-xs"
       spellCheck={false}
       value={value ?? ''}
       disabled={readonly}
@@ -234,7 +234,7 @@ function schemaPropertyType(property?: IJsonSchema): string {
 
 export function DisplaySchemaTag({ value }: { value?: IJsonSchema }) {
   return (
-    <span className="inline-flex shrink-0 rounded-md bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+    <span className="inline-flex shrink-0 rounded-md bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
       {value?.type ?? 'any'}
     </span>
   );
@@ -249,107 +249,152 @@ export function JsonSchemaEditor({
   onChange: (value: IJsonSchema) => void;
   readonly?: boolean;
 }) {
+  return (
+    <div data-editor-control="schema-editor">
+      <JsonSchemaObjectEditor value={value} onChange={onChange} readonly={readonly} />
+    </div>
+  );
+}
+
+function withSchemaProperties(
+  value: IJsonSchema | undefined,
+  properties: Record<string, IJsonSchema>,
+  required?: string[]
+): IJsonSchema {
+  const next = { ...value, type: value?.type ?? 'object', properties };
+  if (required !== undefined) next.required = required;
+  return next;
+}
+
+function JsonSchemaObjectEditor({
+  value,
+  onChange,
+  readonly,
+  nested = false,
+}: {
+  value?: IJsonSchema;
+  onChange: (value: IJsonSchema) => void;
+  readonly?: boolean;
+  nested?: boolean;
+}) {
   const properties = value?.properties ?? {};
   const required = value?.required ?? [];
   const entries = Object.entries(properties);
 
   const updateProperty = (oldName: string, patch: Partial<IJsonSchema>) => {
-    const nextProperties = { ...properties };
-    nextProperties[oldName] = { ...nextProperties[oldName], ...patch };
-    onChange({ ...value, type: value?.type ?? 'object', properties: nextProperties });
+    onChange(
+      withSchemaProperties(value, {
+        ...properties,
+        [oldName]: { ...properties[oldName], ...patch },
+      })
+    );
   };
 
   const renameProperty = (oldName: string, name: string) => {
     const trimmed = name.trim();
     if (!trimmed || trimmed === oldName || properties[trimmed]) return;
     const nextProperties: Record<string, IJsonSchema> = {};
-    for (const [key, property] of Object.entries(properties))
+    for (const [key, property] of Object.entries(properties)) {
       nextProperties[key === oldName ? trimmed : key] = property;
-    onChange({
-      ...value,
-      type: value?.type ?? 'object',
-      properties: nextProperties,
-      required: required.map((key) => (key === oldName ? trimmed : key)),
-    });
+    }
+    onChange(
+      withSchemaProperties(
+        value,
+        nextProperties,
+        required.map((key) => (key === oldName ? trimmed : key))
+      )
+    );
   };
 
   const removeProperty = (name: string) => {
     const nextProperties = { ...properties };
     delete nextProperties[name];
-    onChange({
-      ...value,
-      type: value?.type ?? 'object',
-      properties: nextProperties,
-      required: required.filter((key) => key !== name),
-    });
+    onChange(
+      withSchemaProperties(
+        value,
+        nextProperties,
+        required.filter((key) => key !== name)
+      )
+    );
   };
 
   const addProperty = () => {
     let name = 'field';
     let index = 1;
     while (properties[name]) name = `field_${index++}`;
-    onChange({
-      ...value,
-      type: value?.type ?? 'object',
-      properties: { ...properties, [name]: { type: 'string' } },
-    });
+    onChange(
+      withSchemaProperties(value, {
+        ...properties,
+        [name]: { type: 'string' },
+      })
+    );
   };
 
   return (
-    <div className="flex flex-col gap-2" data-editor-control="schema-editor">
+    <div className={cn('flex flex-col gap-2', nested && 'border-l border-border pl-3')}>
       {entries.map(([name, property]) => (
-        <div className="grid grid-cols-[minmax(0,1fr)_96px_auto] items-center gap-1.5" key={name}>
-          <Input
-            aria-label={`Schema field ${name}`}
-            value={name}
-            disabled={readonly}
-            onChange={(event) => renameProperty(name, event.target.value)}
-          />
-          <Select
-            aria-label={`Schema type ${name}`}
-            value={schemaPropertyType(property)}
-            disabled={readonly}
-            onChange={(event) => updateProperty(name, { type: event.currentTarget.value })}
-          >
-            <option value="string">string</option>
-            <option value="number">number</option>
-            <option value="integer">integer</option>
-            <option value="boolean">boolean</option>
-            <option value="array">array</option>
-            <option value="object">object</option>
-          </Select>
-          <Button
-            aria-label={`Remove schema field ${name}`}
-            size="icon-sm"
-            variant="ghost"
-            disabled={readonly}
-            onClick={() => removeProperty(name)}
-          >
-            ×
-          </Button>
-          <label className="col-span-2 flex items-center gap-1 text-[11px] text-muted-foreground">
-            <input
-              type="checkbox"
-              checked={required.includes(name)}
+        <div className="flex flex-col gap-1.5" key={name}>
+          <div className="grid grid-cols-[minmax(0,1fr)_96px_auto] items-center gap-1.5">
+            <Input
+              aria-label={`Schema field ${name}`}
+              value={name}
               disabled={readonly}
-              onChange={(event) =>
-                onChange({
-                  ...value,
-                  type: value?.type ?? 'object',
-                  properties,
-                  required: event.target.checked
-                    ? [...required, name]
-                    : required.filter((key) => key !== name),
-                })
-              }
+              onChange={(event) => renameProperty(name, event.target.value)}
             />
-            Required
-          </label>
+            <Select
+              aria-label={`Schema type ${name}`}
+              value={schemaPropertyType(property)}
+              disabled={readonly}
+              onChange={(event) => updateProperty(name, { type: event.currentTarget.value })}
+            >
+              <option value="string">string</option>
+              <option value="number">number</option>
+              <option value="integer">integer</option>
+              <option value="boolean">boolean</option>
+              <option value="array">array</option>
+              <option value="object">object</option>
+            </Select>
+            <Button
+              aria-label={`Remove schema field ${name}`}
+              size="icon-sm"
+              variant="ghost"
+              disabled={readonly}
+              onClick={() => removeProperty(name)}
+            >
+              <X />
+            </Button>
+            <label className="col-span-2 flex items-center gap-1 text-xs text-muted-foreground">
+              <Checkbox
+                aria-label={`Required ${name}`}
+                checked={required.includes(name)}
+                disabled={readonly}
+                onCheckedChange={(checked) =>
+                  onChange(
+                    withSchemaProperties(
+                      value,
+                      properties,
+                      checked ? [...required, name] : required.filter((key) => key !== name)
+                    )
+                  )
+                }
+              />
+              Required
+            </label>
+          </div>
+          {schemaPropertyType(property) === 'object' && (
+            <JsonSchemaObjectEditor
+              value={property}
+              onChange={(next) => updateProperty(name, next)}
+              readonly={readonly}
+              nested
+            />
+          )}
         </div>
       ))}
       {!readonly && (
         <Button className="w-fit" size="sm" variant="outline" onClick={addProperty}>
-          + Add field
+          <Plus data-icon="inline-start" />
+          Add field
         </Button>
       )}
     </div>
@@ -370,7 +415,7 @@ export function DisplayInputsValues({ value }: { value?: Record<string, IFlowVal
     <div className="flex flex-col gap-1.5" data-editor-control="inputs-display">
       {entries.map(([name, item]) => (
         <div
-          className="flex min-w-0 items-center justify-between gap-2 rounded-md bg-muted px-2 py-1.5 text-[11px]"
+          className="flex min-w-0 items-center justify-between gap-2 rounded-md bg-muted px-2 py-1.5 text-xs"
           key={name}
         >
           <span className="truncate text-muted-foreground">{name}</span>
@@ -411,7 +456,7 @@ export const InputsValues = ({
                 onClick={() => remove(name)}
                 aria-label={`Remove input ${name}`}
               >
-                ×
+                <X />
               </Button>
             )}
           </div>
@@ -462,12 +507,12 @@ export function DisplayOutputs({
     return <div className="text-xs text-muted-foreground">No outputs configured.</div>;
   return (
     <div className="flex flex-col gap-1.5" data-editor-control="outputs-display">
-      <div className="text-[11px] font-medium text-muted-foreground">
+      <div className="text-xs font-medium text-muted-foreground">
         {displayFromScope ? 'Outputs' : 'Schema'}
       </div>
       {properties.map(([name, property]) => (
         <div
-          className="flex items-center justify-between gap-2 rounded-md bg-muted px-2 py-1.5 text-[11px]"
+          className="flex items-center justify-between gap-2 rounded-md bg-muted px-2 py-1.5 text-xs"
           key={name}
         >
           <span className="truncate">{name}</span>
@@ -519,6 +564,10 @@ export function BatchOutputs({
 }) {
   const [newName, setNewName] = useState('');
   const entries = Object.entries(value ?? {});
+  const trimmedName = newName.trim();
+  const duplicateName = Boolean(
+    trimmedName && Object.prototype.hasOwnProperty.call(value ?? {}, trimmedName)
+  );
   return (
     <div
       className={cn('flex flex-col gap-1.5', hasError && 'rounded-lg ring-1 ring-destructive/40')}
@@ -544,19 +593,26 @@ export function BatchOutputs({
           <Input
             placeholder="Output name"
             value={newName}
+            aria-invalid={duplicateName || undefined}
             onChange={(event) => setNewName(event.target.value)}
           />
           <Button
             size="sm"
             variant="outline"
-            disabled={!newName.trim()}
+            disabled={!trimmedName || duplicateName}
             onClick={() => {
-              onChange({ ...value, [newName.trim()]: { type: 'ref', content: [] } });
+              if (!trimmedName || duplicateName) return;
+              onChange({ ...value, [trimmedName]: { type: 'ref', content: [] } });
               setNewName('');
             }}
           >
             Add
           </Button>
+        </div>
+      )}
+      {duplicateName && (
+        <div className="text-xs text-destructive" role="alert">
+          An output with this name already exists.
         </div>
       )}
     </div>
@@ -606,7 +662,7 @@ export function AssignRows({ name = 'assign', readonly }: { name?: string; reado
                     onClick={() => field.onChange(rows.filter((_, rowIndex) => rowIndex !== index))}
                     aria-label="Remove assignment"
                   >
-                    ×
+                    <X />
                   </Button>
                 </div>
                 {row.operator === 'declare' ? (
@@ -662,7 +718,8 @@ export function AssignRows({ name = 'assign', readonly }: { name?: string; reado
                   ])
                 }
               >
-                + Add assignment
+                <Plus data-icon="inline-start" />
+                Add assignment
               </Button>
             )}
           </div>
@@ -777,7 +834,7 @@ export function ConditionRow({
           }
         />
       ) : (
-        <div className="flex h-8 items-center rounded-lg bg-muted px-2 text-[11px] text-muted-foreground">
+        <div className="flex h-8 items-center rounded-lg bg-muted px-2 text-xs text-muted-foreground">
           {config?.rightDisplay}
         </div>
       )}

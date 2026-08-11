@@ -1,3 +1,8 @@
+/**
+ * Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
+ * SPDX-License-Identifier: MIT
+ */
+
 import { FC, useState } from 'react';
 
 import { Field } from '@flowgram.ai/free-layout-editor';
@@ -14,6 +19,8 @@ export const GroupTitle: FC = () => {
         inputting ? (
           <Input
             autoFocus
+            aria-label="Group title"
+            className="h-7 border-0 bg-transparent px-1 text-sm font-medium shadow-none focus-visible:ring-0"
             value={field.value}
             onChange={(event) => field.onChange(event.target.value)}
             onMouseDown={(event) => event.stopPropagation()}

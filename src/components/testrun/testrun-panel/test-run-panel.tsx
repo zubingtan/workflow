@@ -10,7 +10,7 @@ import classnames from 'classnames';
 import { WorkflowInputs, WorkflowOutputs } from '@flowgram.ai/runtime-interface';
 import { useService } from '@flowgram.ai/free-layout-editor';
 
-import { Button } from '@/components/ui/button';
+import { Button, Checkbox } from '@/components/ui';
 
 import { TestRunJsonInput } from '../testrun-json-input';
 import { TestRunForm } from '../testrun-form';
@@ -90,12 +90,10 @@ export const TestRunSidePanel: FC<TestRunSidePanelProps> = () => {
       <div className={styles['testrun-panel-input']}>
         <div className={styles.title}>Input Form</div>
         <div>JSON Mode</div>
-        <input
+        <Checkbox
           aria-label="JSON Mode"
-          className="h-4 w-4 accent-primary"
-          type="checkbox"
           checked={inputJSONMode}
-          onChange={(event) => setInputJSONMode(event.target.checked)}
+          onCheckedChange={(checked) => setInputJSONMode(checked)}
         />
       </div>
       {inputJSONMode ? (

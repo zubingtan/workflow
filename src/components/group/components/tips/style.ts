@@ -19,8 +19,9 @@ export const GroupTipsStyle = styled.div`
     justify-content: center;
     height: 100%;
     width: 100%;
-    background-color: rgb(255 255 255);
-    border-radius: 8px 8px 0 0;
+    background-color: var(--popover);
+    border: 1px solid var(--border);
+    border-radius: var(--app-radius-md) var(--app-radius-md) 0 0;
 
     .content {
       overflow: hidden;
@@ -30,14 +31,14 @@ export const GroupTipsStyle = styled.div`
 
       width: fit-content;
       height: 100%;
-      padding: 0 12px;
+      padding: 0 var(--app-space-3);
 
       .text {
-        font-size: 14px;
-        font-weight: 400;
+        font-size: var(--app-font-size-md);
+        font-weight: var(--app-font-weight-regular);
         font-style: normal;
         line-height: 20px;
-        color: rgba(15, 21, 40, 82%);
+        color: var(--popover-foreground);
         text-overflow: ellipsis;
         margin: 0;
       }
@@ -49,30 +50,25 @@ export const GroupTipsStyle = styled.div`
 
     .actions {
       display: flex;
-      gap: 8px;
+      gap: var(--app-space-2);
       align-items: center;
 
       height: 28px;
-      padding: 0 12px;
+      padding: 0 var(--app-space-3);
 
       .close-forever {
-        cursor: pointer;
-
-        padding: 0 3px;
-
-        font-size: 12px;
-        font-weight: 400;
-        font-style: normal;
-        line-height: 12px;
-        color: rgba(32, 41, 69, 62%);
-        margin: 0;
+        color: var(--muted-foreground);
       }
 
       .close {
         display: flex;
-        cursor: pointer;
         height: 100%;
         align-items: center;
+
+        svg {
+          width: 16px;
+          height: 16px;
+        }
       }
     }
   }

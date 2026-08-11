@@ -465,8 +465,8 @@ function App() {
                 zIndex: 1000,
                 padding: '6px 8px',
                 border: '1px solid var(--border)',
-                borderRadius: 999,
-                boxShadow: 'var(--shadow-lg)',
+                borderRadius: 'var(--app-radius-lg)',
+                boxShadow: 'var(--app-shadow-lg)',
                 background: 'color-mix(in oklch, var(--background) 94%, transparent)',
                 backdropFilter: 'blur(12px)',
               }}

@@ -231,6 +231,9 @@ test('editor controls keep headless value semantics and control seams', () => {
   for (const control of ['dynamic-value', 'schema-editor', 'inputs-values', 'assign-rows', 'condition-row']) {
     assert.match(source, new RegExp(`data-editor-control="${control}"`));
   }
+  assert.match(source, /function JsonSchemaObjectEditor/);
+  assert.match(source, /onCheckedChange/);
+  assert.match(source, /Object\.prototype\.hasOwnProperty\.call/);
 
   const value = { type: 'ref', content: ['start', 'query'], extra: { preserved: true } };
   assert.equal(

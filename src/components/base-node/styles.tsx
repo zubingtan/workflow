@@ -8,8 +8,8 @@ import { CircleAlert } from 'lucide-react';
 
 export const NodeWrapperStyle = styled.div`
   align-items: flex-start;
-  background-color: var(--app-color-node-bg);
-  border: 1px solid var(--app-color-node-border);
+  background-color: var(--card);
+  border: 1px solid var(--border);
   border-radius: var(--app-radius-md);
   box-shadow: var(--app-shadow-md);
   display: flex;

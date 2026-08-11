@@ -1,3 +1,8 @@
+/**
+ * Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
+ * SPDX-License-Identifier: MIT
+ */
+
 import { FC, useState } from 'react';
 
 import { Field } from '@flowgram.ai/free-layout-editor';
@@ -29,11 +34,15 @@ function ColorPicker({ value, onChange }: { value: string; onChange: (value: str
         />
       </Button>
       {open && (
-        <div className="absolute top-full right-0 z-50 mt-1 grid grid-cols-4 gap-1 rounded-lg border border-border bg-popover p-2 shadow-xl">
+        <div className="absolute top-full right-0 z-50 mt-1 grid grid-cols-4 gap-1 rounded-lg border border-border bg-popover p-2 shadow-md">
           {Object.entries(groupColors).map(([name, color]) => (
-            <button
+            <Button
               key={name}
-              className="size-5 rounded-full border-2"
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              aria-pressed={name === value}
+              className="size-6 rounded-full border-2 transition-transform hover:scale-110 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
               style={{
                 backgroundColor: color['300'],
                 borderColor: name === value ? color['400'] : 'transparent',

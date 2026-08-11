@@ -1,3 +1,8 @@
+/**
+ * Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
+ * SPDX-License-Identifier: MIT
+ */
+
 import { useState } from 'react';
 
 import { Minus, Variable } from 'lucide-react';
@@ -14,7 +19,7 @@ export function VariablePanel() {
   return (
     <div className="relative">
       <Button
-        className={isOpen ? 'rounded-lg' : 'rounded-full'}
+        className="rounded-lg"
         variant={isOpen ? 'outline' : 'secondary'}
         size="icon-lg"
         aria-label="Toggle Variable Panel"
@@ -23,7 +28,7 @@ export function VariablePanel() {
         {isOpen ? <Minus /> : <img src={iconVariable} width={20} height={20} alt="Variables" />}
       </Button>
       {isOpen && (
-        <div className="absolute right-0 bottom-12 z-30 w-[min(500px,calc(100vw-32px))] overflow-hidden rounded-xl border border-border bg-background p-3 shadow-xl">
+        <div className="absolute right-0 bottom-12 z-30 w-[min(500px,calc(100vw-32px))] overflow-hidden rounded-lg border border-border bg-background p-3 shadow-md">
           <div className="mb-3 flex items-center gap-1 border-b border-border pb-2">
             <Button
               size="sm"

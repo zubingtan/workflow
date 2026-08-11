@@ -24,21 +24,12 @@ export const ToolSection = styled.div`
   align-items: center;
   background-color: var(--background);
   border: 1px solid var(--border);
-  border-radius: 999px;
-  box-shadow: var(--shadow-lg);
-  column-gap: 2px;
+  border-radius: var(--app-radius-lg);
+  box-shadow: var(--app-shadow-lg);
+  column-gap: var(--app-space-1);
   height: 40px;
   padding: 0 var(--app-space-1);
   pointer-events: auto;
-`;
-
-export const SelectZoom = styled.span`
-  padding: var(--app-space-1);
-  border-radius: var(--app-radius-md);
-  border: 1px solid var(--app-color-border);
-  font-size: var(--app-font-size-xs);
-  width: 50px;
-  cursor: pointer;
 `;
 
 export const MinimapContainer = styled.div`

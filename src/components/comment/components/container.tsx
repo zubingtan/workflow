@@ -39,9 +39,9 @@ export const CommentContainer: FC<ICommentContainer> = (props) => {
       style={{
         // Tailwind does not support outline styles, so use inline style here
         outline: focused
-          ? '1px solid var(--semi-color-warning-hover)'
-          : '1px solid var(--semi-color-warning)',
-        backgroundColor: 'var(--semi-color-warning-light-default)',
+          ? '1px solid var(--app-color-primary)'
+          : '1px solid var(--app-color-warning)',
+        backgroundColor: 'color-mix(in oklch, var(--app-color-warning) 12%, var(--background))',
         ...scrollbarStyle,
         ...style,
       }}

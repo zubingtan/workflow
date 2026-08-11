@@ -10,17 +10,17 @@ export const FormWrapper = styled.div`
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  background-color: var(--app-color-surface);
+  gap: var(--app-space-1);
+  background-color: var(--card);
   border-radius: 0 0 var(--app-radius-md) var(--app-radius-md);
   padding: 0 var(--app-space-3) var(--app-space-3);
 `;
 
 export const FormTitleDescription = styled.div`
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--app-font-size-xs);
   line-height: 20px;
-  padding: 0px 4px;
+  padding: 0 var(--app-space-1);
   word-break: break-all;
   white-space: break-spaces;
 `;
