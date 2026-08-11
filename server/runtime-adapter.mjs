@@ -30,6 +30,7 @@ import {
   createStructuredOutputPayloadExtension,
   createStructuredOutputTool,
   StructuredOutputCapabilityError,
+  STRUCTURED_OUTPUT_GUIDELINES,
 } from './structured-output.mjs';
 import { executeFeishuBot } from './feishu-executor.mjs';
 import { resolveSkillPaths } from './skills.mjs';
@@ -295,11 +296,21 @@ export async function createAgentSessionForAgent(agent, agentDir, mem0, structur
       })
     );
   }
+  // pi's buildSystemPrompt only emits promptGuidelines in its default-prompt
+  // branch — with a customPrompt (agent system_prompt) the Guidelines section
+  // is dropped, so the StructuredOutput MUST-call contract would never reach
+  // the model. Append the guidelines to the system prompt directly when this
+  // run carries a structured contract (verified on gpt-5.6-luna and
+  // deepseek-v4-flash: without them the model answers translator prompts with
+  // plain text instead of calling StructuredOutput).
+  const systemPrompt = structured
+    ? [config.system_prompt, ...STRUCTURED_OUTPUT_GUIDELINES].filter(Boolean).join('\n\n')
+    : config.system_prompt || undefined;
   const resourceLoader = new DefaultResourceLoader({
     cwd: agentSessionDir,
     agentDir: agentSessionDir,
     settingsManager,
-    systemPrompt: config.system_prompt || undefined,
+    systemPrompt,
     noThemes: true,
     noSkills: true,
     additionalSkillPaths: resolvedSkillPaths,
