@@ -592,7 +592,15 @@ export function AgentMillerColumns() {
         <Modal
           title="Import Conflicts"
           visible={importState.visible}
-          onCancel={() => setImportState({ visible: false, conflicts: [], agents: [], total: 0 })}
+          onCancel={() =>
+            setImportState({
+              visible: false,
+              conflicts: [],
+              missingSkills: [],
+              agents: [],
+              total: 0,
+            })
+          }
           footer={null}
         >
           <p>
