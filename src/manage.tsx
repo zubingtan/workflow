@@ -187,6 +187,7 @@ export function WorkflowManager({ onOpen }: { onOpen: (id: string) => void }) {
             return (
               <div
                 key={record.id}
+                data-testid="workflow-row"
                 style={{
                   display: 'flex',
                   alignItems: 'center',

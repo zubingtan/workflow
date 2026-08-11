@@ -49,7 +49,11 @@ test.describe('Node timeout', () => {
   test('admin settings UI edits the global node_timeout_default_ms', async ({ page }) => {
     await page.goto('/');
     await page.getByText('Settings', { exact: true }).click();
-    await expect(page.getByText('Global Settings').first()).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByRole('heading', { name: 'Execution', exact: true }).first()).toBeVisible(
+      {
+        timeout: 5_000,
+      }
+    );
 
     const beforeRes = await fetch('http://localhost:4099/api/settings');
     const before = await beforeRes.json();
@@ -58,7 +62,7 @@ test.describe('Node timeout', () => {
     const newValue = 123_000;
     const input = page.getByRole('spinbutton').first();
     await input.fill(String(newValue));
-    await page.getByRole('button', { name: 'Save' }).click();
+    await page.getByRole('button', { name: 'Save settings' }).click();
 
     await expect
       .poll(async () => {
@@ -86,7 +90,9 @@ test.describe('Node timeout', () => {
 
     await page.goto('/');
     await page.getByText('Workflows', { exact: true }).first().click();
-    const wfRow = page.locator('tr', { hasText: 'E2E Dropdown WF' }).first();
+    const wfRow = page
+      .locator('[data-testid="workflow-row"]', { hasText: 'E2E Dropdown WF' })
+      .first();
     await wfRow.getByRole('button', { name: 'Open' }).click();
 
     // Wait for editor, then click the LLM node to open its form.

@@ -307,7 +307,7 @@ async function expectNonCrossing(page: Page, direction: Direction) {
 async function openWorkflowInEditor(page: Page, wfName: string) {
   await page.goto('/');
   await page.getByText('Workflows', { exact: true }).first().click();
-  const wfRow = page.locator('tr', { hasText: wfName }).first();
+  const wfRow = page.locator('[data-testid="workflow-row"]', { hasText: wfName }).first();
   await wfRow.getByRole('button', { name: 'Open' }).click();
 }
 
