@@ -111,7 +111,7 @@ export const AddNode = (props: { disabled: boolean }) => {
           className="fixed z-[1001] w-72 rounded-lg border border-border bg-popover p-2 text-popover-foreground shadow-md"
           style={{
             left: Math.max(8, Math.min(panelRect.left, window.innerWidth - 296)),
-            top: Math.max(8, panelRect.top - 300),
+            bottom: Math.max(8, window.innerHeight - panelRect.top + 8),
             color: 'var(--app-color-text-1)',
           }}
           onMouseDown={(event) => event.stopPropagation()}

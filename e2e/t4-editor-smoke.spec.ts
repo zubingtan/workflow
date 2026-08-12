@@ -185,6 +185,11 @@ test('T4 creates, edits, saves, reloads and validates an editor workflow', async
   await addNodeButton.click();
   const nodeLibrary = page.getByRole('dialog', { name: 'Add node' });
   await expect(nodeLibrary).toBeVisible();
+  const addNodeBox = await addNodeButton.boundingBox();
+  const nodeLibraryBox = await nodeLibrary.boundingBox();
+  expect(addNodeBox).not.toBeNull();
+  expect(nodeLibraryBox).not.toBeNull();
+  expect(nodeLibraryBox!.y + nodeLibraryBox!.height).toBeLessThanOrEqual(addNodeBox!.y);
   await page.keyboard.press('Escape');
   await expect(nodeLibrary).toBeHidden();
   await addNodeButton.click();
