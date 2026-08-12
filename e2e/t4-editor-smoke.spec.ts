@@ -41,25 +41,44 @@ test('T4 creates, edits, saves, reloads and validates an editor workflow', async
   await page.mouse.move(300, 300);
   await expect(page.getByRole('menu')).toBeHidden();
   await nodeActions.click();
-  await expect(page.getByRole('menu')).toBeVisible();
+  const nodeMenu = page.getByRole('menu');
+  await expect(nodeMenu).toBeVisible();
+  await nodeMenu.getByRole('menuitem', { name: 'Edit title' }).click();
+  await expect(page.getByRole('textbox', { name: 'Node title' })).toBeVisible();
+  await page.getByRole('textbox', { name: 'Node title' }).press('Tab');
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('menu')).toBeHidden();
+  await expect(nodeMenu).toBeHidden();
 
   const zoomButton = page.getByRole('button', { name: 'Zoom level' });
   await zoomButton.click();
-  await expect(page.getByRole('dialog', { name: 'Zoom options' })).toBeVisible();
+  const zoomOptions = page.getByRole('dialog', { name: 'Zoom options' });
+  await expect(zoomOptions).toBeVisible();
+  await zoomOptions.getByRole('button', { name: 'Zoom to 50%' }).click();
+  await expect(zoomButton).toHaveText('50%');
+  await zoomButton.click();
+  await zoomOptions.getByRole('button', { name: 'Zoom to 100%' }).click();
+  await expect(zoomButton).toHaveText('100%');
+  await zoomButton.click();
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('dialog', { name: 'Zoom options' })).toBeHidden();
+  await expect(zoomOptions).toBeHidden();
   await zoomButton.click();
   await page.mouse.click(300, 300);
-  await expect(page.getByRole('dialog', { name: 'Zoom options' })).toBeHidden();
+  await expect(zoomOptions).toBeHidden();
 
   const interactionButton = page.getByRole('button', { name: 'Interaction mode' });
   await interactionButton.click();
-  await expect(page.getByText('Mouse-Friendly', { exact: true })).toBeVisible();
-  await expect(page.getByText('Touchpad-Friendly', { exact: true })).toBeVisible();
+  const interactionOptions = page.getByRole('group', { name: 'Interaction mode options' });
+  const mouseMode = interactionOptions.getByRole('button', { name: /Mouse-Friendly/ });
+  const touchpadMode = interactionOptions.getByRole('button', { name: /Touchpad-Friendly/ });
+  await expect(mouseMode).toBeVisible();
+  await expect(touchpadMode).toBeVisible();
+  await touchpadMode.click();
+  await expect(touchpadMode).toHaveAttribute('aria-pressed', 'true');
+  await expect(mouseMode).toHaveAttribute('aria-pressed', 'false');
+  await mouseMode.click();
+  await expect(mouseMode).toHaveAttribute('aria-pressed', 'true');
   await page.keyboard.press('Escape');
-  await expect(page.getByText('Mouse-Friendly', { exact: true })).toBeHidden();
+  await expect(interactionOptions).toBeHidden();
 
   // The editable node panel keeps the variable affordance that the canvas
   // preview intentionally omits: typing `{{` opens the available variables,
@@ -71,6 +90,11 @@ test('T4 creates, edits, saves, reloads and validates an editor workflow', async
   await prompt.fill('{{');
   const variableSuggestions = page.getByRole('tree', { name: 'Available variables' });
   await expect(variableSuggestions).toBeVisible();
+  for (const key of ['global', 'global.userId', 'start_0', 'start_0.query']) {
+    await expect(variableSuggestions.locator(`[data-variable-tree-item="${key}"]`)).toBeVisible({
+      timeout: 5_000,
+    });
+  }
   await expect(prompt).toBeFocused();
   await page.keyboard.type('continued');
   await expect(prompt).toHaveValue('{{continued');
@@ -114,6 +138,11 @@ test('T4 creates, edits, saves, reloads and validates an editor workflow', async
 
   await prompt.fill('{{');
   await expect(variableSuggestions).toBeVisible();
+  await variableSuggestions.locator('[data-variable-tree-focus="global.userId"]').click();
+  await expect(prompt).toHaveValue('{{global.userId}}');
+  await prompt.fill('');
+  await prompt.fill('{{');
+  await expect(variableSuggestions).toBeVisible();
   await variableSuggestions.getByRole('button', { name: /query/ }).click();
   await expect(prompt).toHaveValue('{{start_0.query}}');
   await prompt.fill('');
@@ -124,8 +153,13 @@ test('T4 creates, edits, saves, reloads and validates an editor workflow', async
   await prompt.fill('');
   await prompt.fill('{{');
   await expect(variableSuggestions).toBeVisible();
-  await page.mouse.click(800, 800);
+  await page
+    .getByText('Run an AI agent with a prompt and stream the response.', { exact: true })
+    .click();
   await expect(variableSuggestions).toBeHidden();
+  await prompt.fill('');
+  await prompt.fill('{{start_0.query}}');
+  await expect(prompt).toHaveValue('{{start_0.query}}');
   await expect(saveButton).toBeEnabled();
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Unsaved Changes' })).toBeVisible();
@@ -159,9 +193,13 @@ test('T4 creates, edits, saves, reloads and validates an editor workflow', async
   await expect(nodeLibrary).toBeHidden();
   await addNodeButton.click();
   await expect(nodeLibrary).toBeVisible();
+  const conditionNodes = page.locator('[data-node-id^="condition_"]');
+  await expect(conditionNodes).toHaveCount(0);
   await page.getByTestId('demo-free-node-list-condition').click();
-  const addedCondition = page.locator('[data-node-id^="condition_"]').last();
+  await expect(conditionNodes).toHaveCount(1);
+  const addedCondition = conditionNodes.first();
   await expect(addedCondition).toBeVisible();
+  await expect(saveButton).toBeEnabled();
   await page.locator('.gedit-flow-activity-edge').first().hover();
   const lineAddButton = page
     .locator('[data-testid="sdk.workflow.canvas.line.add"]:visible')
@@ -207,27 +245,62 @@ test('T4 creates, edits, saves, reloads and validates an editor workflow', async
   await expect(page.locator('[data-node-id="llm_main"]')).toBeVisible();
   await expect(page.locator('[data-node-id="end_0"]')).toBeVisible();
   await expect(page.locator('.gedit-flow-activity-edge')).toHaveCount(3);
-  await expect(page.locator('[data-node-id^="condition_"]').last()).toBeVisible();
+  await expect(conditionNodes).toHaveCount(1);
+  await expect(conditionNodes.first()).toBeVisible();
 
-  await page
-    .locator('[data-node-id="end_0"] [draggable="true"]')
-    .click({ position: { x: 50, y: 15 }, force: true });
+  await page.locator('[data-node-id="llm_main"]').click({ position: { x: 10, y: 10 } });
+  await expect(prompt).toHaveValue('{{start_0.query}}');
+  await prompt.fill('{{');
+  const reloadedVariables = page.getByRole('tree', { name: 'Available variables' });
+  await expect(reloadedVariables).toBeVisible();
+  await expect(reloadedVariables.locator('[data-variable-tree-item="global.userId"]')).toBeVisible({
+    timeout: 5_000,
+  });
+  await expect(
+    reloadedVariables.locator('[data-variable-tree-item="start_0.query"]')
+  ).toBeVisible();
+  await page.keyboard.press('Escape');
+  await prompt.fill('');
+  await prompt.fill('{{start_0.query}}');
+  await page.getByRole('button', { name: 'Close node settings' }).click();
+
+  await endNode.scrollIntoViewIfNeeded();
+  await endNode.locator('[draggable="true"]').click({ position: { x: 50, y: 15 }, force: true });
   await expect(page.getByRole('button', { name: 'Close node settings' })).toBeVisible();
   const endVariablePicker = page.getByRole('button', { name: 'Select variable' });
   await expect(endVariablePicker).toBeVisible();
   await endVariablePicker.click();
   const endVariables = page.getByRole('tree', { name: 'Available variables' });
   await expect(endVariables).toBeVisible();
-  await page.getByText('End', { exact: true }).last().click();
-  await expect(endVariables).toBeHidden();
-  await endVariablePicker.click();
-  await expect(endVariables).toBeVisible();
+  for (const key of ['global.userId', 'start_0.query', 'llm_main.result']) {
+    await expect(endVariables.locator(`[data-variable-tree-item="${key}"]`)).toBeVisible({
+      timeout: 5_000,
+    });
+  }
   await page.keyboard.press('Escape');
   await expect(endVariables).toBeHidden();
   await endVariablePicker.click();
   await expect(endVariables).toBeVisible();
-  await endVariables.getByRole('button', { name: /result/ }).click();
-  await expect(endVariablePicker).toContainText('llm_main.result');
+  await endVariables.locator('[data-variable-tree-focus="global.userId"]').click();
+  await expect(endVariablePicker).toContainText('global.userId');
+  await page.getByRole('button', { name: 'Close node settings' }).click();
+
+  await expect(saveButton).toBeEnabled();
+  await saveButton.click();
+  await expect(page.getByText('Workflow saved', { exact: true })).toBeVisible({ timeout: 10_000 });
+  await page.reload();
+  await expect(page.locator('[data-node-id="end_0"]')).toBeVisible({ timeout: 10_000 });
+  await endNode.scrollIntoViewIfNeeded();
+  await endNode.locator('[draggable="true"]').click({ position: { x: 50, y: 15 }, force: true });
+  const persistedEndPicker = page.getByRole('button', { name: 'Select variable' });
+  await expect(persistedEndPicker).toContainText('global.userId');
+  await persistedEndPicker.click();
+  const persistedEndVariables = page.getByRole('tree', { name: 'Available variables' });
+  await expect(persistedEndVariables).toBeVisible();
+  await expect(
+    persistedEndVariables.locator('[data-variable-tree-item="llm_main.result"]')
+  ).toBeVisible();
+  await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Close node settings' }).click();
 
   const variablePanelToggle = page.getByRole('button', { name: 'Toggle Variable Panel' });
@@ -240,6 +313,11 @@ test('T4 creates, edits, saves, reloads and validates an editor workflow', async
   await expect(fullVariableTree).toBeFocused();
   const fullVariableItems = fullVariableTree.locator('[data-variable-tree-focus]:visible');
   await expect(fullVariableItems.first()).toBeVisible();
+  for (const key of ['global.userId', 'start_0.query', 'llm_main.result']) {
+    await expect(fullVariableTree.locator(`[data-variable-tree-item="${key}"]`)).toBeVisible({
+      timeout: 5_000,
+    });
+  }
   await page.keyboard.press('Home');
   await expect(fullVariableItems.first()).toBeFocused();
   await page.keyboard.press('End');
@@ -263,8 +341,9 @@ test('T4 creates, edits, saves, reloads and validates an editor workflow', async
   const tools = page.locator('.workflow-tools');
   await tools.getByRole('button', { name: 'Test Run', exact: true }).click();
   await expect(page.getByText('Input Form', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Close' })).toBeVisible();
-  await page.getByRole('button', { name: 'Close' }).click();
+  const closeTestRun = page.locator('button[aria-label="Close"][title="Close Test Run"]');
+  await expect(closeTestRun).toBeVisible();
+  await closeTestRun.click();
   await expect(page.getByText('Input Form', { exact: true })).toBeHidden();
   await tools.getByRole('button', { name: 'Test Run', exact: true }).click();
   await expect(page.getByText('Input Form', { exact: true })).toBeVisible();
