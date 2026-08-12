@@ -15,7 +15,11 @@ export function SidebarNodeRenderer(props: { node: FlowNodeEntity }) {
     <NodeRenderContext.Provider value={nodeRender}>
       <div
         className="h-full w-full overflow-hidden rounded-lg border border-border bg-background"
-        style={{ color: 'var(--app-color-text-1)' }}
+        style={{
+          color: 'var(--app-color-text-1)',
+          background: 'var(--app-color-surface)',
+          backdropFilter: 'blur(16px)',
+        }}
       >
         {nodeRender.form?.render()}
       </div>

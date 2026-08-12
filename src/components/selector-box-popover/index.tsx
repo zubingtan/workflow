@@ -11,6 +11,7 @@ import { WorkflowGroupCommand } from '@flowgram.ai/free-group-plugin';
 
 import { Button } from '@/components/ui';
 
+import { ToolbarTooltip } from '../tools/toolbar-tooltip';
 import { IconGroup } from '../group';
 import { FlowCommandId } from '../../shortcuts/constants';
 
@@ -25,42 +26,52 @@ export const SelectorBoxPopover: FunctionComponent<SelectorBoxPopoverProps> = ({
       style={{ left: bounds.right, top: bounds.top }}
       onMouseDown={(event) => event.stopPropagation()}
     >
-      <Button
-        size="icon-sm"
-        aria-label="Collapse"
-        onMouseDown={() => commandRegistry.executeCommand(FlowCommandId.COLLAPSE)}
-      >
-        <Minimize2 />
-      </Button>
-      <Button
-        size="icon-sm"
-        aria-label="Expand"
-        onMouseDown={() => commandRegistry.executeCommand(FlowCommandId.EXPAND)}
-      >
-        <Expand />
-      </Button>
-      <Button
-        size="icon-sm"
-        aria-label="Create group"
-        onClick={() => commandRegistry.executeCommand(WorkflowGroupCommand.Group)}
-      >
-        <IconGroup size={14} />
-      </Button>
-      <Button
-        size="icon-sm"
-        aria-label="Copy"
-        onClick={() => commandRegistry.executeCommand(FlowCommandId.COPY)}
-      >
-        <Copy />
-      </Button>
-      <Button
-        size="icon-sm"
-        variant="destructive"
-        aria-label="Delete"
-        onClick={() => commandRegistry.executeCommand(FlowCommandId.DELETE)}
-      >
-        <Trash2 />
-      </Button>
+      <ToolbarTooltip label="Collapse">
+        <Button
+          size="icon-sm"
+          aria-label="Collapse"
+          onMouseDown={() => commandRegistry.executeCommand(FlowCommandId.COLLAPSE)}
+        >
+          <Minimize2 />
+        </Button>
+      </ToolbarTooltip>
+      <ToolbarTooltip label="Expand">
+        <Button
+          size="icon-sm"
+          aria-label="Expand"
+          onMouseDown={() => commandRegistry.executeCommand(FlowCommandId.EXPAND)}
+        >
+          <Expand />
+        </Button>
+      </ToolbarTooltip>
+      <ToolbarTooltip label="Create group">
+        <Button
+          size="icon-sm"
+          aria-label="Create group"
+          onClick={() => commandRegistry.executeCommand(WorkflowGroupCommand.Group)}
+        >
+          <IconGroup size={14} />
+        </Button>
+      </ToolbarTooltip>
+      <ToolbarTooltip label="Copy">
+        <Button
+          size="icon-sm"
+          aria-label="Copy"
+          onClick={() => commandRegistry.executeCommand(FlowCommandId.COPY)}
+        >
+          <Copy />
+        </Button>
+      </ToolbarTooltip>
+      <ToolbarTooltip label="Delete">
+        <Button
+          size="icon-sm"
+          variant="destructive"
+          aria-label="Delete"
+          onClick={() => commandRegistry.executeCommand(FlowCommandId.DELETE)}
+        >
+          <Trash2 />
+        </Button>
+      </ToolbarTooltip>
     </div>
     <div>{children}</div>
   </>

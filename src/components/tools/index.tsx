@@ -28,6 +28,7 @@ import { ProblemButton } from '../problem-panel';
 import { DownloadTool } from './download';
 import { useWorkflowId } from '../workflow-context';
 import { HistoryModal } from '../history-modal';
+import { ToolbarTooltip } from './toolbar-tooltip';
 
 export const DemoTools = () => {
   const { history, playground } = useClientContext();
@@ -62,31 +63,40 @@ export const DemoTools = () => {
         <Minimap visible={minimapVisible} />
         {!isHistoryView && <Readonly />}
         <Comment />
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Undo"
-          disabled={!canUndo || playground.config.readonly}
-          onClick={() => history.undo()}
-        >
-          <Undo2 />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Redo"
-          disabled={!canRedo || playground.config.readonly}
-          onClick={() => history.redo()}
-        >
-          <Redo2 />
-        </Button>
+        <ToolbarTooltip label="Undo">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Undo"
+            disabled={!canUndo || playground.config.readonly}
+            onClick={() => history.undo()}
+          >
+            <Undo2 />
+          </Button>
+        </ToolbarTooltip>
+        <ToolbarTooltip label="Redo">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Redo"
+            disabled={!canRedo || playground.config.readonly}
+            onClick={() => history.redo()}
+          >
+            <Redo2 />
+          </Button>
+        </ToolbarTooltip>
         <ProblemButton />
         <DownloadTool />
         <span className="mx-1 h-5 w-px bg-border" />
         <AddNode disabled={playground.config.readonly} />
         {!isHistoryView && (
-          <Button variant="ghost" disabled={!workflowId} onClick={() => setHistoryVisible(true)}>
-            <History /> History
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={!workflowId}
+            onClick={() => setHistoryVisible(true)}
+          >
+            <History data-icon="inline-start" /> History
           </Button>
         )}
         <TestRunButton disabled={playground.config.readonly} />

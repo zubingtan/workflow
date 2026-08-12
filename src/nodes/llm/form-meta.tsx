@@ -61,6 +61,7 @@ function AgentSelect({
 
   return (
     <Select
+      aria-label="Agent"
       value={value || ''}
       onChange={(event) => onChange(event.currentTarget.value)}
       disabled={readonly}

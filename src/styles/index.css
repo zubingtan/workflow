@@ -94,3 +94,51 @@ body,
   padding: 4px 8px;
   gap: 4px;
 }
+
+/* The editor shell owns one neutral dashboard palette. Management views keep
+ * their page tokens; editor navigation and floating surfaces inherit these
+ * neutral values instead of the blue-tinted global dark sidebar. */
+body[theme-mode='dark'] [data-editor-shell='true'] {
+  --background: oklch(0.18 0 0);
+  --card: oklch(0.23 0 0);
+  --popover: color-mix(in oklch, var(--card) 92%, transparent);
+  --muted: oklch(0.26 0 0);
+  --border: oklch(1 0 0 / 14%);
+  --input: oklch(1 0 0 / 17%);
+}
+
+/* Keep the editor canvas and its floating controls neutral in dark mode. The
+ * management surfaces retain the shared theme tokens; only the editor shell
+ * gets the dashboard-like gray palette. */
+body[theme-mode='dark'] [data-ui='editor-surface'] {
+  --background: oklch(0.18 0 0);
+  --card: oklch(0.23 0 0);
+  --popover: color-mix(in oklch, var(--card) 92%, transparent);
+  --muted: oklch(0.26 0 0);
+  --accent: oklch(0.3 0 0);
+  --border: oklch(1 0 0 / 14%);
+  --input: oklch(1 0 0 / 17%);
+  --app-color-surface: color-mix(in oklch, var(--card) 78%, transparent);
+  --app-color-overlay: color-mix(in oklch, var(--card) 86%, transparent);
+  --app-color-panel: color-mix(in oklch, var(--card) 92%, transparent);
+  --app-color-text-1: var(--foreground);
+  --app-color-text-2: var(--muted-foreground);
+  --app-color-text-3: color-mix(in oklch, var(--muted-foreground) 72%, transparent);
+  --app-color-border: var(--border);
+  --app-color-divider: var(--border);
+  --app-color-fill-0: color-mix(in oklch, var(--card) 62%, transparent);
+  --app-color-fill-1: color-mix(in oklch, var(--card) 78%, transparent);
+  --app-color-fill-2: color-mix(in oklch, var(--card) 90%, transparent);
+  --app-color-canvas: oklch(0.18 0 0);
+  --app-color-node-bg: oklch(0.23 0 0);
+  --app-color-node-border: oklch(1 0 0 / 14%);
+}
+
+/* FlowGram's right panels start at the editor viewport edges. Leave room for
+ * the floating header, bottom canvas tools, and the outer editor gutter so
+ * settings and test-run panels read as separate floating surfaces. */
+[data-ui='editor-surface'] .gedit-flow-panel-layer-wrap-floating .gedit-flow-panel-right-area,
+[data-ui='editor-surface'] .gedit-flow-panel-layer-wrap-docked .gedit-flow-panel-right-area {
+  box-sizing: border-box;
+  padding: 60px 8px 68px 0;
+}

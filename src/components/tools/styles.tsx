@@ -4,8 +4,7 @@
  */
 
 import styled from 'styled-components';
-
-import { IconMinimap } from '../../assets/icon-minimap';
+import { Map } from 'lucide-react';
 
 export const ToolContainer = styled.div`
   position: absolute;
@@ -22,10 +21,11 @@ export const ToolContainer = styled.div`
 export const ToolSection = styled.div`
   display: flex;
   align-items: center;
-  background-color: var(--background);
+  background-color: color-mix(in oklch, var(--card) 78%, transparent);
   border: 1px solid var(--border);
   border-radius: var(--app-radius-lg);
   box-shadow: var(--app-shadow-lg);
+  backdrop-filter: blur(12px);
   column-gap: var(--app-space-1);
   height: 40px;
   padding: 0 var(--app-space-1);
@@ -38,6 +38,6 @@ export const MinimapContainer = styled.div`
   width: 198px;
 `;
 
-export const UIIconMinimap = styled(IconMinimap)<{ visible: boolean }>`
-  color: ${(props) => (props.visible ? undefined : 'var(--app-color-text-3)')};
+export const UIIconMinimap = styled(Map)<{ $visible: boolean }>`
+  color: ${(props) => (props.$visible ? undefined : 'var(--app-color-text-3)')};
 `;

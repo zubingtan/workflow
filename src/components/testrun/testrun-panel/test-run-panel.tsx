@@ -117,12 +117,9 @@ export const TestRunSidePanel: FC<TestRunSidePanelProps> = () => {
       disabled={workflowDeleted}
       variant={isRunning ? 'destructive' : 'default'}
       size="sm"
-      className={classnames(styles.button, {
-        [styles.running]: isRunning,
-        [styles.default]: !isRunning,
-      })}
+      className={classnames(styles.button, isRunning && styles.running)}
     >
-      {isRunning ? <IconCancel /> : <Play aria-hidden="true" />}
+      {isRunning ? <IconCancel /> : <Play data-icon="inline-start" aria-hidden="true" />}
       {isRunning ? 'Cancel' : 'Test Run'}
     </Button>
   );
@@ -201,10 +198,11 @@ export const TestRunSidePanel: FC<TestRunSidePanelProps> = () => {
       <div className={styles['testrun-panel-header']}>
         <div className={styles['testrun-panel-title']}>Test Run</div>
         <Button
-          className={styles['testrun-panel-title']}
+          className={styles['testrun-panel-close']}
           variant="ghost"
           size="icon-sm"
           aria-label="Close"
+          title="Close Test Run"
           onClick={onClose}
         >
           <X aria-hidden="true" />

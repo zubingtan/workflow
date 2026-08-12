@@ -5,7 +5,6 @@
 
 import { useMemo, useRef, type RefObject } from 'react';
 
-import { debounce } from 'lodash-es';
 import { IReport } from '@flowgram.ai/runtime-interface';
 import { createMinimapPlugin } from '@flowgram.ai/minimap-plugin';
 import { createFreeStackPlugin } from '@flowgram.ai/free-stack-plugin';
@@ -257,15 +256,18 @@ export function useEditorProps(
       /**
        * Content change
        */
-      onContentChange: debounce((ctx: FreeLayoutPluginContext, event) => {
+      onContentChange: (ctx: FreeLayoutPluginContext, event) => {
         if (ctx.document.disposed) return;
 
+        // Dirty state is part of the editor's synchronous navigation contract.
+        // The form Field has already written the new value into the document
+        // before this callback runs, so do not delay the app-level guard.
         onDirty?.();
         console.log('Content changed: ', event, {
           ...ctx.document.toJSON(),
           globalVariable: ctx.get<GetGlobalVariableSchema>(GetGlobalVariableSchema)(),
         });
-      }, 1000),
+      },
       /**
        * Running line
        */

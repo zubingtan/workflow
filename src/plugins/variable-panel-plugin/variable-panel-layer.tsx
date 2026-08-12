@@ -16,7 +16,7 @@ export class VariablePanelLayer extends Layer {
       domUtils.setStyle(this.node, {
         position: 'absolute',
         right: 25 - scrollX,
-        top: scrollY + 25,
+        top: scrollY + 72,
       });
     });
   }

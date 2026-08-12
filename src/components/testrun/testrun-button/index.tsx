@@ -10,6 +10,7 @@ import { useClientContext, FlowNodeEntity } from '@flowgram.ai/free-layout-edito
 
 import { Button } from '@/components/ui';
 
+import { ToolbarTooltip } from '../../tools/toolbar-tooltip';
 import { useTestRunFormPanel } from '../../../plugins/panel-manager-plugin/hooks';
 
 export function TestRunButton(props: { disabled: boolean }) {
@@ -50,12 +51,15 @@ export function TestRunButton(props: { disabled: boolean }) {
   }, [clientContext]);
 
   return (
-    <Button
-      variant={errorCount ? 'destructive' : 'default'}
-      disabled={props.disabled}
-      onClick={onTestRun}
-    >
-      <Play /> Test Run{errorCount ? ` (${errorCount})` : ''}
-    </Button>
+    <ToolbarTooltip label={errorCount ? `Test run (${errorCount} errors)` : 'Test run'}>
+      <Button
+        variant={errorCount ? 'destructive' : 'default'}
+        size="sm"
+        disabled={props.disabled}
+        onClick={onTestRun}
+      >
+        <Play data-icon="inline-start" /> Test Run{errorCount ? ` (${errorCount})` : ''}
+      </Button>
+    </ToolbarTooltip>
   );
 }

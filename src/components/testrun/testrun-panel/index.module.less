@@ -71,25 +71,20 @@
 
 .button {
   border-radius: var(--app-radius-md);
-  width: 358px;
-  height: 40px;
+  width: calc(100% - 40px);
+  height: 36px;
 
   &.running {
     /* stylelint-disable-next-line declaration-no-important -- override the base button variant */
     background-color: var(--app-color-fill-1) !important;
     color: var(--app-color-text-2);
   }
-
-  &.default {
-    /* stylelint-disable-next-line declaration-no-important -- override the base button variant */
-    background-color: var(--app-color-success) !important;
-    color: var(--app-color-canvas);
-  }
 }
 
 .testrun-panel-container {
   background: var(--app-color-surface);
-  border-radius: var(--app-radius-md);
+  backdrop-filter: blur(16px);
+  border-radius: var(--app-radius-lg);
   height: 100%;
   width: 100%;
   border: 1px solid var(--app-color-border);
@@ -101,9 +96,10 @@
 
   .testrun-panel-header {
     background: var(--app-color-surface);
+    backdrop-filter: blur(16px);
     border-bottom: 1px solid var(--app-color-border);
-    border-top-left-radius: var(--app-radius-md);
-    border-top-right-radius: var(--app-radius-md);
+    border-top-left-radius: var(--app-radius-lg);
+    border-top-right-radius: var(--app-radius-lg);
     display: flex;
     height: 40px;
     justify-content: space-between;
@@ -137,8 +133,9 @@
     position: absolute;
     height: 62px;
     bottom: 0;
-    background: var(--app-color-fill-0);
-    border-radius: 0 0 var(--app-radius-md) var(--app-radius-md);
+    background: var(--app-color-surface);
+    backdrop-filter: blur(16px);
+    border-radius: 0 0 var(--app-radius-lg) var(--app-radius-lg);
     display: flex;
     align-items: center;
     justify-content: center;

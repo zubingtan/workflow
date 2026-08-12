@@ -5,18 +5,21 @@
 
 import { Button } from '@/components/ui';
 
+import { ToolbarTooltip } from './toolbar-tooltip';
 import { UIIconMinimap } from './styles';
 
 export const MinimapSwitch = (props: {
   minimapVisible: boolean;
   setMinimapVisible: (visible: boolean) => void;
 }) => (
-  <Button
-    variant="ghost"
-    size="icon-sm"
-    onClick={() => props.setMinimapVisible(!props.minimapVisible)}
-    aria-label="Minimap"
-  >
-    <UIIconMinimap visible={props.minimapVisible} />
-  </Button>
+  <ToolbarTooltip label={props.minimapVisible ? 'Hide minimap' : 'Show minimap'}>
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      onClick={() => props.setMinimapVisible(!props.minimapVisible)}
+      aria-label="Minimap"
+    >
+      <UIIconMinimap $visible={props.minimapVisible} />
+    </Button>
+  </ToolbarTooltip>
 );

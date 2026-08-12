@@ -11,6 +11,8 @@ import { FlowDownloadFormat, FlowDownloadService } from '@flowgram.ai/export-plu
 
 import { Button } from '@/components/ui';
 
+import { ToolbarTooltip } from './toolbar-tooltip';
+
 const formatOptions = [
   FlowDownloadFormat.PNG,
   FlowDownloadFormat.JPEG,
@@ -30,17 +32,19 @@ export const DownloadTool: FC = () => {
   }, [downloadService]);
   return (
     <div className="relative">
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        aria-label="Download"
-        disabled={downloading}
-        onClick={() => setVisible((value) => !value)}
-      >
-        <Download />
-      </Button>
+      <ToolbarTooltip label="Download workflow">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Download"
+          disabled={downloading}
+          onClick={() => setVisible((value) => !value)}
+        >
+          <Download />
+        </Button>
+      </ToolbarTooltip>
       {visible && (
-        <div className="absolute bottom-full left-0 z-50 mb-1 flex w-28 flex-col rounded-lg border border-border bg-popover p-1 shadow-md">
+        <div className="absolute bottom-full left-0 z-50 mb-1 flex w-28 flex-col rounded-lg border border-border bg-popover p-1 shadow-md backdrop-blur-md">
           {formatOptions.map((format) => (
             <Button
               key={format}
