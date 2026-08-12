@@ -342,8 +342,9 @@ test('T4 creates, edits, saves, reloads and validates an editor workflow', async
   await page.getByRole('button', { name: 'Close node settings' }).click();
 
   await endNode.scrollIntoViewIfNeeded();
-  await endNode.locator('[draggable="true"]').click({ position: { x: 50, y: 15 }, force: true });
+  await endNode.click({ position: { x: 50, y: 15 }, force: true });
   await expect(page.getByRole('button', { name: 'Close node settings' })).toBeVisible();
+  await expect(page.getByText(/The final node of the workflow/)).toBeVisible();
   const endVariablePicker = page.getByRole('button', { name: 'Select variable' });
   await expect(endVariablePicker).toBeVisible();
   await endVariablePicker.click();
