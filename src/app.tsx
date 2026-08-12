@@ -54,6 +54,7 @@ import {
   PopoverContent,
   PopoverTitle,
   PopoverTrigger,
+  TooltipProvider,
 } from './components/ui';
 import { AgentMillerColumns } from './components/agent-miller';
 import { AdminSettings } from './components/admin-settings';
@@ -281,6 +282,7 @@ function App() {
   return (
     <div
       data-testid="app-shell"
+      data-editor-shell={view === 'editor' ? 'true' : undefined}
       style={{
         display: 'flex',
         gap: 8,
@@ -292,6 +294,7 @@ function App() {
       }}
     >
       <aside
+        data-ui="app-navigation"
         style={{
           width: railCollapsed ? 56 : 212,
           flexShrink: 0,
@@ -299,8 +302,9 @@ function App() {
           flexDirection: 'column',
           overflow: 'hidden',
           border: '1px solid var(--border)',
-          borderRadius: 16,
-          background: 'var(--sidebar)',
+          borderRadius: 'var(--app-radius-lg)',
+          background: 'color-mix(in oklch, var(--card) 78%, transparent)',
+          backdropFilter: 'blur(12px)',
           transition: 'width 160ms ease',
         }}
       >
@@ -349,7 +353,13 @@ function App() {
         )}
         <nav
           aria-label="Primary navigation"
-          style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '0 8px' }}
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: railCollapsed ? 'center' : 'stretch',
+            gap: 4,
+            padding: '0 8px',
+          }}
         >
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
@@ -415,6 +425,7 @@ function App() {
 
       {/* Main area */}
       <div
+        data-ui={view === 'editor' ? 'editor-surface' : undefined}
         style={{
           flex: 1,
           minWidth: 0,
@@ -467,12 +478,12 @@ function App() {
                 border: '1px solid var(--border)',
                 borderRadius: 'var(--app-radius-lg)',
                 boxShadow: 'var(--app-shadow-lg)',
-                background: 'color-mix(in oklch, var(--background) 94%, transparent)',
+                background: 'color-mix(in oklch, var(--card) 78%, transparent)',
                 backdropFilter: 'blur(12px)',
               }}
             >
               <Button variant="ghost" size="sm" onClick={() => requestNavigation(backToList)}>
-                <ArrowLeft />
+                <ArrowLeft data-icon="inline-start" />
                 Back
               </Button>
               {renaming ? (
@@ -507,17 +518,22 @@ function App() {
                     lineHeight: 'inherit',
                   }}
                 >
-                  <Typography.Text strong>{workflowName}</Typography.Text>
+                  <span className="text-sm font-semibold tracking-tight">{workflowName}</span>
                   <Pencil size={14} style={{ opacity: 0.5, flexShrink: 0 }} />
                 </span>
               )}
-              <span style={{ color: 'var(--muted-foreground)', opacity: 0.55 }}>/</span>
               <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ color: 'var(--muted-foreground)', fontSize: 12 }}>
-                  {dirty ? 'Unsaved changes' : 'Saved'}
-                </span>
-                <Button size="sm" disabled={!dirty || saving} onClick={saveWorkflow}>
-                  {saving ? <LoaderCircle className="animate-spin" /> : <Save />}
+                <Button
+                  size="sm"
+                  variant={dirty ? 'default' : 'secondary'}
+                  disabled={!dirty || saving}
+                  onClick={saveWorkflow}
+                >
+                  {saving ? (
+                    <LoaderCircle data-icon="inline-start" className="animate-spin" />
+                  ) : (
+                    <Save data-icon="inline-start" />
+                  )}
                   {saving ? 'Saving...' : 'Save'}
                 </Button>
               </div>
@@ -535,13 +551,15 @@ function App() {
                   <Spin size="large" />
                 </div>
               ) : workflowData ? (
-                <Editor
-                  data={workflowData}
-                  ctxRef={ctxRef}
-                  onDirty={() => setDirty(true)}
-                  workflowId={currentWorkflowId ?? undefined}
-                  directionRef={directionRef}
-                />
+                <TooltipProvider>
+                  <Editor
+                    data={workflowData}
+                    ctxRef={ctxRef}
+                    onDirty={() => setDirty(true)}
+                    workflowId={currentWorkflowId ?? undefined}
+                    directionRef={directionRef}
+                  />
+                </TooltipProvider>
               ) : (
                 <div style={{ padding: 24 }}>Failed to load workflow.</div>
               )}

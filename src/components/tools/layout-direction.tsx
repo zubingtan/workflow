@@ -18,6 +18,7 @@ import { rotateAllPorts, type LayoutDirection } from '../../utils/rotate-ports';
 import { fireLayoutSettled } from '../../utils/layout-settled-bus.mjs';
 import { useLayoutDirection } from '../../hooks/use-layout-direction';
 import { IconLayoutDirection } from '../../assets/icon-layout-direction';
+import { ToolbarTooltip } from './toolbar-tooltip';
 
 /**
  * #190: Layout Direction Switch. A single toolbar icon button that toggles
@@ -82,15 +83,16 @@ export const LayoutDirectionSwitch = () => {
   const tooltipContent = direction === 'LR' ? 'Layout: Horizontal' : 'Layout: Vertical';
 
   return (
-    <Button
-      variant="ghost"
-      size="icon-sm"
-      disabled={playground.config.readonly}
-      onClick={toggle}
-      title={tooltipContent}
-      aria-label={`Layout Direction: ${direction === 'LR' ? 'Horizontal' : 'Vertical'}`}
-    >
-      <IconLayoutDirection direction={direction} />
-    </Button>
+    <ToolbarTooltip label={tooltipContent}>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        disabled={playground.config.readonly}
+        onClick={toggle}
+        aria-label={`Layout Direction: ${direction === 'LR' ? 'Horizontal' : 'Vertical'}`}
+      >
+        <IconLayoutDirection direction={direction} />
+      </Button>
+    </ToolbarTooltip>
   );
 };

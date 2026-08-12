@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { Plus, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Plus, X } from 'lucide-react';
 import { JsonSchemaUtils } from '@flowgram.ai/json-schema';
 import { Field } from '@flowgram.ai/free-layout-editor';
 import { useAvailableVariables, useScopeAvailable } from '@flowgram.ai/editor';
@@ -8,6 +8,7 @@ import { useAvailableVariables, useScopeAvailable } from '@flowgram.ai/editor';
 import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
 import { Select } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from '@/components/ui/popover';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
@@ -120,7 +121,20 @@ export function DynamicValueInput({
         <option value="expression">Expression</option>
         <option value="template">Template</option>
       </Select>
-      {isBoolean ? (
+      {mode === 'ref' ? (
+        <VariablePicker
+          value={Array.isArray(value?.content) ? value.content : pathValue(text)}
+          onChange={(next) =>
+            onChange({
+              ...(value ?? {}),
+              type: 'ref',
+              content: next ?? [],
+            } as IFlowRefValue)
+          }
+          readonly={readonly}
+          hasError={hasError}
+        />
+      ) : isBoolean ? (
         <Select
           aria-label="Boolean value"
           className={cn(CONTROL_CLASS, hasError && 'border-destructive')}
@@ -166,19 +180,104 @@ export function PromptEditorWithVariables({
   hasError?: boolean;
   style?: React.CSSProperties;
 }) {
-  return (
-    <Textarea
-      aria-label="Template value"
-      className={cn('min-h-24 font-mono', hasError && 'border-destructive')}
-      style={style}
-      value={flowValueToText(value)}
-      placeholder={placeholder ?? 'Write text or use {{variable.path}}'}
-      readOnly={readonly}
-      onChange={(event) =>
-        onChange({ ...(value ?? {}), type: 'template', content: event.target.value })
-      }
-    />
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [cursor, setCursor] = useState(flowValueToText(value).length);
+  const treeData = useVariableTree();
+  const text = flowValueToText(value);
+
+  useEffect(() => {
+    if (!open) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && !editorRef.current?.contains(target)) setOpen(false);
+    };
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, [open]);
+
+  const triggerMatch = (nextText: string, nextCursor: number) =>
+    nextText.slice(0, nextCursor).match(/\{\{?[^{}]*$/);
+
+  const updateOpenState = (nextText: string, nextCursor: number) => {
+    setCursor(nextCursor);
+    const nextOpen = Boolean(triggerMatch(nextText, nextCursor)) && !readonly;
+    setOpen(nextOpen);
+  };
+
+  const insertVariable = (variable: string) => {
+    const match = triggerMatch(text, cursor);
+    const start = match ? cursor - match[0].length : cursor;
+    const inserted = `{{${variable}}}`;
+    const nextText = `${text.slice(0, start)}${inserted}${text.slice(cursor)}`;
+    onChange({ ...(value ?? {}), type: 'template', content: nextText });
+    setOpen(false);
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+      const nextCursor = start + inserted.length;
+      textareaRef.current?.setSelectionRange(nextCursor, nextCursor);
+      setCursor(nextCursor);
+    });
+  };
+
+  const textarea = (
+    <div ref={editorRef} className="relative">
+      <Textarea
+        ref={textareaRef}
+        aria-label="Template value"
+        role="combobox"
+        aria-autocomplete="list"
+        className={cn('min-h-24 font-mono', hasError && 'border-destructive')}
+        style={style}
+        value={text}
+        placeholder={placeholder ?? 'Write text or use {{variable.path}}'}
+        readOnly={readonly}
+        onFocus={(event) =>
+          updateOpenState(event.currentTarget.value, event.currentTarget.selectionStart)
+        }
+        onClick={(event) =>
+          updateOpenState(event.currentTarget.value, event.currentTarget.selectionStart)
+        }
+        onKeyDownCapture={(event) => {
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            event.stopPropagation();
+            setOpen(false);
+          }
+        }}
+        onKeyUp={(event) => {
+          if (event.key !== 'Escape') {
+            updateOpenState(event.currentTarget.value, event.currentTarget.selectionStart);
+          }
+        }}
+        onChange={(event) => {
+          const nextText = event.target.value;
+          const nextCursor = event.target.selectionStart;
+          onChange({ ...(value ?? {}), type: 'template', content: nextText });
+          updateOpenState(nextText, nextCursor);
+        }}
+      />
+      {open && (
+        <div
+          role="dialog"
+          aria-label="Variable suggestions"
+          className="absolute left-0 top-full z-[1200] mt-1 w-[min(360px,calc(100vw-2rem))] rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10"
+          onKeyDownCapture={(event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              setOpen(false);
+              textareaRef.current?.focus();
+            }
+          }}
+        >
+          <VariableTree treeData={treeData} onSelect={insertVariable} />
+        </div>
+      )}
+    </div>
   );
+
+  return textarea;
 }
 
 export function JsonEditorWithVariables({
@@ -888,6 +987,302 @@ export function useVariableTree() {
       .map((variable) => renderVariable(variable as VariableField))
       .filter(Boolean) as VariableTreeNode[];
   }, [variables]);
+}
+
+type VariableTreeNode = ReturnType<typeof useVariableTree>[number];
+
+type VariableTreeKeyboardNode = {
+  key: string;
+  value: string;
+  children?: VariableTreeKeyboardNode[];
+};
+
+type VisibleVariableTreeNode = {
+  node: VariableTreeKeyboardNode;
+  parentKey?: string;
+};
+
+function getVariableTreeBranchKeys(nodes: VariableTreeKeyboardNode[]): Set<string> {
+  return new Set(
+    nodes.flatMap((node) => [
+      ...(node.children?.length ? [node.key] : []),
+      ...(node.children ? [...getVariableTreeBranchKeys(node.children)] : []),
+    ])
+  );
+}
+
+function getVisibleVariableTreeNodes(
+  nodes: VariableTreeKeyboardNode[],
+  expanded: Set<string>,
+  parentKey?: string
+): VisibleVariableTreeNode[] {
+  return nodes.flatMap((node) => [
+    { node, parentKey },
+    ...(node.children && expanded.has(node.key)
+      ? getVisibleVariableTreeNodes(node.children, expanded, node.key)
+      : []),
+  ]);
+}
+
+export function useVariableTreeKeyboard(
+  treeData: VariableTreeKeyboardNode[],
+  onSelect?: (value: string) => void
+) {
+  const treeRef = useRef<HTMLDivElement>(null);
+  const [expanded, setExpanded] = useState<Set<string>>(
+    () => new Set(treeData.filter((node) => node.children?.length).map((node) => node.key))
+  );
+  const visibleNodes = useMemo(
+    () => getVisibleVariableTreeNodes(treeData, expanded),
+    [expanded, treeData]
+  );
+  const treeSignature = useMemo(
+    () => [...getVariableTreeBranchKeys(treeData)].sort().join('|'),
+    [treeData]
+  );
+  const previousTreeSignature = useRef(treeSignature);
+  const previousBranchKeys = useRef(getVariableTreeBranchKeys(treeData));
+
+  useEffect(() => {
+    if (previousTreeSignature.current === treeSignature) return;
+    previousTreeSignature.current = treeSignature;
+    const branchKeys = getVariableTreeBranchKeys(treeData);
+    const newBranchKeys = [...branchKeys].filter((key) => !previousBranchKeys.current.has(key));
+    previousBranchKeys.current = branchKeys;
+    setExpanded((current) => {
+      const next = new Set([...current].filter((key) => branchKeys.has(key)));
+      for (const key of newBranchKeys) next.add(key);
+      return next;
+    });
+  }, [treeData, treeSignature]);
+
+  const onToggle = (key: string) => {
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const focusItem = (key: string) => {
+    const item = Array.from(
+      treeRef.current?.querySelectorAll<HTMLElement>('[data-variable-tree-focus]') ?? []
+    ).find((element) => element.dataset.variableTreeFocus === key);
+    item?.focus();
+  };
+
+  const onKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (!visibleNodes.length) return;
+
+    const currentElement = event.target instanceof HTMLElement ? event.target : null;
+    const currentKey =
+      currentElement?.closest<HTMLElement>('[data-variable-tree-item]')?.dataset.variableTreeItem ??
+      visibleNodes[0].node.key;
+    const currentIndex = Math.max(
+      0,
+      visibleNodes.findIndex(({ node }) => node.key === currentKey)
+    );
+    const current = visibleNodes[currentIndex];
+    const hasChildren = Boolean(current.node.children?.length);
+    const isExpanded = expanded.has(current.node.key);
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      focusItem(visibleNodes[Math.min(currentIndex + 1, visibleNodes.length - 1)].node.key);
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      focusItem(visibleNodes[Math.max(currentIndex - 1, 0)].node.key);
+    } else if (event.key === 'Home') {
+      event.preventDefault();
+      focusItem(visibleNodes[0].node.key);
+    } else if (event.key === 'End') {
+      event.preventDefault();
+      focusItem(visibleNodes[visibleNodes.length - 1].node.key);
+    } else if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      if (hasChildren && !isExpanded) {
+        onToggle(current.node.key);
+      } else if (hasChildren && visibleNodes[currentIndex + 1]?.parentKey === current.node.key) {
+        focusItem(visibleNodes[currentIndex + 1].node.key);
+      }
+    } else if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      if (hasChildren && isExpanded) onToggle(current.node.key);
+      else if (current.parentKey) focusItem(current.parentKey);
+    } else if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      if (hasChildren) onToggle(current.node.key);
+      else onSelect?.(current.node.value);
+    }
+  };
+
+  return { treeRef, expanded, onToggle, onKeyDown };
+}
+
+function VariableTreeItem({
+  node,
+  depth,
+  expanded,
+  onToggle,
+  onSelect,
+  onKeyDown,
+}: {
+  node: VariableTreeNode;
+  depth: number;
+  expanded: Set<string>;
+  onToggle: (key: string) => void;
+  onSelect: (value: string) => void;
+  onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => void;
+}) {
+  const hasChildren = Boolean(node.children?.length);
+  const isExpanded = expanded.has(node.key);
+
+  return (
+    <div
+      role="treeitem"
+      data-variable-tree-item={node.key}
+      aria-expanded={hasChildren ? isExpanded : undefined}
+    >
+      <div className="flex items-center gap-0.5" style={{ paddingLeft: `${depth * 14}px` }}>
+        {hasChildren ? (
+          <button
+            type="button"
+            tabIndex={-1}
+            className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${node.label}`}
+            onClick={() => onToggle(node.key)}
+          >
+            {isExpanded ? <ChevronDown aria-hidden="true" /> : <ChevronRight aria-hidden="true" />}
+          </button>
+        ) : (
+          <span className="size-7 shrink-0" aria-hidden="true" />
+        )}
+        <button
+          type="button"
+          tabIndex={-1}
+          data-variable-tree-focus={node.key}
+          data-variable-tree-leaf={hasChildren ? undefined : 'true'}
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+          onKeyDown={(event) => {
+            onKeyDown(event);
+            event.stopPropagation();
+          }}
+          onClick={() => onSelect(node.value)}
+        >
+          <span className="min-w-0 flex-1 truncate" title={node.value}>
+            {node.label}
+          </span>
+          <code className="max-w-[58%] truncate text-xs text-muted-foreground">{node.value}</code>
+        </button>
+      </div>
+      {hasChildren && isExpanded && (
+        <div role="group">
+          {node.children?.map((child) => (
+            <VariableTreeItem
+              key={child.key}
+              node={child}
+              depth={depth + 1}
+              expanded={expanded}
+              onToggle={onToggle}
+              onSelect={onSelect}
+              onKeyDown={onKeyDown}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VariableTree({
+  treeData,
+  onSelect,
+}: {
+  treeData: VariableTreeNode[];
+  onSelect: (value: string) => void;
+}) {
+  const { treeRef, expanded, onToggle, onKeyDown } = useVariableTreeKeyboard(treeData, onSelect);
+
+  if (!treeData.length) {
+    return <div className="px-2 py-3 text-xs text-muted-foreground">No variables available.</div>;
+  }
+
+  return (
+    <div
+      ref={treeRef}
+      className="max-h-64 overflow-y-auto"
+      role="tree"
+      aria-label="Available variables"
+      tabIndex={0}
+      onKeyDown={onKeyDown}
+    >
+      {treeData.map((node) => (
+        <VariableTreeItem
+          key={node.key}
+          node={node}
+          depth={0}
+          expanded={expanded}
+          onToggle={onToggle}
+          onSelect={onSelect}
+          onKeyDown={onKeyDown}
+        />
+      ))}
+    </div>
+  );
+}
+
+function VariablePicker({
+  value,
+  onChange,
+  readonly,
+  hasError,
+}: {
+  value?: string[];
+  onChange: (value?: string[]) => void;
+  readonly?: boolean;
+  hasError?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const treeData = useVariableTree();
+  const label = value?.length ? value.join('.') : 'Select variable';
+
+  return (
+    <Popover open={open} onOpenChange={setOpen} modal={false}>
+      <PopoverTrigger
+        render={
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            aria-label="Select variable"
+            disabled={readonly}
+            aria-expanded={open}
+            className={cn('w-full justify-between font-normal', hasError && 'border-destructive')}
+          >
+            <span className="truncate">{label}</span>
+            <ChevronDown aria-hidden="true" />
+          </Button>
+        }
+      />
+      <PopoverContent
+        aria-label="Variable selector"
+        side="bottom"
+        align="start"
+        className="w-[min(360px,calc(100vw-2rem))] p-1"
+        positionerClassName="isolate z-[1200]"
+      >
+        <PopoverTitle className="sr-only">Variable selector</PopoverTitle>
+        <VariableTree
+          treeData={treeData}
+          onSelect={(next) => {
+            onChange(next.split('.'));
+            setOpen(false);
+          }}
+        />
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 export function renderFieldErrors(errors?: FieldErrorLike[]) {

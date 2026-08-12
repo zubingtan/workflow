@@ -62,4 +62,5 @@ export {
   flowValueToText,
   renderFieldErrors,
   useVariableTree,
+  useVariableTreeKeyboard,
 } from './editor-controls';

@@ -17,6 +17,7 @@ export {
 } from './field';
 export { Label } from './label';
 export { Separator } from './separator';
+export { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './tooltip';
 export {
   Dialog,
   DialogClose,

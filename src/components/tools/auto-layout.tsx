@@ -11,6 +11,7 @@ import { usePlayground, usePlaygroundTools } from '@flowgram.ai/free-layout-edit
 import { Button } from '@/components/ui';
 
 import { useLayoutDirection } from '../../hooks/use-layout-direction';
+import { ToolbarTooltip } from './toolbar-tooltip';
 
 export const AutoLayout = () => {
   const tools = usePlaygroundTools();
@@ -25,14 +26,16 @@ export const AutoLayout = () => {
     });
   }, [direction, playground, tools]);
   return (
-    <Button
-      variant="ghost"
-      size="icon-sm"
-      disabled={playground.config.readonly}
-      onClick={autoLayout}
-      aria-label="Auto Layout"
-    >
-      <WandSparkles />
-    </Button>
+    <ToolbarTooltip label="Auto layout">
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        disabled={playground.config.readonly}
+        onClick={autoLayout}
+        aria-label="Auto Layout"
+      >
+        <WandSparkles />
+      </Button>
+    </ToolbarTooltip>
   );
 };

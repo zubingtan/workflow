@@ -27,13 +27,20 @@ export const NodePanel: React.FC<NodePanelRenderProps> = (props) => {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      onClose();
+    };
     const handlePointerDown = (event: PointerEvent) => {
       if (!ref.current?.contains(event.target as Node)) onClose();
     };
     const handleScroll = () => onClose();
+    document.addEventListener('keydown', handleKeyDown);
     document.addEventListener('pointerdown', handlePointerDown);
     window.addEventListener('scroll', handleScroll, true);
     return () => {
+      document.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('pointerdown', handlePointerDown);
       window.removeEventListener('scroll', handleScroll, true);
     };

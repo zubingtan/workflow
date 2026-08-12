@@ -8,6 +8,7 @@ import { useService, WorkflowSelectService } from '@flowgram.ai/free-layout-edit
 
 import { Button } from '@/components/ui';
 
+import { ToolbarTooltip } from '../tools/toolbar-tooltip';
 import { useProblemPanel, useNodeFormPanel } from '../../plugins/panel-manager-plugin/hooks';
 import { useWatchValidate } from './use-watch-validate';
 
@@ -22,7 +23,11 @@ export const ProblemPanel = () => {
   return (
     <div
       className="h-full w-full rounded-lg border border-border bg-background"
-      style={{ color: 'var(--app-color-text-1)' }}
+      style={{
+        color: 'var(--app-color-text-1)',
+        background: 'var(--app-color-surface)',
+        backdropFilter: 'blur(16px)',
+      }}
     >
       <div className="flex h-12 items-center justify-between border-b px-3">
         <div className="flex items-center gap-2 text-sm font-semibold">
@@ -64,8 +69,10 @@ export const ProblemPanel = () => {
 export const ProblemButton = () => {
   const { open } = useProblemPanel();
   return (
-    <Button variant="ghost" size="icon-sm" aria-label="Problem" onClick={() => open()}>
-      <AlertCircle />
-    </Button>
+    <ToolbarTooltip label="Show problems">
+      <Button variant="ghost" size="icon-sm" aria-label="Problem" onClick={() => open()}>
+        <AlertCircle />
+      </Button>
+    </ToolbarTooltip>
   );
 };

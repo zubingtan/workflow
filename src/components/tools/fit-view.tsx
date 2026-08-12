@@ -3,11 +3,15 @@ import { usePlaygroundTools } from '@flowgram.ai/free-layout-editor';
 
 import { Button } from '@/components/ui';
 
+import { ToolbarTooltip } from './toolbar-tooltip';
+
 export const FitView = () => {
   const tools = usePlaygroundTools();
   return (
-    <Button variant="ghost" size="icon-sm" onClick={() => tools.fitView()} aria-label="Fit view">
-      <Maximize2 />
-    </Button>
+    <ToolbarTooltip label="Fit view">
+      <Button variant="ghost" size="icon-sm" onClick={() => tools.fitView()} aria-label="Fit view">
+        <Maximize2 />
+      </Button>
+    </ToolbarTooltip>
   );
 };

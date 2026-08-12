@@ -7,29 +7,41 @@ import { useState } from 'react';
 
 import { usePlayground, usePlaygroundTools } from '@flowgram.ai/free-layout-editor';
 
-import { Button } from '@/components/ui';
+import { Button, Popover, PopoverContent, PopoverTitle, PopoverTrigger } from '@/components/ui';
+
+import { ToolbarTooltip } from './toolbar-tooltip';
 
 export const ZoomSelect = () => {
   const tools = usePlaygroundTools({ maxZoom: 2, minZoom: 0.25 });
   const playground = usePlayground();
   const [open, setOpen] = useState(false);
   return (
-    <div className="relative">
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => setOpen((value) => !value)}
-        aria-label="Zoom level"
+    <Popover open={open} onOpenChange={setOpen} modal={false}>
+      <ToolbarTooltip label="Zoom level">
+        <PopoverTrigger
+          render={
+            <Button variant="ghost" size="sm" aria-label="Zoom level">
+              {Math.floor(tools.zoom * 100)}%
+            </Button>
+          }
+        />
+      </ToolbarTooltip>
+      <PopoverContent
+        side="top"
+        align="start"
+        className="w-32 p-1 backdrop-blur-md"
+        positionerClassName="isolate z-[1200]"
       >
-        {Math.floor(tools.zoom * 100)}%
-      </Button>
-      {open && (
-        <div className="absolute bottom-full left-0 z-50 mb-1 flex w-32 flex-col rounded-lg border border-border bg-popover p-1 shadow-md">
+        <PopoverTitle className="sr-only">Zoom options</PopoverTitle>
+        <div className="flex flex-col gap-0.5">
           <Button
             size="sm"
             variant="ghost"
             className="justify-start"
-            onClick={() => tools.zoomin()}
+            onClick={() => {
+              tools.zoomin();
+              setOpen(false);
+            }}
           >
             Zoom in
           </Button>
@@ -37,7 +49,10 @@ export const ZoomSelect = () => {
             size="sm"
             variant="ghost"
             className="justify-start"
-            onClick={() => tools.zoomout()}
+            onClick={() => {
+              tools.zoomout();
+              setOpen(false);
+            }}
           >
             Zoom out
           </Button>
@@ -56,7 +71,7 @@ export const ZoomSelect = () => {
             </Button>
           ))}
         </div>
-      )}
-    </div>
+      </PopoverContent>
+    </Popover>
   );
 };

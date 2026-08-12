@@ -18,6 +18,7 @@ import {
 import { Button } from '@/components/ui';
 
 import { WorkflowNodeType } from '../../nodes';
+import { ToolbarTooltip } from './toolbar-tooltip';
 
 export const Comment = () => {
   const playground = usePlayground();
@@ -38,14 +39,16 @@ export const Comment = () => {
     [document, dragService, playground, selectService]
   );
   return (
-    <Button
-      variant="ghost"
-      size="icon-sm"
-      disabled={playground.config.readonly}
-      onClick={createComment}
-      aria-label="Comment"
-    >
-      <MessageSquare />
-    </Button>
+    <ToolbarTooltip label="Add comment">
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        disabled={playground.config.readonly}
+        onClick={createComment}
+        aria-label="Comment"
+      >
+        <MessageSquare />
+      </Button>
+    </ToolbarTooltip>
   );
 };

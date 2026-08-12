@@ -200,8 +200,16 @@ export function StructuredOutputEditor({
       {!readonly && (
         <div
           onClick={addField}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              addField();
+            }
+          }}
           role="button"
           aria-label="Add field"
+          tabIndex={0}
+          className="outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
           style={{
             display: 'flex',
             alignItems: 'center',

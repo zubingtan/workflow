@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-import { FC, useCallback, useState, type MouseEvent } from 'react';
+import { FC, useCallback, useRef, useState, type MouseEvent } from 'react';
 
 import { MoreHorizontal } from 'lucide-react';
 import {
@@ -16,6 +16,7 @@ import {
   WorkflowSelectService,
 } from '@flowgram.ai/free-layout-editor';
 import { NodeIntoContainerService } from '@flowgram.ai/free-container-plugin';
+import { Menu } from '@base-ui/react/menu';
 
 import { Button } from '@/components/ui';
 
@@ -31,6 +32,7 @@ interface NodeMenuProps {
 
 export const NodeMenu: FC<NodeMenuProps> = ({ node, deleteNode, updateTitleEdit }) => {
   const [visible, setVisible] = useState(false);
+  const suppressFocusOpen = useRef(false);
   const clientContext = useClientContext();
   const registry = node.getNodeRegistry<FlowNodeRegistry>();
   const nodeIntoContainerService = useService(NodeIntoContainerService);
@@ -48,7 +50,6 @@ export const NodeMenu: FC<NodeMenuProps> = ({ node, deleteNode, updateTitleEdit 
       await nodeIntoContainerService.clearInvalidLines({ dragNode: node, sourceParent });
       selectService.selectNode(node);
       dragService.startDragSelectedNodes(event);
-      setVisible(false);
     },
     [dragService, node, nodeIntoContainerService, selectService]
   );
@@ -58,87 +59,104 @@ export const NodeMenu: FC<NodeMenuProps> = ({ node, deleteNode, updateTitleEdit 
       const copyShortcut = new CopyShortcut(clientContext);
       new PasteShortcut(clientContext).apply(copyShortcut.toClipboardData([node]));
       event.stopPropagation();
-      setVisible(false);
     },
     [clientContext, node]
   );
 
   return (
-    <div className="relative">
-      <Button
-        size="icon-sm"
-        variant="ghost"
-        aria-label="Node actions"
-        onClick={(event) => {
-          event.stopPropagation();
-          setVisible((current) => !current);
+    <Menu.Root
+      open={visible}
+      onOpenChange={(open) => {
+        setVisible(open);
+        if (!open) {
+          suppressFocusOpen.current = true;
+        }
+      }}
+      modal={false}
+    >
+      <Menu.Trigger
+        openOnHover
+        closeDelay={0}
+        render={
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            aria-label="Node actions"
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
+            onMouseLeave={() => {
+              suppressFocusOpen.current = false;
+            }}
+          />
+        }
+        onFocus={() => {
+          if (suppressFocusOpen.current) {
+            suppressFocusOpen.current = false;
+          } else {
+            setVisible(true);
+          }
         }}
       >
         <MoreHorizontal />
-      </Button>
-      {visible && (
-        <div
-          className="absolute top-full right-0 z-50 mt-1 flex w-40 flex-col rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-md"
-          onClick={(event) => event.stopPropagation()}
-        >
-          <Button
-            size="sm"
-            variant="ghost"
-            className="justify-start"
-            onClick={() => {
-              updateTitleEdit?.(true);
-              setVisible(false);
-            }}
+      </Menu.Trigger>
+      <Menu.Portal>
+        <Menu.Positioner side="bottom" align="end" sideOffset={4} className="isolate z-[1200]">
+          <Menu.Popup
+            finalFocus
+            className="flex w-40 flex-col gap-0.5 rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-md outline-none"
+            onClick={(event) => event.stopPropagation()}
           >
-            Edit title
-          </Button>
-          {canMoveOut && (
-            <Button size="sm" variant="ghost" className="justify-start" onClick={handleMoveOut}>
-              Move out
-            </Button>
-          )}
-          <Button
-            size="sm"
-            variant="ghost"
-            className="justify-start"
-            disabled={registry.meta.copyDisable === true}
-            onClick={handleCopy}
-          >
-            Create copy
-          </Button>
-          {registry.meta.isContainer && (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="justify-start"
-              onClick={() => {
-                tools.autoLayout({
-                  containerNode: node,
-                  enableAnimation: true,
-                  animationDuration: 1000,
-                  disableFitView: true,
-                });
-                setVisible(false);
+            <Menu.Item
+              className="flex h-7 cursor-default items-center rounded-md px-2.5 text-[0.8rem] outline-none hover:bg-accent hover:text-accent-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground"
+              onClick={() => updateTitleEdit?.(true)}
+            >
+              Edit title
+            </Menu.Item>
+            {canMoveOut && (
+              <Menu.Item
+                className="flex h-7 cursor-default items-center rounded-md px-2.5 text-[0.8rem] outline-none hover:bg-accent hover:text-accent-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground"
+                onClick={handleMoveOut}
+              >
+                Move out
+              </Menu.Item>
+            )}
+            <Menu.Item
+              className="flex h-7 cursor-default items-center rounded-md px-2.5 text-[0.8rem] outline-none hover:bg-accent hover:text-accent-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50"
+              disabled={registry.meta.copyDisable === true}
+              onClick={handleCopy}
+            >
+              Create copy
+            </Menu.Item>
+            {registry.meta.isContainer && (
+              <Menu.Item
+                className="flex h-7 cursor-default items-center rounded-md px-2.5 text-[0.8rem] outline-none hover:bg-accent hover:text-accent-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground"
+                onClick={() =>
+                  tools.autoLayout({
+                    containerNode: node,
+                    enableAnimation: true,
+                    animationDuration: 1000,
+                    disableFitView: true,
+                  })
+                }
+              >
+                Auto layout
+              </Menu.Item>
+            )}
+            <Menu.Item
+              className="flex h-7 cursor-default items-center rounded-md px-2.5 text-[0.8rem] text-destructive outline-none hover:bg-destructive/10 data-highlighted:bg-destructive/10"
+              disabled={
+                !!(registry.canDelete?.(clientContext, node) || registry.meta.deleteDisable)
+              }
+              onClick={(event) => {
+                deleteNode();
+                event.stopPropagation();
               }}
             >
-              Auto layout
-            </Button>
-          )}
-          <Button
-            size="sm"
-            variant="destructive"
-            className="justify-start"
-            disabled={!!(registry.canDelete?.(clientContext, node) || registry.meta.deleteDisable)}
-            onClick={(event) => {
-              deleteNode();
-              event.stopPropagation();
-              setVisible(false);
-            }}
-          >
-            Delete
-          </Button>
-        </div>
-      )}
-    </div>
+              Delete
+            </Menu.Item>
+          </Menu.Popup>
+        </Menu.Positioner>
+      </Menu.Portal>
+    </Menu.Root>
   );
 };
