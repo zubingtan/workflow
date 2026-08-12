@@ -30,14 +30,23 @@ function Select({
   'aria-label': ariaLabel,
 }: SelectProps) {
   const options = React.Children.toArray(children).filter(
-    (child): child is React.ReactElement<{ value?: string; children?: React.ReactNode }> =>
-      React.isValidElement(child) && child.type === 'option'
+    (
+      child
+    ): child is React.ReactElement<{
+      value?: string;
+      children?: React.ReactNode;
+      disabled?: boolean;
+    }> => React.isValidElement(child) && child.type === 'option'
+  );
+  const optionLabels = new Map(
+    options.map((option) => [String(option.props.value ?? ''), String(option.props.children ?? '')])
   );
   const selectedValue = value ?? String(options[0]?.props.value ?? '');
 
   return (
     <SelectRoot
       value={selectedValue}
+      itemToStringLabel={(itemValue) => optionLabels.get(String(itemValue)) ?? String(itemValue)}
       onValueChange={(nextValue) => {
         const next = nextValue ?? '';
         onChange?.({
@@ -59,6 +68,7 @@ function Select({
           <SelectItem
             key={String(option.props.value ?? '')}
             value={String(option.props.value ?? '')}
+            disabled={option.props.disabled}
           >
             {option.props.children}
           </SelectItem>
@@ -136,7 +146,7 @@ function SelectContent({
         align={align}
         alignOffset={alignOffset}
         alignItemWithTrigger={alignItemWithTrigger}
-        className="isolate z-50"
+        className="isolate z-[1001]"
       >
         <SelectPrimitive.Popup
           data-slot="select-content"

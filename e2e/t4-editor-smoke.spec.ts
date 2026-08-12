@@ -1,5 +1,38 @@
 import { test, expect } from '@playwright/test';
 
+test('T4 agent selector chooses and persists the fake provider', async ({ page }) => {
+  const workflowName = `E2E T4 Agent Select ${Date.now()}`;
+
+  await page.addInitScript(() => localStorage.setItem('workflow-theme', 'light'));
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/#/workflows');
+  await page.getByRole('button', { name: 'New workflow' }).click();
+  await page.getByPlaceholder('Workflow name').fill(workflowName);
+  await page.getByRole('button', { name: 'OK' }).click();
+
+  await expect(page.locator('[data-node-id="llm_main"]')).toBeVisible();
+  await page.locator('[data-node-id="llm_main"]').click({ position: { x: 10, y: 10 } });
+  const agentSelect = page.locator('button[role="combobox"][aria-label="Agent"]:not(:disabled)');
+  await expect(agentSelect).toBeVisible();
+  await agentSelect.click();
+  await page.getByRole('option', { name: /Fake Provider \(fake-m0\)/ }).click();
+  await expect(agentSelect).toContainText('Fake Provider (fake-m0)');
+
+  const saveButton = page.getByRole('button', { name: 'Save', exact: true });
+  await expect(saveButton).toBeEnabled();
+  await saveButton.click();
+  await expect(page.getByText('Workflow saved', { exact: true })).toBeVisible({
+    timeout: 10_000,
+  });
+  await page.reload();
+  await expect(page.locator('[data-node-id="llm_main"]')).toBeVisible();
+  await page.locator('[data-node-id="llm_main"]').click({ position: { x: 10, y: 10 } });
+  await expect(
+    page.locator('button[role="combobox"][aria-label="Agent"]:not(:disabled)')
+  ).toContainText('Fake Provider (fake-m0)');
+});
+
 test('T4 creates, edits, saves, reloads and validates an editor workflow', async ({
   page,
 }, testInfo) => {
@@ -172,10 +205,10 @@ test('T4 creates, edits, saves, reloads and validates an editor workflow', async
   await expect(addField).toBeVisible();
   await addField.focus();
   await expect(addField).toBeFocused();
-  await page.keyboard.press('Enter');
+  await addField.press('Enter');
   await expect(fieldNameInputs).toHaveCount(2);
   await addField.focus();
-  await page.keyboard.press(' ');
+  await addField.press('Space');
   await expect(fieldNameInputs).toHaveCount(3);
 
   // Add an unconnected node and create a real port-to-port connection. The
