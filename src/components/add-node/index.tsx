@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: MIT
  */
 
+import { createPortal } from 'react-dom';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { Plus, X } from 'lucide-react';
@@ -103,33 +104,38 @@ export const AddNode = (props: { disabled: boolean }) => {
           Add Node
         </Button>
       </ToolbarTooltip>
-      {panelRect && (
-        <div
-          ref={panelRef}
-          role="dialog"
-          aria-label="Add node"
-          className="fixed z-[1001] w-72 rounded-lg border border-border bg-popover p-2 text-popover-foreground shadow-md"
-          style={{
-            left: Math.max(8, Math.min(panelRect.left, window.innerWidth - 296)),
-            bottom: Math.max(8, window.innerHeight - panelRect.top + 8),
-            color: 'var(--app-color-text-1)',
-          }}
-          onMouseDown={(event) => event.stopPropagation()}
-        >
-          <div className="flex items-center justify-between px-2 pb-2">
-            <span className="text-xs font-semibold">Add node</span>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              aria-label="Close node library"
-              onClick={() => setPanelRect(null)}
-            >
-              <X />
-            </Button>
-          </div>
-          <NodeList onSelect={handleSelect} containerNode={getContainerNode()} />
-        </div>
-      )}
+      {panelRect &&
+        createPortal(
+          <div
+            ref={panelRef}
+            role="dialog"
+            aria-label="Add node"
+            className="fixed z-[1001] w-72 rounded-lg border border-border bg-popover p-2 text-popover-foreground shadow-md"
+            style={{
+              left: Math.max(
+                8,
+                Math.min(panelRect.left + panelRect.width / 2 - 144, window.innerWidth - 296)
+              ),
+              bottom: Math.max(8, window.innerHeight - panelRect.top + 8),
+              color: 'var(--app-color-text-1)',
+            }}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-2 pb-2">
+              <span className="text-xs font-semibold">Add node</span>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label="Close node library"
+                onClick={() => setPanelRect(null)}
+              >
+                <X />
+              </Button>
+            </div>
+            <NodeList onSelect={handleSelect} containerNode={getContainerNode()} />
+          </div>,
+          document.body
+        )}
     </>
   );
 };
