@@ -66,7 +66,9 @@ function AgentSelect({
       onChange={(event) => onChange(event.currentTarget.value)}
       disabled={readonly}
     >
-      {!value && <option value="">{loading ? 'Loading agents…' : 'Select an agent'}</option>}
+      <option value="" disabled={Boolean(value)}>
+        {loading ? 'Loading agents…' : 'Select an agent'}
+      </option>
       {agents.map((a) => {
         const m = parseAgentConfig(a.config)?.provider?.model || '';
         return <option key={a.id} value={a.id}>{`${a.name}${m ? ` (${m})` : ''}`}</option>;
