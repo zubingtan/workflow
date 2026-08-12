@@ -1,5 +1,37 @@
 import { test, expect } from '@playwright/test';
 
+test('T4 add node library opens centered above its trigger', async ({ page }) => {
+  const workflowName = `E2E T4 Add Node ${Date.now()}`;
+
+  await page.addInitScript(() => localStorage.setItem('workflow-theme', 'light'));
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/#/workflows');
+  await page.getByRole('button', { name: 'New workflow' }).click();
+  await page.getByPlaceholder('Workflow name').fill(workflowName);
+  await page.getByRole('button', { name: 'OK' }).click();
+
+  const addNodeButton = page.getByRole('button', { name: 'Add Node', exact: true });
+  await expect(addNodeButton).toBeVisible();
+  await addNodeButton.click();
+
+  const nodeLibrary = page.getByRole('dialog', { name: 'Add node' });
+  await expect(nodeLibrary).toBeVisible();
+  const addNodeBox = await addNodeButton.boundingBox();
+  const nodeLibraryBox = await nodeLibrary.boundingBox();
+  expect(addNodeBox).not.toBeNull();
+  expect(nodeLibraryBox).not.toBeNull();
+  expect(nodeLibraryBox!.y + nodeLibraryBox!.height).toBeLessThanOrEqual(addNodeBox!.y);
+  expect(
+    Math.abs(
+      nodeLibraryBox!.x + nodeLibraryBox!.width / 2 - (addNodeBox!.x + addNodeBox!.width / 2)
+    )
+  ).toBeLessThanOrEqual(1);
+
+  await page.getByTestId('demo-free-node-list-condition').click();
+  await expect(page.locator('[data-node-id^="condition_"]')).toHaveCount(1);
+});
+
 test('T4 agent selector chooses and persists the fake provider', async ({ page }) => {
   const workflowName = `E2E T4 Agent Select ${Date.now()}`;
 
@@ -137,6 +169,7 @@ test('T4 creates, edits, saves, reloads and validates an editor workflow', async
   await expect(prompt).toBeFocused();
 
   await prompt.fill('{{');
+  await prompt.press('End');
   await expect(variableSuggestions).toBeVisible();
   const variableTreeItems = variableSuggestions.locator('[data-variable-tree-focus]:visible');
   await expect(variableTreeItems.first()).toBeVisible();
@@ -170,21 +203,25 @@ test('T4 creates, edits, saves, reloads and validates an editor workflow', async
   await expect(prompt).toBeFocused();
 
   await prompt.fill('{{');
+  await prompt.press('End');
   await expect(variableSuggestions).toBeVisible();
   await variableSuggestions.locator('[data-variable-tree-focus="global.userId"]').click();
   await expect(prompt).toHaveValue('{{global.userId}}');
   await prompt.fill('');
   await prompt.fill('{{');
+  await prompt.press('End');
   await expect(variableSuggestions).toBeVisible();
   await variableSuggestions.getByRole('button', { name: /query/ }).click();
   await expect(prompt).toHaveValue('{{start_0.query}}');
   await prompt.fill('');
   await prompt.fill('{{');
+  await prompt.press('End');
   await expect(variableSuggestions).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(variableSuggestions).toBeHidden();
   await prompt.fill('');
   await prompt.fill('{{');
+  await prompt.press('End');
   await expect(variableSuggestions).toBeVisible();
   await page
     .getByText('Run an AI agent with a prompt and stream the response.', { exact: true })
@@ -223,6 +260,11 @@ test('T4 creates, edits, saves, reloads and validates an editor workflow', async
   expect(addNodeBox).not.toBeNull();
   expect(nodeLibraryBox).not.toBeNull();
   expect(nodeLibraryBox!.y + nodeLibraryBox!.height).toBeLessThanOrEqual(addNodeBox!.y);
+  expect(
+    Math.abs(
+      nodeLibraryBox!.x + nodeLibraryBox!.width / 2 - (addNodeBox!.x + addNodeBox!.width / 2)
+    )
+  ).toBeLessThanOrEqual(1);
   await page.keyboard.press('Escape');
   await expect(nodeLibrary).toBeHidden();
   await addNodeButton.click();
