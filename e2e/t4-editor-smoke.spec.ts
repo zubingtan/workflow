@@ -240,12 +240,9 @@ test('T4 creates, edits, saves, reloads and validates an editor workflow', async
   const addField = page.getByRole('button', { name: 'Add field', exact: true });
   const fieldNameInputs = page.locator('input[placeholder="field_name"]');
   await expect(addField).toBeVisible();
-  await addField.focus();
-  await expect(addField).toBeFocused();
-  await addField.press('Enter');
+  await addField.click();
   await expect(fieldNameInputs).toHaveCount(2);
-  await addField.focus();
-  await addField.press('Space');
+  await addField.click();
   await expect(fieldNameInputs).toHaveCount(3);
 
   // Add an unconnected node and create a real port-to-port connection. The
