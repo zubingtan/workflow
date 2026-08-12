@@ -369,7 +369,7 @@ test('T4 creates, edits, saves, reloads and validates an editor workflow', async
   await page.reload();
   await expect(page.locator('[data-node-id="end_0"]')).toBeVisible({ timeout: 10_000 });
   await endNode.scrollIntoViewIfNeeded();
-  await endNode.locator('[draggable="true"]').click({ position: { x: 50, y: 15 }, force: true });
+  await endNode.getByText('End', { exact: true }).click({ force: true });
   const persistedEndPicker = page.getByRole('button', { name: 'Select variable' });
   await expect(persistedEndPicker).toContainText('global.userId');
   await persistedEndPicker.click();
