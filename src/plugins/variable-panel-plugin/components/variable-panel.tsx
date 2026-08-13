@@ -56,7 +56,7 @@ export function VariablePanel() {
         <div
           role="dialog"
           aria-label="Variable panel"
-          className="absolute right-0 bottom-12 z-30 w-[min(500px,calc(100vw-32px))] overflow-hidden rounded-lg border border-border bg-background p-3 shadow-md"
+          className="absolute top-full right-0 z-30 mt-2 w-[min(500px,calc(100vw-32px))] overflow-hidden rounded-lg border border-border bg-background p-3 shadow-md"
         >
           <div
             className="mb-3 flex items-center gap-1 border-b border-border pb-2"

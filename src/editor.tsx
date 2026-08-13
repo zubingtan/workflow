@@ -7,7 +7,11 @@ import { type MutableRefObject } from 'react';
 
 import { IReport } from '@flowgram.ai/runtime-interface';
 import { DockedPanelLayer } from '@flowgram.ai/panel-manager-plugin';
-import { EditorRenderer, FreeLayoutEditorProvider } from '@flowgram.ai/free-layout-editor';
+import {
+  EditorRenderer,
+  FreeLayoutEditorProvider,
+  type WorkflowContentChangeType,
+} from '@flowgram.ai/free-layout-editor';
 
 import '@flowgram.ai/free-layout-editor/index.css';
 import './styles/index.css';
@@ -33,7 +37,7 @@ export const Editor = ({
 }: {
   data: FlowDocumentJSON;
   ctxRef?: { current: any };
-  onDirty?: () => void;
+  onDirty?: (eventType?: WorkflowContentChangeType) => void;
   workflowId?: string;
   /** Phase 8 (#160): terminal report for the history view. When present, the
    * editor renders readonly with StaticHistoryRuntimeService. */
@@ -103,7 +107,7 @@ const FreeLayoutEditorProviderWithDirection = ({
 }: {
   data: FlowDocumentJSON;
   ctxRef?: { current: any };
-  onDirty?: () => void;
+  onDirty?: (eventType?: WorkflowContentChangeType) => void;
   workflowId?: string;
   historyReport?: IReport;
   historyRunID?: string;

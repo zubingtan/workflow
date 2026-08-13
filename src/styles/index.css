@@ -116,11 +116,68 @@ body,
   background: var(--secondary);
   color: var(--secondary-foreground);
   padding: 1px 6px;
-  vertical-align: baseline;
+  vertical-align: middle;
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 0.75rem;
   line-height: 1.25rem;
   white-space: nowrap;
+}
+
+/* Skills use the same CodeMirror surface palette as the migrated editor. Keep
+ * these selectors before the more specific prompt selectors below so the
+ * stylelint specificity ordering remains deterministic. */
+[data-skill-editor-code] .cm-activeLine,
+[data-skill-editor-code] .cm-activeLineGutter {
+  background: color-mix(in oklch, var(--accent) 65%, transparent);
+}
+
+[data-skill-editor-code] .cm-selectionBackground,
+[data-skill-editor-code] .cm-content::selection {
+  background: color-mix(in oklch, var(--primary) 28%, transparent);
+}
+
+/* CodeMirror's default active-line tint is a light cyan highlight that does
+ * not belong to the editor surface palette. Keep the prompt focused without
+ * adding a second, unrelated background layer behind its content. */
+[data-ui='editor-surface'] .cm-editor .cm-activeLine {
+  background-color: transparent;
+}
+
+/* Prompt selections use the same accent family as the rest of the Base UI
+ * controls instead of CodeMirror's default cyan tint. Keep this scoped to the
+ * template editor so JSON/TypeScript editors retain their own syntax palette. */
+[data-template-editor='true'] .cm-editor .cm-selectionBackground,
+[data-template-editor='true'] .cm-editor .cm-content::selection {
+  background-color: color-mix(in oklch, var(--primary) 28%, transparent);
+}
+
+/* CodeMirror owns its scroll container, so wrapping it in a second ScrollArea
+ * would create nested scrollports and break cursor/selection scrolling. Match
+ * the shadcn ScrollBar primitive on that native scrollport instead: semantic
+ * border thumb, transparent track, and a compact rounded 10px rail. */
+[data-code-editor='true'] .cm-scroller {
+  scrollbar-color: var(--border) transparent;
+  scrollbar-width: thin;
+}
+
+[data-code-editor='true'] .cm-scroller::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+[data-code-editor='true'] .cm-scroller::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+[data-code-editor='true'] .cm-scroller::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 9999px;
+  background-clip: padding-box;
+  background-color: var(--border);
+}
+
+[data-code-editor='true'] .cm-scroller::-webkit-scrollbar-thumb:hover {
+  background-color: var(--muted-foreground);
 }
 
 [data-ui='editor-surface'] .cm-variable-chip[data-variable-unknown='true'] {
@@ -157,9 +214,8 @@ body[theme-mode='dark'] [data-ui='editor-overlay-root'] {
   pointer-events: auto;
 }
 
-/* The editor shell owns one neutral dashboard palette. Management views keep
- * their page tokens; editor navigation and floating surfaces inherit these
- * neutral values instead of the blue-tinted global dark sidebar. */
+/* The editor shell keeps the same neutral global palette while providing the
+ * FlowGram compatibility variables used by canvas and floating surfaces. */
 body[theme-mode='dark'] [data-editor-shell='true'] {
   --background: oklch(0.18 0 0);
   --card: oklch(0.23 0 0);
@@ -169,9 +225,17 @@ body[theme-mode='dark'] [data-editor-shell='true'] {
   --input: oklch(1 0 0 / 17%);
 }
 
-/* Keep the editor canvas and its floating controls neutral in dark mode. The
- * management surfaces retain the shared theme tokens; only the editor shell
- * gets the dashboard-like gray palette. */
+/* Keep the shell's outer background opaque over legacy Semi layers. The
+ * semantic surface values themselves come from the global shadcn `.dark`
+ * palette in tokens.css. */
+body[theme-mode='dark'] [data-testid='app-shell'] {
+  /* Inline shell styles are retained for the light translucent layout. */
+  /* stylelint-disable-next-line declaration-no-important */
+  background: var(--background) !important;
+}
+
+/* FlowGram compatibility variables for the editor canvas and floating
+ * controls. The management shell consumes the same global shadcn palette. */
 body[theme-mode='dark'] [data-ui='editor-surface'] {
   --background: oklch(0.18 0 0);
   --card: oklch(0.23 0 0);
@@ -203,4 +267,35 @@ body[theme-mode='dark'] [data-ui='editor-surface'] {
 [data-ui='editor-surface'] .gedit-flow-panel-layer-wrap-docked .gedit-flow-panel-right-area {
   box-sizing: border-box;
   padding: 60px 8px 68px 0;
+}
+
+[data-row-interactive] {
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+[data-row-interactive]:hover {
+  background: color-mix(in oklch, var(--muted) 55%, transparent);
+}
+
+[data-row-interactive]:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
+[data-skill-editor-code] .cm-editor {
+  min-height: 100%;
+  /* CodeMirror's theme extension injects a competing background rule. */
+  /* stylelint-disable-next-line declaration-no-important */
+  background: var(--background) !important;
+  color: var(--foreground);
+}
+
+[data-skill-editor-code] .cm-gutters {
+  /* stylelint-disable-next-line declaration-no-important */
+  background: var(--muted) !important;
+  color: var(--muted-foreground);
+  border-right: 1px solid var(--border);
 }

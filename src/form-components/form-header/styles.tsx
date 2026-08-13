@@ -22,6 +22,10 @@ export const Header = styled.div`
 `;
 
 export const Title = styled.div`
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  height: 24px;
   font-size: var(--app-font-size-md);
   flex: 1;
   width: 0;

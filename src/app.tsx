@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import {
   ArrowLeft,
   Bot,
+  Check,
   ChevronLeft,
   ChevronRight,
   LoaderCircle,
@@ -86,6 +87,7 @@ function App() {
   const [editorLoading, setEditorLoading] = useState(false);
   const [booted, setBooted] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [workflowSaved, setWorkflowSaved] = useState(false);
   const [currentWorkflowId, setCurrentWorkflowId] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   // Inline rename state for the editor top-bar workflow name span.
@@ -100,6 +102,17 @@ function App() {
   }>({ visible: false, action: null });
   const [editorOverlayContainer, setEditorOverlayContainer] = useState<HTMLDivElement | null>(null);
   const ctxRef = useRef<any>(null);
+  const lastPointerDownAtRef = useRef(0);
+  const savedAtRef = useRef(0);
+
+  useEffect(() => {
+    const rememberPointerDown = (event: PointerEvent) => {
+      if ((event.target as HTMLElement | null)?.closest('[data-workflow-save]')) return;
+      lastPointerDownAtRef.current = performance.now();
+    };
+    window.addEventListener('pointerdown', rememberPointerDown, true);
+    return () => window.removeEventListener('pointerdown', rememberPointerDown, true);
+  }, []);
 
   useLayoutEffect(() => {
     if (view !== 'editor') {
@@ -127,6 +140,12 @@ function App() {
   const { themeMode, setThemeMode } = useTheme();
   const ThemeIcon = themeMode === 'auto' ? Monitor : themeMode === 'dark' ? Moon : Sun;
 
+  useEffect(() => {
+    if (!workflowSaved) return undefined;
+    const timeout = window.setTimeout(() => setWorkflowSaved(false), 4000);
+    return () => window.clearTimeout(timeout);
+  }, [workflowSaved]);
+
   // Seed a default workflow on first launch + restore hash-based route
   useEffect(() => {
     (async () => {
@@ -153,6 +172,8 @@ function App() {
     setView('editor');
     setCurrentWorkflowId(id);
     setDirty(false);
+    setWorkflowSaved(false);
+    savedAtRef.current = 0;
     setRenaming(false);
     ctxRef.current = null;
     window.location.hash = `#/workflows/${id}`;
@@ -172,6 +193,8 @@ function App() {
     setView('workflows');
     setWorkflowData(null);
     setCurrentWorkflowId(null);
+    setWorkflowSaved(false);
+    savedAtRef.current = 0;
     window.location.hash = '#/workflows';
   }, []);
 
@@ -190,6 +213,7 @@ function App() {
       return;
     }
     setSaving(true);
+    setWorkflowSaved(false);
     try {
       const data = preserveWorkflowDocumentFields(workflowData, {
         ...ctx.document.toJSON(),
@@ -199,8 +223,10 @@ function App() {
         globalVariable: ctx.get(GetGlobalVariableSchema)(),
       });
       await api.updateWorkflow(currentWorkflowId, { data });
-      Toast.success('Workflow saved');
+      lastPointerDownAtRef.current = 0;
+      savedAtRef.current = performance.now();
       setDirty(false);
+      setWorkflowSaved(true);
     } catch (err: any) {
       Toast.error(err?.message || 'Failed to save workflow');
     } finally {
@@ -266,6 +292,7 @@ function App() {
   const handleNavDiscard = useCallback(() => {
     const action = confirmNav.action;
     setDirty(false);
+    setWorkflowSaved(false);
     setConfirmNav({ visible: false, action: null });
     action?.();
   }, [confirmNav.action]);
@@ -446,7 +473,7 @@ function App() {
 
       {/* Main area */}
       <div
-        data-ui={view === 'editor' ? 'editor-surface' : undefined}
+        data-ui={view === 'editor' ? 'editor-surface' : 'app-main'}
         style={{
           flex: 1,
           minWidth: 0,
@@ -546,17 +573,21 @@ function App() {
                 )}
                 <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
                   <Button
+                    data-workflow-save
+                    data-save-state={saving ? 'saving' : workflowSaved ? 'saved' : 'idle'}
                     size="sm"
-                    variant={dirty ? 'default' : 'secondary'}
-                    disabled={!dirty || saving}
+                    variant={dirty || workflowSaved ? 'default' : 'secondary'}
+                    disabled={!dirty || saving || workflowSaved}
                     onClick={saveWorkflow}
                   >
                     {saving ? (
                       <LoaderCircle data-icon="inline-start" className="animate-spin" />
+                    ) : workflowSaved ? (
+                      <Check data-icon="inline-start" />
                     ) : (
                       <Save data-icon="inline-start" />
                     )}
-                    {saving ? 'Saving...' : 'Save'}
+                    {saving ? 'Saving...' : workflowSaved ? 'Saved' : 'Save'}
                   </Button>
                 </div>
               </div>
@@ -577,7 +608,23 @@ function App() {
                     <Editor
                       data={workflowData}
                       ctxRef={ctxRef}
-                      onDirty={() => setDirty(true)}
+                      onDirty={(eventType) => {
+                        // FlowGram may continue emitting content-change events
+                        // while it settles a transformed canvas after save.
+                        // Ignore only that short post-save flush; a pointer
+                        // interaction after saving immediately returns the
+                        // button to Save.
+                        const now = performance.now();
+                        const settlingAfterSave =
+                          eventType === 'MOVE_NODE' &&
+                          savedAtRef.current > 0 &&
+                          now - savedAtRef.current < 750;
+                        const userEditedAfterSave =
+                          lastPointerDownAtRef.current > savedAtRef.current;
+                        if (settlingAfterSave && !userEditedAfterSave) return;
+                        setDirty(true);
+                        setWorkflowSaved(false);
+                      }}
                       workflowId={currentWorkflowId ?? undefined}
                       directionRef={directionRef}
                     />

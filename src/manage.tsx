@@ -182,12 +182,25 @@ export function WorkflowManager({ onOpen }: { onOpen: (id: string) => void }) {
                 icon={<IconDelete />}
                 disabled={deleteDisabled}
                 aria-label={`Delete ${record.name}`}
+                onClick={(event) => event.stopPropagation()}
               />
             );
             return (
               <div
                 key={record.id}
                 data-testid="workflow-row"
+                data-row-interactive
+                role="group"
+                tabIndex={0}
+                aria-label={`Open workflow ${record.name}`}
+                onClick={() => onOpen(record.id)}
+                onKeyDown={(event) => {
+                  if (event.target !== event.currentTarget) return;
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    onOpen(record.id);
+                  }
+                }}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -210,7 +223,10 @@ export function WorkflowManager({ onOpen }: { onOpen: (id: string) => void }) {
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <Button
                     theme="borderless"
-                    onClick={() => onOpen(record.id)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onOpen(record.id);
+                    }}
                     style={{
                       height: 'auto',
                       padding: 0,
@@ -247,19 +263,31 @@ export function WorkflowManager({ onOpen }: { onOpen: (id: string) => void }) {
                   >
                     {active > 0 ? `${active} active` : 'Ready'}
                   </span>
-                  <Button size="small" onClick={() => onOpen(record.id)}>
+                  <Button
+                    size="small"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onOpen(record.id);
+                    }}
+                  >
                     Open <IconArrowRight />
                   </Button>
                   <Button
                     size="small"
                     icon={<IconCopy />}
-                    onClick={() => copy(record.id)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void copy(record.id);
+                    }}
                     aria-label={`Copy ${record.name}`}
                   />
                   <Button
                     size="small"
                     icon={<IconHistory />}
-                    onClick={() => setHistoryFor(record.id)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setHistoryFor(record.id);
+                    }}
                     aria-label={`History for ${record.name}`}
                   />
                   {deleteDisabled ? (

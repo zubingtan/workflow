@@ -126,30 +126,36 @@
   --app-color-focus: rgba(77, 83, 232, 0.5);
 }
 
-/* Canonical dark mode is driven by the html class; body[theme-mode] remains
- * synchronized by the theme controller for legacy pages. */
-.dark {
-  --background: oklch(0.17 0.014 260);
-  --foreground: oklch(0.95 0.006 260);
-  --card: oklch(0.22 0.014 260);
-  --card-foreground: oklch(0.95 0.006 260);
-  --popover: oklch(0.22 0.014 260);
-  --popover-foreground: oklch(0.95 0.006 260);
+/* html[data-theme]/.dark are the canonical shadcn markers (ADR-0004). Keep
+ * the synchronized body attribute in the same block for FlowGram and legacy
+ * Semi surfaces during the migration. */
+.dark,
+html[data-theme='dark'],
+body[theme-mode='dark'] {
+  /* Keep every shadcn surface neutral in dark mode. The editor, management
+   * shell, and active navigation all consume these semantic tokens, so a
+   * single global palette prevents legacy blue/red casts between routes. */
+  --background: oklch(0.18 0 0);
+  --foreground: oklch(0.95 0 0);
+  --card: oklch(0.23 0 0);
+  --card-foreground: oklch(0.95 0 0);
+  --popover: oklch(0.23 0 0);
+  --popover-foreground: oklch(0.95 0 0);
   --primary: oklch(0.69 0.14 255);
-  --primary-foreground: oklch(0.17 0.014 260);
-  --secondary: oklch(0.28 0.014 260);
-  --secondary-foreground: oklch(0.95 0.006 260);
-  --muted: oklch(0.28 0.014 260);
-  --muted-foreground: oklch(0.72 0.012 260);
-  --accent: oklch(0.31 0.035 255);
-  --accent-foreground: oklch(0.95 0.006 260);
+  --primary-foreground: oklch(0.18 0 0);
+  --secondary: oklch(0.26 0 0);
+  --secondary-foreground: oklch(0.95 0 0);
+  --muted: oklch(0.26 0 0);
+  --muted-foreground: oklch(0.72 0 0);
+  --accent: oklch(0.3 0 0);
+  --accent-foreground: oklch(0.95 0 0);
   --destructive: oklch(0.7 0.19 25);
-  --destructive-foreground: oklch(0.17 0.014 260);
+  --destructive-foreground: oklch(0.18 0 0);
   --border: oklch(1 0 0 / 12%);
   --input: oklch(1 0 0 / 16%);
   --ring: oklch(0.69 0.14 255);
-  --sidebar: oklch(0.2 0.014 260);
-  --sidebar-foreground: oklch(0.95 0.006 260);
+  --sidebar: oklch(0.2 0 0);
+  --sidebar-foreground: oklch(0.95 0 0);
 }
 
 /**

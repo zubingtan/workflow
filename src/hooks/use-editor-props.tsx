@@ -66,7 +66,7 @@ export function useEditorProps(
   initialData: FlowDocumentJSON,
   nodeRegistries: FlowNodeRegistry[],
   ctxRef?: { current: FreeLayoutPluginContext | null },
-  onDirty?: () => void,
+  onDirty?: (eventType?: WorkflowContentChangeType) => void,
   workflowId?: string,
   history?: UseEditorPropsOptions,
   /**
@@ -262,7 +262,7 @@ export function useEditorProps(
         // Dirty state is part of the editor's synchronous navigation contract.
         // The form Field has already written the new value into the document
         // before this callback runs, so do not delay the app-level guard.
-        onDirty?.();
+        onDirty?.(event.type);
         console.log('Content changed: ', event, {
           ...ctx.document.toJSON(),
           globalVariable: ctx.get<GetGlobalVariableSchema>(GetGlobalVariableSchema)(),

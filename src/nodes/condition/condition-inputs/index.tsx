@@ -24,6 +24,14 @@ import { useConditionPortOrder } from './use-condition-port-order';
 import { useConditionPortLocation } from './use-condition-port-location';
 import { ConditionPort } from './styles';
 
+const branchStackStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 'var(--app-space-2)',
+  minWidth: 0,
+  width: '100%',
+};
+
 interface ConditionValue {
   key: string;
   value?: ConditionRowValueType;
@@ -97,39 +105,61 @@ function ConditionBranches({
   return (
     <>
       <span ref={markerRef} style={{ display: 'none' }} />
-      {field.map((child: any, index: number) => (
-        <Field<ConditionValue> key={child.name} name={child.name}>
-          {({ field: childField, fieldState: childState }) => (
-            <FormItem name="if" type="boolean" required={true} labelWidth={50}>
-              <div style={{ display: 'flex', alignItems: 'center' }}>
-                <ConditionRow
-                  readonly={readonly}
-                  ruleConfig={conditionRowRuleConfig}
-                  style={{ flexGrow: 1, overflow: 'hidden' }}
-                  value={childField.value.value}
-                  onChange={(v) => childField.onChange({ value: v, key: childField.value.key })}
-                />
+      <div data-condition-branches style={branchStackStyle}>
+        {field.map((child: any, index: number) => (
+          <Field<ConditionValue> key={child.name} name={child.name}>
+            {({ field: childField, fieldState: childState }) => (
+              <FormItem
+                name="if"
+                type="boolean"
+                required={true}
+                labelWidth={50}
+                style={{ marginBottom: 0 }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 'var(--app-space-1)',
+                    minWidth: 0,
+                    width: '100%',
+                  }}
+                >
+                  <ConditionRow
+                    readonly={readonly}
+                    ruleConfig={conditionRowRuleConfig}
+                    style={{ flex: '1 1 0%', minWidth: 0, width: '100%', overflow: 'hidden' }}
+                    value={childField.value.value}
+                    onChange={(v) => childField.onChange({ value: v, key: childField.value.key })}
+                  />
 
-                {!readonly && (
-                  <Button variant="ghost" disabled={readonly} onClick={() => field.delete(index)}>
-                    <X />
-                  </Button>
+                  {!readonly && (
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`Remove condition ${index + 1}`}
+                      disabled={readonly}
+                      onClick={() => field.delete(index)}
+                    >
+                      <X />
+                    </Button>
+                  )}
+                </div>
+
+                <Feedback errors={childState?.errors} invalid={childState?.invalid} />
+                {!vertical && (
+                  <ConditionPort
+                    $vertical={false}
+                    data-port-id={childField.value.key}
+                    data-port-type="output"
+                    data-port-location={portLocation}
+                  />
                 )}
-              </div>
-
-              <Feedback errors={childState?.errors} invalid={childState?.invalid} />
-              {!vertical && (
-                <ConditionPort
-                  $vertical={false}
-                  data-port-id={childField.value.key}
-                  data-port-type="output"
-                  data-port-location={portLocation}
-                />
-              )}
-            </FormItem>
-          )}
-        </Field>
-      ))}
+              </FormItem>
+            )}
+          </Field>
+        ))}
+      </div>
       <FormItem name="else" type="boolean" required={true} labelWidth={100}>
         {!vertical && (
           <ConditionPort

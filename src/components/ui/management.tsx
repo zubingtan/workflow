@@ -340,7 +340,7 @@ export function Modal({
     <BaseDialog open={visible} onOpenChange={(open) => !open && onCancel()}>
       <DialogContent
         showCloseButton
-        className={cn('sm:max-w-none', className)}
+        className={className}
         style={{ ...(width ? { maxWidth: width } : {}), ...style }}
       >
         {title && (

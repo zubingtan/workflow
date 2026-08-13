@@ -96,7 +96,11 @@ test('canonical tokens register Tailwind v4 semantic utilities and preserve the 
   ]) {
     assert.match(tokens, new RegExp(`${name}\\s*:`), `missing canonical token ${name}`);
   }
-  assert.match(tokens, /\.dark\s*\{/);
+  assert.match(
+    tokens,
+    /\.dark\s*,\s*html\[data-theme=['"]dark['"]\]\s*,\s*body\[theme-mode=['"]dark['"]\]\s*\{/,
+    'dark semantic tokens must cover canonical and compatibility theme markers'
+  );
   assert.match(flowgram, /var\(--app-color-primary\)/);
   assert.match(flowgram, /var\(--app-color-canvas\)/);
 });
