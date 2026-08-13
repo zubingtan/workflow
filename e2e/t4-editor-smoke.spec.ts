@@ -249,10 +249,7 @@ test('T4 variable picker preserves schema keys that contain dots', async ({ page
   await expect(page.getByText('Workflow saved', { exact: true })).toBeVisible({ timeout: 10_000 });
   await page.reload();
   await page.locator('[data-node-id="llm_main"]').click({ position: { x: 10, y: 10 } });
-  await expect(page.locator('[data-template-editor="true"] .cm-variable-chip')).toHaveAttribute(
-    'title',
-    '{{start_0.a.b}}'
-  );
+  await expect(prompt.locator('.cm-variable-chip')).toHaveAttribute('title', '{{start_0.a.b}}');
 
   const saved = await getWorkflowSchema(workflowId);
   const savedLlm = saved.nodes.find((node: any) => node.id === 'llm_main');
