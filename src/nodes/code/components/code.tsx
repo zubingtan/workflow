@@ -6,6 +6,7 @@
 import { Field } from '@flowgram.ai/free-layout-editor';
 
 import { TypeScriptCodeEditor } from '@/form-semantics';
+import type { IJsonSchema } from '@/form-semantics';
 import { Separator } from '@/components/ui';
 
 import { useIsSidebar, useNodeRenderContext } from '../../../hooks';
@@ -21,13 +22,18 @@ export function Code() {
   return (
     <>
       <Separator />
-      <Field<string> name="script.content">
-        {({ field }) => (
-          <TypeScriptCodeEditor
-            value={field.value}
-            onChange={(value) => field.onChange(value)}
-            readonly={readonly}
-          />
+      <Field<IJsonSchema<'object'>> name="inputs">
+        {({ field: inputsField }) => (
+          <Field<string> name="script.content">
+            {({ field }) => (
+              <TypeScriptCodeEditor
+                value={field.value}
+                onChange={(value) => field.onChange(value)}
+                readonly={readonly}
+                paramsSchema={inputsField.value}
+              />
+            )}
+          </Field>
         )}
       </Field>
     </>

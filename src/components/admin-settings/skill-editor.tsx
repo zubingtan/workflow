@@ -166,11 +166,11 @@ function FileTree({
                   cursor: 'pointer',
                   paddingLeft: depth * 14,
                   fontSize: 13,
-                  color: 'var(--semi-color-text-1)',
+                  color: 'var(--foreground)',
                 }}
                 onClick={() => onToggle(node.path)}
               >
-                <IconFolder size="small" />
+                <IconFolder size={14} className="shrink-0" />
                 <span>{isCollapsed ? '▸' : '▾'}</span>
                 <span>{node.path.split('/').pop()}</span>
               </div>
@@ -200,12 +200,12 @@ function FileTree({
               paddingLeft: depth * 14 + 18,
               cursor: 'pointer',
               fontSize: 13,
-              background: isSelected ? 'var(--semi-color-primary-light-default)' : 'transparent',
-              color: 'var(--semi-color-text-1)',
+              background: isSelected ? 'var(--accent)' : 'transparent',
+              color: 'var(--foreground)',
               borderRadius: 4,
             }}
           >
-            <IconFile size="small" />
+            <IconFile size={14} className="shrink-0" />
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {node.path.split('/').pop()}
             </span>
@@ -564,7 +564,7 @@ export function SkillEditor({ initialName, existingNames, onClose, onSaved }: Pr
           style={{
             display: 'flex',
             height: 480,
-            border: '1px solid var(--semi-color-border)',
+            border: '1px solid var(--border)',
             borderRadius: 6,
           }}
         >
@@ -572,25 +572,27 @@ export function SkillEditor({ initialName, existingNames, onClose, onSaved }: Pr
             style={{
               width: 240,
               flexShrink: 0,
-              borderRight: '1px solid var(--semi-color-border)',
+              borderRight: '1px solid var(--border)',
               overflow: 'auto',
               padding: 8,
             }}
           >
-            <FileTree
-              nodes={tree}
-              selected={selectedPath}
-              onSelect={setSelectedPath}
-              collapsed={collapsed}
-              onToggle={(p) =>
-                setCollapsed((prev) => {
-                  const next = new Set(prev);
-                  if (next.has(p)) next.delete(p);
-                  else next.add(p);
-                  return next;
-                })
-              }
-            />
+            <div data-skill-file-tree>
+              <FileTree
+                nodes={tree}
+                selected={selectedPath}
+                onSelect={setSelectedPath}
+                collapsed={collapsed}
+                onToggle={(p) =>
+                  setCollapsed((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(p)) next.delete(p);
+                    else next.add(p);
+                    return next;
+                  })
+                }
+              />
+            </div>
             <Button
               size="small"
               icon={<IconFile />}
@@ -602,11 +604,11 @@ export function SkillEditor({ initialName, existingNames, onClose, onSaved }: Pr
           </div>
           <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
             {!selectedFile ? (
-              <div style={{ padding: 24, color: 'var(--semi-color-text-2)' }}>
+              <div style={{ padding: 24, color: 'var(--muted-foreground)' }}>
                 Select a file to edit
               </div>
             ) : isBinary ? (
-              <div style={{ padding: 24, color: 'var(--semi-color-text-2)' }}>
+              <div style={{ padding: 24, color: 'var(--muted-foreground)' }}>
                 Binary file <code>{selectedFile.path}</code> — not editable in the browser.
               </div>
             ) : (
@@ -614,9 +616,9 @@ export function SkillEditor({ initialName, existingNames, onClose, onSaved }: Pr
                 <div
                   style={{
                     padding: '6px 12px',
-                    borderBottom: '1px solid var(--semi-color-border)',
+                    borderBottom: '1px solid var(--border)',
                     fontSize: 12,
-                    color: 'var(--semi-color-text-2)',
+                    color: 'var(--muted-foreground)',
                   }}
                 >
                   {selectedFile.path}
@@ -625,13 +627,15 @@ export function SkillEditor({ initialName, existingNames, onClose, onSaved }: Pr
                   {(() => {
                     const lang = editorLanguage(selectedFile.path);
                     return (
-                      <CodeMirror
-                        value={selectedFile.content}
-                        height="100%"
-                        extensions={lang ? [lang] : []}
-                        onChange={(v) => updateFile(selectedFile.path, v)}
-                        basicSetup={{ lineNumbers: true, foldGutter: false }}
-                      />
+                      <div data-skill-editor-code className="h-full">
+                        <CodeMirror
+                          value={selectedFile.content}
+                          height="100%"
+                          extensions={lang ? [lang] : []}
+                          onChange={(v) => updateFile(selectedFile.path, v)}
+                          basicSetup={{ lineNumbers: true, foldGutter: false }}
+                        />
+                      </div>
                     );
                   })()}
                 </div>

@@ -221,7 +221,10 @@ test('editor preserves headless form semantics across load/edit/save/reload', as
   const saveButton = page.getByRole('button', { name: 'Save', exact: true }).first();
   await expect(saveButton).toBeEnabled({ timeout: 10_000 });
   await saveButton.click();
-  await expect(page.getByText('Workflow saved', { exact: true })).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator('[data-workflow-save]')).toHaveAttribute('data-save-state', 'saved', {
+    timeout: 10_000,
+  });
+  await expect(page.getByText('Workflow saved', { exact: true })).toHaveCount(0);
 
   await page.reload();
   await expect(page.locator('[data-node-id="condition_0"]')).toBeVisible({ timeout: 10_000 });

@@ -36,6 +36,8 @@ export function Outputs() {
             <JsonSchemaEditor
               readonly={readonly}
               value={field.value}
+              hideRootSettings
+              requireOneField
               onChange={(value) => field.onChange(value)}
             />
           )}

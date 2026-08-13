@@ -68,6 +68,7 @@ export const NodeWrapper: React.FC<NodeWrapperProps> = (props) => {
         onFocus={onFocus}
         onBlur={onBlur}
         data-node-selected={String(selected)}
+        data-node-surface
         style={{
           ...meta.wrapperStyle,
           outline: form?.state.invalid ? '1px solid red' : 'none',

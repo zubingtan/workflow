@@ -123,4 +123,42 @@ test.describe('Agent management', () => {
       await fetch(`/agents/${id}`, { method: 'DELETE' });
     }, agent.id);
   });
+
+  test('workflow and agent rows navigate from their whole surface', async ({ page }) => {
+    await page.goto('/#/workflows');
+    await page.getByRole('button', { name: 'New workflow' }).click();
+    const workflowName = `E2E Row Workflow ${Date.now()}`;
+    await page.getByPlaceholder('Workflow name').fill(workflowName);
+    await page.getByRole('button', { name: 'OK' }).click();
+    await expect(page.getByRole('button', { name: 'Back', exact: true })).toBeVisible();
+    const workflowId = new URL(page.url()).hash.split('/').pop();
+    await page.getByRole('button', { name: 'Back', exact: true }).click();
+    const workflowRow = page.getByTestId('workflow-row').filter({ hasText: workflowName });
+    await expect(workflowRow).toBeVisible();
+    await workflowRow.getByText('Ready', { exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/workflows/${workflowId}$`));
+    await page.goto('/#/workflows');
+    const keyboardWorkflowRow = page.getByTestId('workflow-row').filter({ hasText: workflowName });
+    await keyboardWorkflowRow.focus();
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(new RegExp(`/workflows/${workflowId}$`));
+
+    await page.goto('/#/agents');
+    await page.getByRole('button', { name: 'New Agent' }).click();
+    await expect(page.getByRole('heading', { name: 'Untitled', exact: true })).toBeVisible();
+    const agentId = new URL(page.url()).hash.split('/')[2];
+    await page.getByRole('button', { name: 'Agents', exact: true }).last().click();
+    const agentRow = page.locator('[data-row-interactive]').filter({ hasText: 'Untitled' }).last();
+    await expect(agentRow).toBeVisible();
+    await agentRow.click({ position: { x: 12, y: 12 } });
+    await expect(page).toHaveURL(new RegExp(`/agents/${agentId}/general$`));
+    await page.goto('/#/agents');
+    const keyboardAgentRow = page
+      .locator('[data-row-interactive]')
+      .filter({ hasText: 'Untitled' })
+      .last();
+    await keyboardAgentRow.focus();
+    await page.keyboard.press(' ');
+    await expect(page).toHaveURL(new RegExp(`/agents/${agentId}/general$`));
+  });
 });

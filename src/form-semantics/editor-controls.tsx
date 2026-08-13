@@ -33,6 +33,7 @@ import {
 } from '@coze-editor/code-language-shared';
 import { json as cozeJson, type Text as CozeText } from '@coze-editor/code-language-json';
 
+import { useTheme } from '@/theme';
 import { cn } from '@/lib/utils';
 import { Select } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from '@/components/ui/popover';
@@ -107,6 +108,21 @@ if (!languages.get('json')) {
 }
 
 let typeScriptLanguageInitialized = false;
+const typeScriptParamsSchemas = new Map<string, IJsonSchema>();
+let typeScriptCompletionPatched = false;
+
+function paramsCompletionItems(schema: IJsonSchema, path: string[]) {
+  let current: IJsonSchema | undefined = schema;
+  for (const segment of path) {
+    if (!current) return [];
+    current = current.properties?.[segment];
+  }
+  if (!current) return [];
+  return Object.keys(current.properties ?? {}).map((label) => ({
+    label,
+    kind: 10 as const, // vscode-languageserver CompletionItemKind.Property
+  }));
+}
 
 function ensureTypeScriptLanguage() {
   if (!languages.get('typescript')) {
@@ -114,6 +130,42 @@ function ensureTypeScriptLanguage() {
   }
   if (typeScriptLanguageInitialized) return;
   typeScriptLanguageInitialized = true;
+  if (!typeScriptCompletionPatched) {
+    const languageService = cozeTypescript.languageService;
+    const nativeCompletion = languageService.doComplete?.bind(languageService);
+    languageService.doComplete = async (context) => {
+      const schema = typeScriptParamsSchemas.get(context.textDocument.uri);
+      const beforeCursor = context.textDocument.getText().slice(0, context.offset);
+      const match = /\bparams((?:\.[A-Za-z_$][\w$]*)*)\.([A-Za-z_$][\w$]*)?$/.exec(beforeCursor);
+      if (schema && match) {
+        const path = match[1]
+          .split('.')
+          .filter(Boolean)
+          .map((segment) => segment.trim());
+        const query = match[2] ?? '';
+        const from = context.offset - query.length;
+        const items = paramsCompletionItems(schema, path).map((item) => ({
+          ...item,
+          textEdit: {
+            range: {
+              start: context.textDocument.positionAt(from),
+              end: context.textDocument.positionAt(context.offset),
+            },
+            newText: item.label,
+          },
+        }));
+        if (items.length) return { isIncomplete: false, items };
+      }
+      try {
+        return nativeCompletion ? await nativeCompletion(context) : null;
+      } catch {
+        // A completion provider is optional. A malformed virtual document must
+        // not break editing or the schema-backed params completion above.
+        return null;
+      }
+    };
+    typeScriptCompletionPatched = true;
+  }
   const worker = new Worker(
     new URL('@flowgram.ai/coze-editor/language-typescript/worker', import.meta.url),
     { type: 'module' }
@@ -236,7 +288,7 @@ export function DynamicValueInput({
   const text = flowValueToText(value);
 
   return (
-    <div className="flex min-w-0 gap-1.5" data-editor-control="dynamic-value">
+    <div className="flex min-w-0 flex-1 gap-1.5" data-editor-control="dynamic-value">
       <Select
         aria-label="Value type"
         className="w-[92px] shrink-0"
@@ -270,7 +322,8 @@ export function DynamicValueInput({
       ) : isEnum ? (
         <Select
           aria-label="Enum value"
-          className={cn(CONTROL_CLASS, hasError && 'border-destructive')}
+          aria-invalid={hasError || undefined}
+          className={cn(CONTROL_CLASS, 'min-w-0 flex-1', hasError && 'border-destructive')}
           value={text}
           disabled={readonly}
           onChange={(event) =>
@@ -286,7 +339,8 @@ export function DynamicValueInput({
       ) : isBoolean ? (
         <Select
           aria-label="Boolean value"
-          className={cn(CONTROL_CLASS, hasError && 'border-destructive')}
+          aria-invalid={hasError || undefined}
+          className={cn(CONTROL_CLASS, 'min-w-0 flex-1', hasError && 'border-destructive')}
           value={text === 'true' ? 'true' : 'false'}
           disabled={readonly}
           onChange={(event) =>
@@ -310,6 +364,8 @@ export function DynamicValueInput({
       ) : isDateTime ? (
         <Input
           aria-label="Date and time value"
+          aria-invalid={hasError || undefined}
+          className="min-w-0 flex-1"
           type="datetime-local"
           value={dateTimeInputValue(text)}
           disabled={readonly}
@@ -327,7 +383,7 @@ export function DynamicValueInput({
       ) : (
         <Input
           aria-invalid={hasError || undefined}
-          className={cn(hasError && 'border-destructive')}
+          className={cn('min-w-0 flex-1', hasError && 'border-destructive')}
           type={
             mode === 'constant' &&
             (effectiveSchema?.type === 'number' || effectiveSchema?.type === 'integer')
@@ -465,6 +521,7 @@ function VariableCodeEditor({
   language,
   ariaLabel,
   enableVariables = true,
+  paramsSchema,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -476,11 +533,24 @@ function VariableCodeEditor({
   language?: 'json' | 'typescript';
   ariaLabel: string;
   enableVariables?: boolean;
+  paramsSchema?: IJsonSchema;
 }) {
+  const { resolvedTheme } = useTheme();
   const editorRef = useRef<HTMLDivElement>(null);
   const editorViewRef = useRef<EditorView | null>(null);
   const anchorRef = useRef<HTMLSpanElement | null>(null);
   const editorId = useId();
+  // `vscode-uri` resolves `workflow://typescript` to an authority-only URI,
+  // whose `fsPath` is empty. The TypeScript worker then receives an empty
+  // source-file name and rejects every completion request. Keep each editor
+  // document on a valid, stable path so the worker can synchronize it.
+  const documentUri = useMemo(
+    () =>
+      `workflow:///editor/${editorId.replace(/[^a-zA-Z0-9_-]/g, '')}.${
+        language === 'typescript' ? 'ts' : language ?? 'txt'
+      }`,
+    [editorId, language]
+  );
   const [open, setOpen] = useState(false);
   const [chip, setChip] = useState<{ variable: string; element: HTMLElement } | null>(null);
   const insertionGuardRef = useRef<string | null>(null);
@@ -492,6 +562,13 @@ function VariableCodeEditor({
     () => (enableVariables ? createVariableChipExtension(treeData) : []),
     [enableVariables, treeData]
   );
+  useEffect(() => {
+    if (language !== 'typescript' || !paramsSchema) return;
+    typeScriptParamsSchemas.set(documentUri, paramsSchema);
+    return () => {
+      typeScriptParamsSchemas.delete(documentUri);
+    };
+  }, [documentUri, language, paramsSchema]);
 
   const triggerMatch = (nextText: string, nextCursor: number) => {
     if (kind === 'prompt') return nextText.slice(0, nextCursor).match(/(?:@|\{\{?)[^{}@]*$/);
@@ -551,6 +628,13 @@ function VariableCodeEditor({
     setTypeScriptReady(true);
   }, [language]);
 
+  useEffect(() => {
+    const content = editorViewRef.current?.contentDOM;
+    if (!content) return;
+    if (hasError) content.setAttribute('aria-invalid', 'true');
+    else content.removeAttribute('aria-invalid');
+  }, [hasError]);
+
   const focusSuggestion = (last: boolean) => {
     const items = Array.from(
       document.querySelectorAll<HTMLElement>(
@@ -594,7 +678,7 @@ function VariableCodeEditor({
   const languageServiceExtension = language
     ? [
         languageIdFacet.of(language),
-        uriFacet.of(`workflow://${kind ?? language}`),
+        uriFacet.of(documentUri),
         textDocumentField,
         ...(language === 'json'
           ? [transformerFacet.of(jsonVariableTransformer), languages.getExtension('json')]
@@ -607,7 +691,7 @@ function VariableCodeEditor({
   return (
     <div
       ref={editorRef}
-      className="relative"
+      className="relative min-w-0 flex-1"
       style={style}
       onMouseOver={(event) => {
         const element = (event.target as HTMLElement).closest<HTMLElement>('[data-variable-chip]');
@@ -629,23 +713,31 @@ function VariableCodeEditor({
       <CodeMirror
         data-template-editor={kind === 'prompt' ? 'true' : undefined}
         data-json-editor={kind === 'json' ? 'true' : undefined}
+        data-code-editor={language === 'typescript' ? 'true' : undefined}
+        data-editor-theme={language ? resolvedTheme : undefined}
         className={cn(
           'min-h-24 overflow-hidden rounded-lg border border-input bg-background text-sm transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/40',
           '[&_.cm-editor]:min-h-24 [&_.cm-editor]:bg-transparent [&_.cm-editor]:outline-none',
           '[&_.cm-scroller]:min-h-24 [&_.cm-scroller]:overflow-auto',
           '[&_.cm-content]:min-h-24 [&_.cm-content]:p-2.5 [&_.cm-content]:font-mono [&_.cm-content]:text-xs',
           '[&_.cm-line]:leading-5 [&_.cm-placeholder]:text-muted-foreground',
+          kind === 'prompt' && '[&_.cm-line]:leading-7',
           hasError && 'border-destructive focus-within:border-destructive',
           kind === 'json' && 'min-h-28',
-          language === 'typescript' && 'min-h-44 bg-muted/40'
+          language === 'typescript' &&
+            'h-44 bg-muted/40 [&_.cm-editor]:h-full [&_.cm-scroller]:h-full [&_.cm-content]:min-h-full'
         )}
         value={value}
         placeholder={placeholder}
-        theme="none"
+        theme={resolvedTheme}
         basicSetup={{ lineNumbers: false, foldGutter: false, autocompletion: Boolean(language) }}
         editable={!readonly}
         readOnly={readonly}
-        extensions={[languageServiceExtension, variableChipExtension]}
+        extensions={[
+          languageServiceExtension,
+          variableChipExtension,
+          kind === 'prompt' ? EditorView.lineWrapping : [],
+        ]}
         onCreateEditor={(view) => {
           editorViewRef.current = view;
           view.contentDOM.setAttribute('aria-label', ariaLabel);
@@ -653,6 +745,7 @@ function VariableCodeEditor({
             view.contentDOM.setAttribute('role', 'combobox');
             view.contentDOM.setAttribute('aria-autocomplete', 'list');
           }
+          if (hasError) view.contentDOM.setAttribute('aria-invalid', 'true');
         }}
         onUpdate={(update) => {
           if (
@@ -810,10 +903,12 @@ export function TypeScriptCodeEditor({
   value,
   onChange,
   readonly,
+  paramsSchema,
 }: {
   value?: string;
   onChange: (value: string) => void;
   readonly?: boolean;
+  paramsSchema?: IJsonSchema;
 }) {
   return (
     <VariableCodeEditor
@@ -822,6 +917,7 @@ export function TypeScriptCodeEditor({
       value={value ?? ''}
       readonly={readonly}
       enableVariables={false}
+      paramsSchema={paramsSchema}
       onChange={onChange}
     />
   );
@@ -1053,32 +1149,65 @@ export function JsonSchemaEditor({
   value,
   onChange,
   readonly,
+  hideRootSettings = false,
+  requireOneField = false,
 }: {
   value?: IJsonSchema;
   onChange: (value: IJsonSchema) => void;
   readonly?: boolean;
+  hideRootSettings?: boolean;
+  requireOneField?: boolean;
 }) {
   const schema = value ?? { type: 'object', properties: {} };
+  const isObject = schemaPropertyType(schema) === 'object';
   return (
-    <div data-editor-control="schema-editor">
-      <SchemaDetails value={schema} label="Schema" onChange={onChange} readonly={readonly} />
-      <SchemaTypeSelect
-        value={schema}
-        label="Schema type"
-        onChange={onChange}
-        readonly={readonly}
-      />
-      {schemaPropertyType(schema) === 'object' ? (
-        <JsonSchemaObjectEditor value={schema} onChange={onChange} readonly={readonly} />
-      ) : (
-        <SchemaShapeEditor
-          value={schema}
-          label="Schema"
-          onChange={onChange}
-          readonly={readonly}
-          root
-        />
+    <div data-editor-control="schema-editor" className="flex min-w-0 flex-col gap-2">
+      {!hideRootSettings && (
+        <section
+          data-schema-settings
+          aria-label="Schema settings"
+          className="flex min-w-0 flex-col gap-1.5 rounded-lg border border-border bg-muted/20 p-2"
+        >
+          <h3 className="text-xs font-medium text-foreground">Schema settings</h3>
+          <SchemaDetails value={schema} label="Schema" onChange={onChange} readonly={readonly} />
+          <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_7rem] items-center gap-1.5">
+            <span className="text-xs text-muted-foreground">Type</span>
+            <div className="min-w-0">
+              <SchemaTypeSelect
+                value={schema}
+                label="Schema type"
+                onChange={onChange}
+                readonly={readonly}
+              />
+            </div>
+          </div>
+        </section>
       )}
+      <section
+        data-schema-fields-section
+        aria-label={isObject ? 'Output fields' : 'Schema shape'}
+        className="flex min-w-0 flex-col gap-1.5 rounded-lg border border-border bg-muted/10 p-2"
+      >
+        <h3 className="text-xs font-medium text-foreground">
+          {isObject ? 'Output fields' : 'Schema shape'}
+        </h3>
+        {isObject ? (
+          <JsonSchemaObjectEditor
+            value={schema}
+            onChange={onChange}
+            readonly={readonly}
+            minProperties={requireOneField ? 1 : undefined}
+          />
+        ) : (
+          <SchemaShapeEditor
+            value={schema}
+            label="Schema"
+            onChange={onChange}
+            readonly={readonly}
+            root
+          />
+        )}
+      </section>
     </div>
   );
 }
@@ -1098,11 +1227,13 @@ function JsonSchemaObjectEditor({
   onChange,
   readonly,
   nested = false,
+  minProperties,
 }: {
   value?: IJsonSchema;
   onChange: (value: IJsonSchema) => void;
   readonly?: boolean;
   nested?: boolean;
+  minProperties?: number;
 }) {
   const properties = value?.properties ?? {};
   const required = value?.required ?? [];
@@ -1190,9 +1321,16 @@ function JsonSchemaObjectEditor({
             </Select>
             <Button
               aria-label={`Remove schema field ${name}`}
+              title={
+                minProperties && entries.length <= minProperties
+                  ? 'At least one output field is required'
+                  : undefined
+              }
               size="icon-sm"
               variant="ghost"
-              disabled={readonly}
+              disabled={
+                readonly || (minProperties !== undefined && entries.length <= minProperties)
+              }
               onClick={() => removeProperty(name)}
             >
               <X />
@@ -1255,6 +1393,11 @@ function JsonSchemaObjectEditor({
           )}
         </div>
       ))}
+      {minProperties !== undefined && entries.length <= minProperties && (
+        <p data-schema-min-fields className="text-xs text-muted-foreground">
+          At least one output field is required.
+        </p>
+      )}
       {!readonly && (
         <Button className="w-fit" size="sm" variant="outline" onClick={addProperty}>
           <Plus data-icon="inline-start" />
@@ -1442,7 +1585,20 @@ function DisplayLeafInputValue({ name, value }: { name: string; value?: IFlowVal
     <div className="flex min-w-0 items-center justify-between gap-2 rounded-md bg-muted px-2 py-1.5 text-xs">
       <span className="truncate text-muted-foreground">{name}</span>
       <div className="flex min-w-0 items-center gap-1.5">
-        <code className="max-w-[65%] truncate text-foreground">{valueLabel(value)}</code>
+        {value?.type === 'ref' ? (
+          <span
+            className="cm-variable-chip max-w-[65%] truncate"
+            data-variable-chip={fieldText(value.content)}
+            data-variable-unknown={!variable ? 'true' : undefined}
+            title={`{{${fieldText(value.content)}}}`}
+          >
+            {(variable as { meta?: { title?: string } } | undefined)?.meta?.title ??
+              fieldText(value.content).split('.').at(-1) ??
+              fieldText(value.content)}
+          </span>
+        ) : (
+          <code className="max-w-[65%] truncate text-foreground">{valueLabel(value)}</code>
+        )}
         <DisplaySchemaTag value={schema} warning={value?.type === 'ref' && !variable} />
       </div>
     </div>
@@ -1456,9 +1612,14 @@ function DisplayNestedInputValue({ name, value }: { name: string; value: IInputs
     [available.version, value]
   );
   return (
-    <div className="flex min-w-0 items-center justify-between gap-2 rounded-md bg-muted px-2 py-1.5 text-xs">
-      <span className="truncate text-muted-foreground">{name}</span>
-      <DisplaySchemaTag value={schema} />
+    <div className="flex min-w-0 flex-col gap-1.5">
+      <div className="flex min-w-0 items-center justify-between gap-2 rounded-md bg-muted px-2 py-1.5 text-xs">
+        <span className="truncate text-muted-foreground">{name}</span>
+        <DisplaySchemaTag value={schema} />
+      </div>
+      <div className="ml-3 min-w-0 border-l border-border pl-2">
+        <DisplayInputsValues value={value} />
+      </div>
     </div>
   );
 }
@@ -1516,6 +1677,7 @@ function ObjectKeyInput({
 
   return (
     <Input
+      className="min-w-0 basis-[38%] max-w-44 shrink-0"
       data-input-key={ariaLabel.startsWith('Input') ? name : undefined}
       data-output-key={ariaLabel.startsWith('Output') ? name : undefined}
       aria-label={ariaLabel}
@@ -1595,7 +1757,7 @@ function InputValueRow({
       className={cn('flex flex-col gap-1.5', depth > 0 && 'ml-3 border-l border-border pl-3')}
       data-input-group={group ? name : undefined}
     >
-      <div className="flex items-center gap-1.5">
+      <div className="flex min-w-0 items-center gap-1.5">
         <ObjectKeyInput
           name={name}
           readonly={readonly}
@@ -1653,8 +1815,9 @@ function InputValueRow({
             />
           ))}
           {!readonly && (
-            <div className="ml-3 flex gap-1.5">
+            <div className="ml-3 flex min-w-0 gap-1.5">
               <Input
+                className="min-w-0 flex-1"
                 aria-label={`New child input name for ${name}`}
                 placeholder="Child input name"
                 value={newName}
@@ -1737,8 +1900,9 @@ export const InputsValues = ({
         />
       ))}
       {!readonly && (
-        <div className="flex gap-1.5">
+        <div className="flex min-w-0 gap-1.5">
           <Input
+            className="min-w-0 flex-1"
             aria-label="New input name"
             placeholder="Input name"
             value={newName}
@@ -1910,8 +2074,9 @@ export function BatchOutputs({
         </div>
       ))}
       {!readonly && (
-        <div className="flex gap-1.5">
+        <div className="flex min-w-0 gap-1.5">
           <Input
+            className="min-w-0 flex-1"
             placeholder="Output name"
             value={newName}
             aria-invalid={duplicateName || undefined}
@@ -2583,7 +2748,7 @@ export function VariablePicker({
 
   return (
     <Popover open={open} onOpenChange={setOpen} modal={false}>
-      <div className="relative w-full">
+      <div className="relative min-w-0 w-full">
         <PopoverTrigger
           render={
             <Button

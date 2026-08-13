@@ -14,6 +14,7 @@ export function SidebarNodeRenderer(props: { node: FlowNodeEntity }) {
   return (
     <NodeRenderContext.Provider value={nodeRender}>
       <div
+        data-node-form-panel
         className="h-full w-full overflow-hidden rounded-lg border border-border bg-background"
         style={{
           color: 'var(--app-color-text-1)',

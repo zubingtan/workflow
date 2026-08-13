@@ -523,6 +523,18 @@ export function AgentMillerColumns() {
               return (
                 <div
                   key={item.id}
+                  data-row-interactive
+                  role="group"
+                  tabIndex={0}
+                  aria-label={`Open agent ${item.name}`}
+                  onClick={() => navigate(item.id, 'general')}
+                  onKeyDown={(event) => {
+                    if (event.target !== event.currentTarget) return;
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      navigate(item.id, 'general');
+                    }
+                  }}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -549,7 +561,10 @@ export function AgentMillerColumns() {
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <Button
                       theme="borderless"
-                      onClick={() => navigate(item.id, 'general')}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        navigate(item.id, 'general');
+                      }}
                       style={{
                         height: 'auto',
                         padding: 0,
@@ -568,7 +583,13 @@ export function AgentMillerColumns() {
                       {tags[0] ? ` · ${tags[0]}` : ''}
                     </Typography.Text>
                   </div>
-                  <Button size="small" onClick={() => navigate(item.id, 'general')}>
+                  <Button
+                    size="small"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      navigate(item.id, 'general');
+                    }}
+                  >
                     Open <IconArrowRight />
                   </Button>
                   <Popconfirm
@@ -582,6 +603,7 @@ export function AgentMillerColumns() {
                       theme="borderless"
                       type="danger"
                       aria-label={`Delete ${item.name}`}
+                      onClick={(event) => event.stopPropagation()}
                     />
                   </Popconfirm>
                 </div>

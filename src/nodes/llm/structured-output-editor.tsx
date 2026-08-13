@@ -14,7 +14,7 @@
  *   - The last remaining field cannot be deleted (empty schema is invalid).
  *   - readonly (canvas card / history view) disables all editing.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 
 import { MinusCircle, PlusCircle } from 'lucide-react';
 
@@ -60,6 +60,7 @@ export function StructuredOutputEditor({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [globalError, setGlobalError] = useState<string | null>(null);
   const lastEmittedRef = useRef<string>(JSON.stringify(value ?? null));
+  const descriptionId = useId();
 
   // External sync: only rebuild when the persisted schema changed from
   // somewhere else (undo / document load / other editors). Local edits that
@@ -106,143 +107,163 @@ export function StructuredOutputEditor({
   };
 
   return (
-    <div style={{ marginTop: 4 }}>
-      <div className="mb-1.5 block text-xs font-medium">Structured Output Schema</div>
+    <fieldset
+      data-structured-output-editor
+      aria-describedby={descriptionId}
+      className="mt-1 min-w-0 border-0 p-0"
+    >
+      <legend className="mb-1.5 block text-xs font-medium">Structured Output Schema</legend>
+      <p
+        id={descriptionId}
+        data-structured-output-description
+        className="mb-2 text-xs leading-snug text-muted-foreground"
+      >
+        Define the values this agent returns. Every field is required in the output contract.
+      </p>
 
       {/* Field rows — continuous block (Variant A) */}
-      <div
-        style={{
-          border: '1px solid var(--border)',
-          borderRadius: 'var(--app-radius-md)',
-          overflow: 'hidden',
-        }}
+      <section
+        data-structured-output-fields-section
+        aria-label="Structured output fields"
+        className="min-w-0"
       >
-        {fields.length === 0 && (
-          <div style={{ ...rowBase, borderBottom: 'none', color: 'var(--muted-foreground)' }}>
-            <span className="text-xs">No fields declared</span>
-          </div>
-        )}
-        {fields.map((field, idx) => {
-          const err = errors[field.id];
-          const isLast = idx === fields.length - 1;
-          return (
-            <div
-              key={field.id}
-              style={{
-                background: err
-                  ? 'color-mix(in oklch, var(--destructive) 10%, transparent)'
-                  : undefined,
-              }}
-            >
+        <div
+          data-structured-output-fields
+          style={{
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--app-radius-md)',
+            overflow: 'hidden',
+          }}
+        >
+          {fields.length === 0 && (
+            <div style={{ ...rowBase, borderBottom: 'none', color: 'var(--muted-foreground)' }}>
+              <span className="text-xs">No fields declared</span>
+            </div>
+          )}
+          {fields.map((field, idx) => {
+            const err = errors[field.id];
+            const isLast = idx === fields.length - 1;
+            return (
               <div
+                key={field.id}
+                data-slot="field"
+                data-invalid={err ? 'true' : undefined}
                 style={{
-                  ...rowBase,
-                  borderLeftColor: err ? 'var(--destructive)' : 'transparent',
-                  borderBottom: isLast ? 'none' : '1px solid var(--border)',
+                  background: err
+                    ? 'color-mix(in oklch, var(--destructive) 10%, transparent)'
+                    : undefined,
                 }}
               >
-                <span className="min-w-6 rounded-md bg-muted px-1.5 py-0.5 text-center text-xs">
-                  {idx + 1}
-                </span>
-                <Input
-                  value={field.name}
-                  onChange={(event) => updateField(field.id, { name: event.target.value })}
-                  placeholder="field_name"
-                  className="flex-1 border-0 bg-transparent"
-                  disabled={readonly}
-                />
-                <Select
-                  value={field.type}
-                  onChange={(event) =>
-                    updateField(field.id, {
-                      type: event.currentTarget.value as SchemaField['type'],
-                    })
-                  }
-                  className="w-[110px]"
-                  disabled={readonly}
-                >
-                  {TYPE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </Select>
-                <Button
-                  variant="destructive"
-                  size="icon-sm"
-                  onClick={() => removeField(field.id)}
-                  disabled={readonly}
-                  aria-label={`Remove field ${field.name || idx + 1}`}
-                >
-                  <MinusCircle />
-                </Button>
-              </div>
-              {/* Field-level error right under its row — the reason is always
-                  visible next to the offending field, never a bare red row. */}
-              {err && (
                 <div
                   style={{
-                    padding: '0 var(--app-space-2) var(--app-space-2) 11px',
-                    color: 'var(--destructive)',
-                    fontSize: 'var(--app-font-size-xs)',
+                    ...rowBase,
+                    borderLeftColor: err ? 'var(--destructive)' : 'transparent',
                     borderBottom: isLast ? 'none' : '1px solid var(--border)',
                   }}
                 >
-                  {err}
+                  <span className="min-w-6 rounded-md bg-muted px-1.5 py-0.5 text-center text-xs">
+                    {idx + 1}
+                  </span>
+                  <Input
+                    aria-label={`Structured output field ${field.name || idx + 1}`}
+                    aria-invalid={err ? 'true' : undefined}
+                    value={field.name}
+                    onChange={(event) => updateField(field.id, { name: event.target.value })}
+                    placeholder="field_name"
+                    className="flex-1 border-0 bg-transparent"
+                    disabled={readonly}
+                  />
+                  <Select
+                    aria-label={`Structured output type ${field.name || idx + 1}`}
+                    aria-invalid={err ? 'true' : undefined}
+                    value={field.type}
+                    onChange={(event) =>
+                      updateField(field.id, {
+                        type: event.currentTarget.value as SchemaField['type'],
+                      })
+                    }
+                    className="w-[110px]"
+                    disabled={readonly}
+                  >
+                    {TYPE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </Select>
+                  <Button
+                    variant="destructive"
+                    size="icon-sm"
+                    onClick={() => removeField(field.id)}
+                    disabled={readonly || fields.length <= 1}
+                    aria-label={`Remove field ${field.name || idx + 1}`}
+                    title={fields.length <= 1 ? 'At least one field is required' : 'Remove field'}
+                  >
+                    <MinusCircle />
+                  </Button>
                 </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+                {/* Field-level error right under its row — the reason is always
+                    visible next to the offending field, never a bare red row. */}
+                {err && (
+                  <div
+                    role="alert"
+                    style={{
+                      padding: '0 var(--app-space-2) var(--app-space-2) 11px',
+                      color: 'var(--destructive)',
+                      fontSize: 'var(--app-font-size-xs)',
+                      borderBottom: isLast ? 'none' : '1px solid var(--border)',
+                    }}
+                  >
+                    {err}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
 
       {/* Add field — dashed row connected under the block */}
       {!readonly && (
-        <div
-          onClick={addField}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault();
-              addField();
-            }
-          }}
-          role="button"
-          aria-label="Add field"
-          tabIndex={0}
-          className="outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 'var(--app-space-2)',
-            padding: 'var(--app-space-1) var(--app-space-2)',
-            marginTop: 'var(--app-space-1)',
-            borderRadius: 'var(--app-radius-md)',
-            cursor: 'pointer',
-            color: 'var(--muted-foreground)',
-            border: '1px dashed var(--border)',
-          }}
-        >
-          <PlusCircle />
-          <span className="text-xs">Add Field</span>
-        </div>
+        <section data-structured-output-actions aria-label="Structured output actions">
+          {fields.length <= 1 && (
+            <p
+              data-structured-output-min-fields
+              role="status"
+              className="mb-1 ml-2 text-xs text-muted-foreground"
+            >
+              At least one field is required.
+            </p>
+          )}
+          <Button
+            type="button"
+            variant="outline"
+            data-structured-output-add-field
+            aria-label="Add field"
+            className="mt-1 w-full justify-start border-dashed text-muted-foreground"
+            onClick={addField}
+          >
+            <PlusCircle data-icon="inline-start" />
+            <span className="text-xs">Add Field</span>
+          </Button>
+        </section>
       )}
 
       {/* Global error (block-level, e.g. last-field deletion guard) */}
       {globalError && (
-        <span className="mt-1 ml-2 block text-xs text-destructive">{globalError}</span>
+        <span role="alert" className="mt-1 ml-2 block text-xs text-destructive">
+          {globalError}
+        </span>
       )}
 
       {/* Live output JSON preview */}
       {fields.length > 0 && (
-        <div
-          style={{
-            marginTop: 'var(--app-space-2)',
-            padding: 'var(--app-space-2)',
-            background: 'var(--muted)',
-            borderRadius: 'var(--app-radius-md)',
-          }}
+        <section
+          data-structured-output-preview
+          aria-label="Output JSON Preview"
+          className="mt-2 min-w-0 rounded-md bg-muted p-2"
         >
-          <div className="mb-1 block text-xs font-medium">Output JSON Preview</div>
+          <h3 className="mb-1 block text-xs font-medium">Output JSON Preview</h3>
           <pre
             style={{
               margin: 0,
@@ -263,8 +284,8 @@ export function StructuredOutputEditor({
               2
             )}
           </pre>
-        </div>
+        </section>
       )}
-    </div>
+    </fieldset>
   );
 }

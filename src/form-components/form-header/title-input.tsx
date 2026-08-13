@@ -46,7 +46,7 @@ export function TitleInput(props: {
                 onBlur={() => updateTitleEdit(false)}
               />
             ) : (
-              <span className="block truncate text-xs font-semibold" title={value}>
+              <span className="block truncate text-xs leading-6 font-semibold" title={value}>
                 {value}
               </span>
             )}

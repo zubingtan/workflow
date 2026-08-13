@@ -1,6 +1,22 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Locator, type Page } from '@playwright/test';
 
 import { buildWorkflowSchema, createWorkflow, getWorkflowSchema } from './helpers';
+
+async function expectWithinViewport(locator: Locator, width: number, height: number) {
+  const box = await locator.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.y).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(width);
+  expect(box!.y + box!.height).toBeLessThanOrEqual(height);
+}
+
+async function expectWorkflowSaved(page: Page) {
+  const saveButton = page.locator('[data-workflow-save]');
+  await expect(saveButton).toHaveAttribute('data-save-state', 'saved', { timeout: 10_000 });
+  await expect(saveButton).toBeDisabled();
+  await expect(page.getByText('Workflow saved', { exact: true })).toHaveCount(0);
+}
 
 test('T4 add node library opens centered above its trigger', async ({ page }) => {
   const workflowName = `E2E T4 Add Node ${Date.now()}`;
@@ -67,6 +83,13 @@ test('T4 agent selector chooses and persists the fake provider', async ({ page }
   await agentSelect.click();
   const fakeAgentOption = page.getByRole('option', { name: /Fake Provider \(fake-m0\)/ });
   await expect(fakeAgentOption).toBeVisible();
+  const selectPopup = page.locator('[data-slot="select-content"]').last();
+  const agentSelectBox = await agentSelect.boundingBox();
+  const selectPopupBox = await selectPopup.boundingBox();
+  expect(agentSelectBox).not.toBeNull();
+  expect(selectPopupBox).not.toBeNull();
+  expect(selectPopupBox!.x).toBeCloseTo(agentSelectBox!.x, 0);
+  expect(selectPopupBox!.y).toBeCloseTo(agentSelectBox!.y + agentSelectBox!.height, 0);
   await expect(
     await fakeAgentOption.evaluate((element) =>
       Boolean(element.closest('[data-ui="editor-overlay-root"]'))
@@ -78,9 +101,12 @@ test('T4 agent selector chooses and persists the fake provider', async ({ page }
   const saveButton = page.getByRole('button', { name: 'Save', exact: true });
   await expect(saveButton).toBeEnabled();
   await saveButton.click();
-  await expect(page.getByText('Workflow saved', { exact: true })).toBeVisible({
-    timeout: 10_000,
+  await expectWorkflowSaved(page);
+  const savedStateButton = page.locator('[data-workflow-save]');
+  await expect(savedStateButton).toHaveAttribute('data-save-state', 'idle', {
+    timeout: 5_000,
   });
+  await expect(savedStateButton).toHaveClass(/bg-secondary/);
   await page.reload();
   await expect(page.locator('[data-node-id="llm_main"]')).toBeVisible();
   await page.locator('[data-node-id="llm_main"]').click({ position: { x: 10, y: 10 } });
@@ -153,7 +179,7 @@ test('T4 schema defaults reset by type and preserve structured drafts across rel
 
   await page.getByRole('button', { name: 'Close node settings' }).click();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.getByText('Workflow saved', { exact: true })).toBeVisible({ timeout: 10_000 });
+  await expectWorkflowSaved(page);
   await page.reload();
   await page.locator('[data-node-id="start_0"]').click({ position: { x: 10, y: 10 } });
   await expect(page.getByRole('textbox', { name: 'Schema field field default' })).toHaveValue(
@@ -203,7 +229,7 @@ test('T4 schema editor preserves root array items and schema order metadata', as
   await page.getByRole('button', { name: 'Close node settings' }).click();
   const saveButton = page.getByRole('button', { name: 'Save', exact: true });
   await saveButton.click();
-  await expect(page.getByText('Workflow saved', { exact: true })).toBeVisible({ timeout: 10_000 });
+  await expectWorkflowSaved(page);
 
   const saved = await getWorkflowSchema(workflowId);
   const savedStart = saved.nodes.find((node: any) => node.id === 'start_0');
@@ -246,7 +272,7 @@ test('T4 variable picker preserves schema keys that contain dots', async ({ page
 
   const saveButton = page.getByRole('button', { name: 'Save', exact: true });
   await saveButton.click();
-  await expect(page.getByText('Workflow saved', { exact: true })).toBeVisible({ timeout: 10_000 });
+  await expectWorkflowSaved(page);
   await page.reload();
   await page.locator('[data-node-id="llm_main"]').click({ position: { x: 10, y: 10 } });
   await expect(prompt.locator('.cm-variable-chip')).toHaveAttribute('title', '{{start_0.a.b}}');
@@ -305,7 +331,7 @@ test('T4 JSON editor inserts a variable through the real keyboard menu and persi
 
   const saveButton = page.getByRole('button', { name: 'Save', exact: true });
   await saveButton.click();
-  await expect(page.getByText('Workflow saved', { exact: true })).toBeVisible({ timeout: 10_000 });
+  await expectWorkflowSaved(page);
   const saved = await getWorkflowSchema(workflowId);
   const savedHttp = saved.nodes.find((node: any) => node.id === 'http_0');
   expect(savedHttp.data.body.json.content).toMatch(/^\{\{.+\}\}$/);
@@ -396,6 +422,73 @@ test('T4 creates, edits, saves, reloads and validates an editor workflow', async
   // and choosing one writes the complete template reference.
   await page.locator('[data-node-id="llm_main"]').click({ position: { x: 10, y: 10 } });
   const prompt = page.locator('[data-template-editor="true"] .cm-content[contenteditable="true"]');
+  const nodePanel = page.locator('.gedit-flow-panel-wrap').filter({
+    has: page.locator('[data-node-form-panel]'),
+  });
+  const nodePanelHeader = nodePanel.locator('[data-node-form-header]');
+  await expect(nodePanel).toBeVisible();
+  await expect(nodePanelHeader).toBeVisible();
+  await expect.poll(async () => Boolean(await nodePanel.boundingBox())).toBe(true);
+  await expect.poll(async () => Boolean(await nodePanelHeader.boundingBox())).toBe(true);
+  const panelBeforeDrag = await nodePanel.boundingBox();
+  const headerBox = await nodePanelHeader.boundingBox();
+  expect(panelBeforeDrag).not.toBeNull();
+  expect(headerBox).not.toBeNull();
+  await page.mouse.move(headerBox!.x + headerBox!.width / 2, headerBox!.y + headerBox!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(
+    headerBox!.x + headerBox!.width / 2 + 24,
+    headerBox!.y + headerBox!.height / 2 + 18
+  );
+  await page.mouse.up();
+  const panelAfterDrag = await nodePanel.boundingBox();
+  expect(panelAfterDrag).not.toBeNull();
+  expect(panelAfterDrag!.x).not.toBe(panelBeforeDrag!.x);
+  expect(panelAfterDrag!.y).not.toBe(panelBeforeDrag!.y);
+  const titleBox = await nodePanelHeader.locator('span.block.truncate').boundingBox();
+  const headerAfterDragBox = await nodePanelHeader.boundingBox();
+  expect(titleBox).not.toBeNull();
+  expect(headerAfterDragBox).not.toBeNull();
+  expect(
+    Math.abs(
+      titleBox!.y + titleBox!.height / 2 - (headerAfterDragBox!.y + headerAfterDragBox!.height / 2)
+    )
+  ).toBeLessThanOrEqual(3);
+  const viewport = page.viewportSize();
+  expect(viewport).not.toBeNull();
+  const headerAfterFirstDrag = await nodePanelHeader.boundingBox();
+  expect(headerAfterFirstDrag).not.toBeNull();
+  await page.mouse.move(
+    headerAfterFirstDrag!.x + headerAfterFirstDrag!.width / 2,
+    headerAfterFirstDrag!.y + headerAfterFirstDrag!.height / 2
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    headerAfterFirstDrag!.x + headerAfterFirstDrag!.width / 2,
+    viewport!.height - 4
+  );
+  await page.mouse.up();
+  const panelAfterBottomDrag = await nodePanel.boundingBox();
+  expect(panelAfterBottomDrag).not.toBeNull();
+  expect(panelAfterBottomDrag!.y + panelAfterBottomDrag!.height).toBeLessThanOrEqual(
+    viewport!.height
+  );
+  const resizeBar = nodePanel.locator(':scope > div').first();
+  const resizeBarBox = await resizeBar.boundingBox();
+  expect(resizeBarBox).not.toBeNull();
+  await page.mouse.move(
+    resizeBarBox!.x + resizeBarBox!.width / 2,
+    resizeBarBox!.y + resizeBarBox!.height / 2
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    resizeBarBox!.x + resizeBarBox!.width / 2 - 24,
+    resizeBarBox!.y + resizeBarBox!.height / 2
+  );
+  await page.mouse.up();
+  await expect
+    .poll(async () => (await nodePanel.boundingBox())?.width ?? 0)
+    .toBeGreaterThan(panelAfterDrag!.width + 10);
   const saveButton = page.getByRole('button', { name: 'Save', exact: true });
   await expect(prompt).toBeVisible();
   await prompt.fill('{{');
@@ -452,6 +545,55 @@ test('T4 creates, edits, saves, reloads and validates an editor workflow', async
   const variableChip = prompt.locator('.cm-variable-chip');
   await expect(variableChip).toHaveCount(1);
   await expect(variableChip).toHaveAttribute('title', /^\{\{.+\}\}$/);
+  await expect(prompt.locator('.cm-line.cm-activeLine')).toHaveCSS(
+    'background-color',
+    'rgba(0, 0, 0, 0)'
+  );
+  await expect(variableChip).toHaveCSS('vertical-align', 'middle');
+  await expect(variableChip).toHaveCSS('white-space', 'nowrap');
+  const promptLineMetrics = await prompt.locator('.cm-line').evaluate((line) => {
+    const chip = line.querySelector<HTMLElement>('.cm-variable-chip');
+    const lineBox = line.getBoundingClientRect();
+    const chipBox = chip?.getBoundingClientRect();
+    return {
+      lineHeight: Number.parseFloat(getComputedStyle(line).lineHeight),
+      lineBoxHeight: lineBox.height,
+      chipBoxHeight: chipBox?.height ?? 0,
+      chipTopGap: chipBox ? chipBox.top - lineBox.top : 0,
+      chipBottomGap: chipBox ? lineBox.bottom - chipBox.bottom : 0,
+    };
+  });
+  expect(promptLineMetrics.lineBoxHeight).toBeGreaterThanOrEqual(
+    promptLineMetrics.chipBoxHeight + 4
+  );
+  expect(promptLineMetrics.chipTopGap).toBeGreaterThanOrEqual(1);
+  expect(promptLineMetrics.chipBottomGap).toBeGreaterThanOrEqual(1);
+  await prompt.fill(
+    'This prompt is intentionally long so the editor wraps its content inside the prompt field instead of scrolling it horizontally. {{start_0.query}}'
+  );
+  const wrappedLineMetrics = await prompt.locator('.cm-line').evaluate((line) => {
+    const scroller = line.closest('.cm-scroller');
+    const styles = getComputedStyle(line);
+    return {
+      lineHeight: Number.parseFloat(styles.lineHeight),
+      lineHeightPx: line.getBoundingClientRect().height,
+      scrollWidth: scroller?.scrollWidth ?? 0,
+      clientWidth: scroller?.clientWidth ?? 0,
+    };
+  });
+  expect(wrappedLineMetrics.lineHeightPx).toBeGreaterThan(wrappedLineMetrics.lineHeight);
+  expect(wrappedLineMetrics.scrollWidth).toBeLessThanOrEqual(wrappedLineMetrics.clientWidth);
+  await prompt.fill('Selectable prompt text');
+  await prompt.press('ControlOrMeta+A');
+  const selectionBackground = page
+    .locator('[data-template-editor="true"] .cm-selectionBackground')
+    .first();
+  await expect(selectionBackground).toBeVisible();
+  const selectionBackgroundColor = await selectionBackground.evaluate(
+    (element) => getComputedStyle(element).backgroundColor
+  );
+  expect(selectionBackgroundColor).not.toMatch(/204,\s*238,\s*255|153,\s*238,\s*255/);
+  await prompt.fill('{{start_0.query}}');
   await variableChip.hover();
   const variableChipPopover = page.locator('[data-variable-chip-popover="true"]');
   await expect(variableChipPopover).toBeVisible();
@@ -505,6 +647,19 @@ test('T4 creates, edits, saves, reloads and validates an editor workflow', async
   const addField = page.getByRole('button', { name: 'Add field', exact: true });
   const fieldNameInputs = page.locator('input[placeholder="field_name"]');
   await expect(addField).toBeVisible();
+  const schemaFields = page.locator('[data-structured-output-fields]:visible').last();
+  const addFieldSurface = page.locator('[data-structured-output-add-field]:visible').last();
+  await expect(schemaFields).toBeVisible();
+  await expect(addFieldSurface).toBeVisible();
+  await expect
+    .poll(async () => {
+      const [fieldsWidth, addWidth] = await Promise.all([
+        schemaFields.evaluate((element) => element.getBoundingClientRect().width).catch(() => 0),
+        addFieldSurface.evaluate((element) => element.getBoundingClientRect().width).catch(() => 0),
+      ]);
+      return fieldsWidth > 0 && addWidth > 0 && Math.abs(addWidth - fieldsWidth) < 1;
+    })
+    .toBe(true);
   await addField.click();
   await expect(fieldNameInputs).toHaveCount(2);
   await addField.click();
@@ -555,10 +710,7 @@ test('T4 creates, edits, saves, reloads and validates an editor workflow', async
       Boolean(element.closest('[data-ui="editor-overlay-root"]'))
     )
   ).toBe(true);
-  const lineNodePanelBox = await lineNodePanel.boundingBox();
-  expect(lineNodePanelBox).not.toBeNull();
-  expect(lineNodePanelBox!.x + lineNodePanelBox!.width).toBeLessThanOrEqual(1440);
-  expect(lineNodePanelBox!.y + lineNodePanelBox!.height).toBeLessThanOrEqual(900);
+  await expectWithinViewport(lineNodePanel, 1440, 900);
   await page.keyboard.press('Escape');
   await expect(lineNodePanel).toBeHidden();
   await expect(canvas).toBeFocused();
@@ -601,7 +753,7 @@ test('T4 creates, edits, saves, reloads and validates an editor workflow', async
   await page.getByRole('button', { name: 'Layout Direction: Horizontal' }).click();
   await expect(saveButton).toBeEnabled({ timeout: 10_000 });
   await saveButton.click();
-  await expect(page.getByText('Workflow saved', { exact: true })).toBeVisible({ timeout: 10_000 });
+  await expectWorkflowSaved(page);
 
   await page.reload();
   await expect(page.locator('[data-node-id="start_0"]')).toBeVisible({ timeout: 10_000 });
@@ -621,11 +773,13 @@ test('T4 creates, edits, saves, reloads and validates an editor workflow', async
   await expect(
     page.locator('[data-template-editor="true"] .cm-variable-chip:visible').last()
   ).toHaveAttribute('title', '{{start_0.query}}');
-  await page.getByRole('button', { name: 'Close node settings' }).click();
+  const closeNodeSettings = page.getByRole('button', { name: 'Close node settings' });
+  await closeNodeSettings.click();
+  await expect(closeNodeSettings).toBeHidden();
 
   await endNode.scrollIntoViewIfNeeded();
-  await endNode.getByText('End', { exact: true }).click({ force: true });
-  await expect(page.getByRole('button', { name: 'Close node settings' })).toBeVisible();
+  await endNode.locator('[data-node-surface]').dispatchEvent('click');
+  await expect(closeNodeSettings).toBeVisible();
   await expect(page.getByText(/The final node of the workflow/)).toBeVisible();
   const endInputKey = page.locator('[data-input-key="result"]');
   await expect(endInputKey).toBeVisible();
@@ -652,11 +806,11 @@ test('T4 creates, edits, saves, reloads and validates an editor workflow', async
 
   await expect(saveButton).toBeEnabled();
   await saveButton.click();
-  await expect(page.getByText('Workflow saved', { exact: true })).toBeVisible({ timeout: 10_000 });
+  await expectWorkflowSaved(page);
   await page.reload();
   await expect(page.locator('[data-node-id="end_0"]')).toBeVisible({ timeout: 10_000 });
   await endNode.scrollIntoViewIfNeeded();
-  await endNode.getByText('End', { exact: true }).click({ force: true });
+  await endNode.locator('[data-node-surface]').dispatchEvent('click');
   await expect(page.locator('[data-input-key="summary"]')).toBeVisible();
   const persistedEndPicker = page.locator('[data-variable-picker="true"]').last();
   await expect(persistedEndPicker).toHaveAttribute('title', 'global.userId');
@@ -671,6 +825,9 @@ test('T4 creates, edits, saves, reloads and validates an editor workflow', async
 
   const variablePanelToggle = page.getByRole('button', { name: 'Toggle Variable Panel' });
   await variablePanelToggle.click();
+  const variablePanel = page.getByRole('dialog', { name: 'Variable panel' });
+  await expect(variablePanel).toBeVisible();
+  await expectWithinViewport(variablePanel, 1440, 900);
   const fullVariableTree = page
     .locator('[role="tree"][aria-label="Available variables"]:visible')
     .last();
@@ -725,6 +882,10 @@ test('T4 creates, edits, saves, reloads and validates an editor workflow', async
   await variablePanelToggle.click();
 
   await page.setViewportSize({ width: 720, height: 900 });
+  await variablePanelToggle.click();
+  await expect(variablePanel).toBeVisible();
+  await expectWithinViewport(variablePanel, 720, 900);
+  await variablePanelToggle.click();
   await page.screenshot({
     path: testInfo.outputPath('t4-editor-720x900-narrow.png'),
     fullPage: true,
