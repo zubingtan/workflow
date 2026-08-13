@@ -6,7 +6,7 @@
 import { Field } from '@flowgram.ai/free-layout-editor';
 
 import { DisplayInputsValues, InputsValues } from '@/form-semantics';
-import type { IFlowValue } from '@/form-semantics';
+import type { IInputsValues } from '@/form-semantics';
 
 import { useIsSidebar, useNodeRenderContext } from '../../../hooks';
 import { FormItem } from '../../../form-components';
@@ -18,7 +18,7 @@ export function Inputs() {
 
   if (!isSidebar) {
     return (
-      <Field<Record<string, IFlowValue | undefined> | undefined> name="inputsValues">
+      <Field<IInputsValues | undefined> name="inputsValues">
         {({ field }) => <DisplayInputsValues value={field.value} />}
       </Field>
     );
@@ -26,7 +26,7 @@ export function Inputs() {
 
   return (
     <FormItem name="inputs" type="object" vertical>
-      <Field<Record<string, IFlowValue | undefined> | undefined> name="inputsValues">
+      <Field<IInputsValues | undefined> name="inputsValues">
         {({ field }) => (
           <InputsValues
             value={field.value}

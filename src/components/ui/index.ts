@@ -18,6 +18,7 @@ export {
 export { Label } from './label';
 export { Separator } from './separator';
 export { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './tooltip';
+export { OverlayContainerProvider } from './overlay';
 export {
   Dialog,
   DialogClose,

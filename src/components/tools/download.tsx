@@ -9,16 +9,18 @@ import { Download } from 'lucide-react';
 import { usePlayground, useService } from '@flowgram.ai/free-layout-editor';
 import { FlowDownloadFormat, FlowDownloadService } from '@flowgram.ai/export-plugin';
 
+import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from '@/components/ui/popover';
+import { Toast } from '@/components/ui/management';
 import { Button } from '@/components/ui';
 
 import { ToolbarTooltip } from './toolbar-tooltip';
 
 const formatOptions = [
-  FlowDownloadFormat.PNG,
-  FlowDownloadFormat.JPEG,
-  FlowDownloadFormat.SVG,
-  FlowDownloadFormat.JSON,
-  FlowDownloadFormat.YAML,
+  { label: 'PNG', value: FlowDownloadFormat.PNG },
+  { label: 'JPEG', value: FlowDownloadFormat.JPEG },
+  { label: 'SVG', value: FlowDownloadFormat.SVG },
+  { label: 'JSON', value: FlowDownloadFormat.JSON },
+  { label: 'YAML', value: FlowDownloadFormat.YAML },
 ];
 
 export const DownloadTool: FC = () => {
@@ -31,37 +33,37 @@ export const DownloadTool: FC = () => {
     return () => subscription.dispose();
   }, [downloadService]);
   return (
-    <div className="relative">
+    <Popover open={visible} onOpenChange={setVisible} modal={false}>
       <ToolbarTooltip label="Download workflow">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Download"
-          disabled={downloading}
-          onClick={() => setVisible((value) => !value)}
-        >
-          <Download />
-        </Button>
+        <PopoverTrigger
+          render={
+            <Button variant="ghost" size="icon-sm" aria-label="Download" disabled={downloading}>
+              <Download />
+            </Button>
+          }
+        />
       </ToolbarTooltip>
-      {visible && (
-        <div className="absolute bottom-full left-0 z-50 mb-1 flex w-28 flex-col rounded-lg border border-border bg-popover p-1 shadow-md backdrop-blur-md">
-          {formatOptions.map((format) => (
+      <PopoverContent side="top" align="start" className="w-28 p-1">
+        <PopoverTitle className="sr-only">Download workflow</PopoverTitle>
+        <div className="flex flex-col">
+          {formatOptions.map(({ label, value }) => (
             <Button
-              key={format}
+              key={value}
               size="sm"
               variant="ghost"
               className="justify-start"
               disabled={playground.config.readonly || downloading}
               onClick={async () => {
                 setVisible(false);
-                await downloadService.download({ format });
+                await downloadService.download({ format: value });
+                Toast.success(`Download ${label} successfully`);
               }}
             >
-              {format}
+              {label}
             </Button>
           ))}
         </div>
-      )}
-    </div>
+      </PopoverContent>
+    </Popover>
   );
 };

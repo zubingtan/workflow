@@ -32,7 +32,13 @@ export const LoopFormRender = ({ form }: FormRenderProps<LoopNodeJSON>) => {
           <BatchVariableSelector
             style={{ width: '100%' }}
             value={field.value?.content}
-            onChange={(val) => field.onChange({ type: 'ref', content: val })}
+            onChange={(val) =>
+              field.onChange({
+                type: 'ref',
+                content: val,
+                extra: field.value?.extra,
+              })
+            }
             readonly={readonly}
             hasError={Object.keys(fieldState?.errors || {}).length > 0}
           />

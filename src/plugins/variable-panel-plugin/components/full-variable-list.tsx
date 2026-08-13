@@ -24,6 +24,11 @@ function VariableTreeItem({
   const isExpanded = expanded.has(node.key);
   const content = (
     <>
+      {typeof node.icon === 'string' ? (
+        <img src={node.icon} alt="" width={14} height={14} className="shrink-0" />
+      ) : node.icon ? (
+        <span className="shrink-0">{node.icon}</span>
+      ) : null}
       <span className="min-w-0 flex-1 truncate" title={node.value}>
         {node.label}
       </span>
@@ -39,8 +44,10 @@ function VariableTreeItem({
         data-variable-tree-item={node.key}
         data-variable-tree-focus={node.key}
         data-variable-tree-leaf="true"
+        aria-disabled={node.disabled || undefined}
         tabIndex={-1}
-        style={{ paddingLeft: `${8 + depth * 16}px` }}
+        title={node.disabled ? 'This variable is not valid for the current field' : undefined}
+        style={{ paddingLeft: `${8 + depth * 16}px`, opacity: node.disabled ? 0.5 : undefined }}
       >
         {content}
       </div>
@@ -53,6 +60,8 @@ function VariableTreeItem({
       role="treeitem"
       data-variable-tree-item={node.key}
       aria-expanded={isExpanded}
+      aria-disabled={node.disabled || undefined}
+      title={node.disabled ? 'This variable is not valid for the current field' : undefined}
     >
       <summary
         className="flex min-h-7 cursor-pointer list-none items-center gap-1.5 rounded-md px-2 py-1 text-sm outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden"

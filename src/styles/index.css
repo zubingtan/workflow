@@ -95,6 +95,68 @@ body,
   gap: 4px;
 }
 
+[data-ui='editor-surface'] {
+  --g-workflow-port-color-primary: var(--app-color-primary);
+  --g-workflow-port-color-secondary: var(--app-color-primary-hover);
+  --g-workflow-line-color-default: var(--app-color-primary);
+}
+
+[data-ui='editor-surface'] .node-running {
+  border-color: var(--app-color-primary);
+}
+
+[data-ui='editor-surface'] .cm-variable-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 24rem;
+  margin: 0 2px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+  padding: 1px 6px;
+  vertical-align: baseline;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.75rem;
+  line-height: 1.25rem;
+  white-space: nowrap;
+}
+
+[data-ui='editor-surface'] .cm-variable-chip[data-variable-unknown='true'] {
+  border-style: dashed;
+  color: var(--muted-foreground);
+}
+
+body[theme-mode='dark'] [data-ui='editor-overlay-root'] {
+  --background: oklch(0.18 0 0);
+  --card: oklch(0.23 0 0);
+  --popover: color-mix(in oklch, var(--card) 92%, transparent);
+  --muted: oklch(0.26 0 0);
+  --accent: oklch(0.3 0 0);
+  --border: oklch(1 0 0 / 14%);
+  --input: oklch(1 0 0 / 17%);
+  --app-color-surface: color-mix(in oklch, var(--card) 78%, transparent);
+  --app-color-overlay: color-mix(in oklch, var(--card) 86%, transparent);
+  --app-color-panel: color-mix(in oklch, var(--card) 92%, transparent);
+  --app-color-text-1: var(--foreground);
+  --app-color-text-2: var(--muted-foreground);
+  --app-color-text-3: color-mix(in oklch, var(--muted-foreground) 72%, transparent);
+  --app-color-border: var(--border);
+  --app-color-divider: var(--border);
+  --app-color-fill-0: color-mix(in oklch, var(--card) 62%, transparent);
+  --app-color-fill-1: color-mix(in oklch, var(--card) 78%, transparent);
+  --app-color-fill-2: color-mix(in oklch, var(--card) 90%, transparent);
+  --app-color-canvas: oklch(0.18 0 0);
+  --app-color-node-bg: oklch(0.23 0 0);
+  --app-color-node-border: oklch(1 0 0 / 14%);
+  color: var(--foreground);
+}
+
+[data-ui='editor-overlay-root'] > * {
+  pointer-events: auto;
+}
+
 /* The editor shell owns one neutral dashboard palette. Management views keep
  * their page tokens; editor navigation and floating surfaces inherit these
  * neutral values instead of the blue-tinted global dark sidebar. */

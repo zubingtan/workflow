@@ -7,7 +7,7 @@ import { Field, FormMeta } from '@flowgram.ai/free-layout-editor';
 
 import { DisplayInputsValues, InputsValues } from '@/form-semantics';
 import { createInferInputsPlugin } from '@/form-semantics';
-import type { IFlowValue } from '@/form-semantics';
+import type { IInputsValues } from '@/form-semantics';
 
 import { defaultFormMeta } from '../default-form-meta';
 import { useIsSidebar } from '../../hooks';
@@ -20,7 +20,7 @@ export const renderForm = () => {
       <>
         <FormHeader />
         <FormContent>
-          <Field<Record<string, IFlowValue | undefined> | undefined> name="inputsValues">
+          <Field<IInputsValues | undefined> name="inputsValues">
             {({ field: { value, onChange } }) => (
               <>
                 <InputsValues value={value} onChange={(_v) => onChange(_v)} />
@@ -35,7 +35,7 @@ export const renderForm = () => {
     <>
       <FormHeader />
       <FormContent>
-        <Field<Record<string, IFlowValue | undefined> | undefined> name="inputsValues">
+        <Field<IInputsValues | undefined> name="inputsValues">
           {({ field: { value } }) => (
             <>
               <DisplayInputsValues value={value} />

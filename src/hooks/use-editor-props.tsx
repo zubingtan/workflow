@@ -153,12 +153,12 @@ export function useEditorProps(
       },
       lineColor: {
         hidden: 'var(--g-workflow-line-color-hidden,transparent)',
-        default: 'var(--g-workflow-line-color-default,#4d53e8)',
+        default: 'var(--g-workflow-line-color-default,var(--app-color-primary,#3f73d8))',
         drawing: 'var(--g-workflow-line-color-drawing, #5DD6E3)',
         hovered: 'var(--g-workflow-line-color-hover,#37d0ff)',
         selected: 'var(--g-workflow-line-color-selected,#37d0ff)',
         error: 'var(--g-workflow-line-color-error,red)',
-        flowing: 'var(--g-workflow-line-color-flowing,#4d53e8)',
+        flowing: 'var(--g-workflow-line-color-flowing,var(--app-color-primary,#3f73d8))',
       },
       /*
        * Check whether the line can be added

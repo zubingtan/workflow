@@ -63,4 +63,7 @@ export {
   renderFieldErrors,
   useVariableTree,
   useVariableTreeKeyboard,
+  useVariableSelectorContext,
+  VariableSelectorProvider,
+  VariablePicker,
 } from './editor-controls';

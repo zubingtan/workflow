@@ -37,12 +37,16 @@ function buildSemanticRoundTripSchema() {
           inputsValues: {
             expressionValue: { type: 'expression', content: 'start_0.query' },
             templateValue: { type: 'template', content: 'Hello {{start_0.query}}' },
+            nestedValue: {
+              child: { type: 'constant', content: 'before', schema: { type: 'string' } },
+            },
           },
           inputs: {
             type: 'object',
             properties: {
               expressionValue: { type: 'string' },
               templateValue: { type: 'string' },
+              nestedValue: { type: 'object', properties: { child: { type: 'string' } } },
             },
           },
           script: { language: 'javascript', content: 'return params;' },
@@ -111,6 +115,7 @@ function buildSemanticRoundTripSchema() {
     ],
     edges: [
       { sourceNodeID: 'start_0', targetNodeID: 'code_0' },
+      { sourceNodeID: 'start_0', targetNodeID: 'loop_0' },
       { sourceNodeID: 'code_0', targetNodeID: 'condition_0' },
       { sourceNodeID: 'condition_0', sourcePortID: 'if_0', targetNodeID: 'end_0' },
     ],
@@ -132,6 +137,73 @@ test('editor preserves headless form semantics across load/edit/save/reload', as
   await expect(page.locator('[data-node-id="code_0"]')).toBeVisible();
   await expect(page.locator('[data-node-id="loop_0"]')).toBeVisible();
   await expect(page.locator('[data-node-id="block_start_0"]')).toBeVisible();
+
+  // Exercise the migrated loop controls through the real panel: inspect the
+  // private loop scope, select an output mapping, rename it, and add/remove a
+  // temporary mapping before saving.
+  const closeInitialPanel = page.getByRole('button', { name: 'Close node settings' });
+  if (await closeInitialPanel.isVisible()) await closeInitialPanel.click();
+  await page.locator('[data-node-id="loop_0"]').getByText('Loop', { exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Close node settings' })).toBeVisible();
+  const loopInputPicker = page.locator('[data-batch-variable-selector="true"]').last();
+  await expect(loopInputPicker).toBeVisible();
+  await loopInputPicker.click();
+  const loopVariables = page.getByRole('tree', { name: 'Available variables' }).last();
+  const loopSource = loopVariables.locator('[data-variable-tree-item="start_0.items"]');
+  await expect(loopSource).toBeVisible();
+  await expect(loopInputPicker.locator('button[aria-label="Select variable"]')).toHaveAttribute(
+    'title',
+    'start_0.items'
+  );
+  await page.keyboard.press('Escape');
+  await expect(loopVariables).toBeHidden();
+
+  const loopOutputKey = page.locator('[data-output-key="item"]');
+  await expect(loopOutputKey).toBeVisible();
+  const loopOutputRow = page.locator('[data-output-row="item"]');
+  const loopOutputPicker = loopOutputRow.getByRole('button', { name: 'Select variable' });
+  await loopOutputPicker.click();
+  const outputVariables = page.getByRole('tree', { name: 'Available variables' }).last();
+  await expect(
+    outputVariables.locator('[data-variable-tree-item="loop_0_locals.item"]')
+  ).toBeVisible();
+  await outputVariables.locator('[data-variable-tree-focus="loop_0_locals.item"]').click();
+  await expect(loopOutputPicker).toHaveAttribute('title', 'loop_0_locals.item');
+  await loopOutputKey.fill('renamed');
+  await loopOutputKey.press('Enter');
+  await expect(page.locator('[data-output-key="renamed"]')).toBeVisible();
+  const renamedBack = page.locator('[data-output-key="renamed"]');
+  await renamedBack.fill('item');
+  await renamedBack.press('Enter');
+  await expect(page.locator('[data-output-key="item"]')).toBeVisible();
+  await expect(
+    page.locator('[data-output-row="item"] [data-variable-picker="true"]')
+  ).toHaveAttribute('title', 'loop_0_locals.item');
+
+  const loopAdd = page.getByRole('button', { name: 'Add', exact: true }).last();
+  const temporaryOutputName = page.getByPlaceholder('Output name');
+  await temporaryOutputName.fill('temporary');
+  await expect(loopAdd).toBeEnabled();
+  await loopAdd.click();
+  const temporaryOutput = page.locator('[data-output-key="temporary"]');
+  await expect(temporaryOutput).toBeVisible();
+  await page.getByRole('button', { name: 'Remove output temporary' }).click();
+  await expect(page.locator('[data-output-key="item"]')).toBeVisible();
+  await page.getByRole('button', { name: 'Close node settings' }).click();
+
+  // Nested inputs must remain editable as a tree, not be flattened into a
+  // single leaf when the migrated form loads an existing workflow.
+  await page.locator('[data-node-id="code_0"]').click();
+  const nestedInput = page.locator('[data-input-group="nestedValue"]');
+  await expect(
+    nestedInput.getByRole('button', { name: 'Collapse input nestedValue' })
+  ).toBeVisible();
+  const nestedValue = nestedInput.locator(
+    '[data-editor-control="dynamic-value"] input[type="text"]'
+  );
+  await expect(nestedValue).toHaveValue('before');
+  await nestedValue.fill('after');
+  await nestedValue.press('Enter');
 
   // A real form edit: add a Condition branch and let FlowGram rebuild its
   // dynamic output port before the document is saved.
@@ -175,12 +247,21 @@ test('editor preserves headless form semantics across load/edit/save/reload', as
   expect(code.data.inputsValues).toMatchObject({
     expressionValue: { type: 'expression', content: 'start_0.query' },
     templateValue: { type: 'template', content: 'Hello {{start_0.query}}' },
+    nestedValue: {
+      child: { type: 'constant', content: 'after', schema: { type: 'string' } },
+    },
   });
   expect(loop.data.futureLoopField).toEqual({ preserved: true });
   expect(loop.data.loopFor).toEqual({
     type: 'ref',
     content: ['start_0', 'items'],
     extra: { index: 3 },
+  });
+  expect(loop.data.loopOutputs).toEqual({
+    item: {
+      type: 'ref',
+      content: ['loop_0_locals', 'item'],
+    },
   });
   expect(loop.blocks.find((node: any) => node.id === 'block_start_0').data).toEqual({
     futureBlockField: { preserved: true },
