@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { createRoot } from 'react-dom/client';
 import {
@@ -50,6 +50,7 @@ import {
   Field,
   FieldLabel,
   Input,
+  OverlayContainerProvider,
   Popover,
   PopoverContent,
   PopoverTitle,
@@ -97,7 +98,27 @@ function App() {
     visible: boolean;
     action: (() => void) | null;
   }>({ visible: false, action: null });
+  const [editorOverlayContainer, setEditorOverlayContainer] = useState<HTMLDivElement | null>(null);
   const ctxRef = useRef<any>(null);
+
+  useLayoutEffect(() => {
+    if (view !== 'editor') {
+      setEditorOverlayContainer(null);
+      return undefined;
+    }
+    const overlay = document.createElement('div');
+    overlay.dataset.ui = 'editor-overlay-root';
+    overlay.style.position = 'fixed';
+    overlay.style.inset = '0';
+    overlay.style.zIndex = '1001';
+    overlay.style.pointerEvents = 'none';
+    document.body.appendChild(overlay);
+    setEditorOverlayContainer(overlay);
+    return () => {
+      overlay.remove();
+      setEditorOverlayContainer(null);
+    };
+  }, [view]);
   // #190: mirrors the current canvas layout direction so `saveWorkflow` can
   // persist it into the workflow JSON. Seeded 'LR' (default); the Editor's
   // LayoutDirectionProvider syncs it to the loaded workflow's direction on
@@ -436,136 +457,138 @@ function App() {
           background: 'var(--background)',
         }}
       >
-        {!booted ? (
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              height: '100%',
-            }}
-          >
-            <Spin size="large" />
-          </div>
-        ) : view === 'workflows' ? (
-          <WorkflowManager onOpen={(id) => requestNavigation(() => openWorkflow(id))} />
-        ) : view === 'agents' ? (
-          <AgentMillerColumns />
-        ) : view === 'settings' ? (
-          <AdminSettings />
-        ) : (
-          <div
-            style={{
-              height: '100%',
-              display: 'flex',
-              flexDirection: 'column',
-              position: 'relative',
-            }}
-          >
+        <OverlayContainerProvider container={view === 'editor' ? editorOverlayContainer : null}>
+          {view === 'editor' && !editorOverlayContainer ? null : !booted ? (
             <div
-              data-ui="floating-editor-header"
-              aria-label="Workflow editor controls"
               style={{
                 display: 'flex',
+                justifyContent: 'center',
                 alignItems: 'center',
-                gap: 'var(--app-space-2)',
-                position: 'absolute',
-                top: 12,
-                left: 12,
-                right: 12,
-                zIndex: 1000,
-                padding: '6px 8px',
-                border: '1px solid var(--border)',
-                borderRadius: 'var(--app-radius-lg)',
-                boxShadow: 'var(--app-shadow-lg)',
-                background: 'color-mix(in oklch, var(--card) 78%, transparent)',
-                backdropFilter: 'blur(12px)',
+                height: '100%',
               }}
             >
-              <Button variant="ghost" size="sm" onClick={() => requestNavigation(backToList)}>
-                <ArrowLeft data-icon="inline-start" />
-                Back
-              </Button>
-              {renaming ? (
-                <Field className="w-[220px]">
-                  <FieldLabel className="sr-only">Workflow name</FieldLabel>
-                  <Input
-                    value={renameDraft}
-                    onChange={(e) => setRenameDraft(e.target.value)}
-                    onBlur={commitRename}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        void commitRename();
-                      }
-                      if (e.key === 'Escape') {
-                        e.preventDefault();
-                        cancelRename();
-                      }
-                    }}
-                    autoFocus
-                  />
-                </Field>
-              ) : (
-                <span
-                  onClick={startRename}
-                  title="Click to rename"
-                  style={{
-                    cursor: 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 4,
-                    lineHeight: 'inherit',
-                  }}
-                >
-                  <span className="text-sm font-semibold tracking-tight">{workflowName}</span>
-                  <Pencil size={14} style={{ opacity: 0.5, flexShrink: 0 }} />
-                </span>
-              )}
-              <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Button
-                  size="sm"
-                  variant={dirty ? 'default' : 'secondary'}
-                  disabled={!dirty || saving}
-                  onClick={saveWorkflow}
-                >
-                  {saving ? (
-                    <LoaderCircle data-icon="inline-start" className="animate-spin" />
-                  ) : (
-                    <Save data-icon="inline-start" />
-                  )}
-                  {saving ? 'Saving...' : 'Save'}
+              <Spin size="large" />
+            </div>
+          ) : view === 'workflows' ? (
+            <WorkflowManager onOpen={(id) => requestNavigation(() => openWorkflow(id))} />
+          ) : view === 'agents' ? (
+            <AgentMillerColumns />
+          ) : view === 'settings' ? (
+            <AdminSettings />
+          ) : (
+            <div
+              style={{
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                position: 'relative',
+              }}
+            >
+              <div
+                data-ui="floating-editor-header"
+                aria-label="Workflow editor controls"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 'var(--app-space-2)',
+                  position: 'absolute',
+                  top: 12,
+                  left: 12,
+                  right: 12,
+                  zIndex: 1000,
+                  padding: '6px 8px',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--app-radius-lg)',
+                  boxShadow: 'var(--app-shadow-lg)',
+                  background: 'color-mix(in oklch, var(--card) 78%, transparent)',
+                  backdropFilter: 'blur(12px)',
+                }}
+              >
+                <Button variant="ghost" size="sm" onClick={() => requestNavigation(backToList)}>
+                  <ArrowLeft data-icon="inline-start" />
+                  Back
                 </Button>
+                {renaming ? (
+                  <Field className="w-[220px]">
+                    <FieldLabel className="sr-only">Workflow name</FieldLabel>
+                    <Input
+                      value={renameDraft}
+                      onChange={(e) => setRenameDraft(e.target.value)}
+                      onBlur={commitRename}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          void commitRename();
+                        }
+                        if (e.key === 'Escape') {
+                          e.preventDefault();
+                          cancelRename();
+                        }
+                      }}
+                      autoFocus
+                    />
+                  </Field>
+                ) : (
+                  <span
+                    onClick={startRename}
+                    title="Click to rename"
+                    style={{
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      lineHeight: 'inherit',
+                    }}
+                  >
+                    <span className="text-sm font-semibold tracking-tight">{workflowName}</span>
+                    <Pencil size={14} style={{ opacity: 0.5, flexShrink: 0 }} />
+                  </span>
+                )}
+                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Button
+                    size="sm"
+                    variant={dirty ? 'default' : 'secondary'}
+                    disabled={!dirty || saving}
+                    onClick={saveWorkflow}
+                  >
+                    {saving ? (
+                      <LoaderCircle data-icon="inline-start" className="animate-spin" />
+                    ) : (
+                      <Save data-icon="inline-start" />
+                    )}
+                    {saving ? 'Saving...' : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div style={{ flex: 1, position: 'relative' }}>
+                {editorLoading ? (
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                      height: '100%',
+                    }}
+                  >
+                    <Spin size="large" />
+                  </div>
+                ) : workflowData ? (
+                  <TooltipProvider>
+                    <Editor
+                      data={workflowData}
+                      ctxRef={ctxRef}
+                      onDirty={() => setDirty(true)}
+                      workflowId={currentWorkflowId ?? undefined}
+                      directionRef={directionRef}
+                    />
+                  </TooltipProvider>
+                ) : (
+                  <div style={{ padding: 24 }}>Failed to load workflow.</div>
+                )}
               </div>
             </div>
-            <div style={{ flex: 1, position: 'relative' }}>
-              {editorLoading ? (
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    height: '100%',
-                  }}
-                >
-                  <Spin size="large" />
-                </div>
-              ) : workflowData ? (
-                <TooltipProvider>
-                  <Editor
-                    data={workflowData}
-                    ctxRef={ctxRef}
-                    onDirty={() => setDirty(true)}
-                    workflowId={currentWorkflowId ?? undefined}
-                    directionRef={directionRef}
-                  />
-                </TooltipProvider>
-              ) : (
-                <div style={{ padding: 24 }}>Failed to load workflow.</div>
-              )}
-            </div>
-          </div>
-        )}
+          )}
+        </OverlayContainerProvider>
       </div>
 
       {/* Unsaved changes confirmation */}

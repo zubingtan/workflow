@@ -63,16 +63,18 @@ function AgentSelect({
     <Select
       aria-label="Agent"
       value={value || ''}
+      aria-busy={loading || undefined}
       onChange={(event) => onChange(event.currentTarget.value)}
-      disabled={readonly}
+      disabled={readonly || loading}
     >
-      <option value="" disabled={Boolean(value)}>
-        {loading ? 'Loading agents…' : 'Select an agent'}
+      <option value="" disabled>
+        {loading ? 'Loading agents…' : agents.length ? 'Select an agent' : 'No agents available'}
       </option>
-      {agents.map((a) => {
-        const m = parseAgentConfig(a.config)?.provider?.model || '';
-        return <option key={a.id} value={a.id}>{`${a.name}${m ? ` (${m})` : ''}`}</option>;
-      })}
+      {!loading &&
+        agents.map((a) => {
+          const m = parseAgentConfig(a.config)?.provider?.model || '';
+          return <option key={a.id} value={a.id}>{`${a.name}${m ? ` (${m})` : ''}`}</option>;
+        })}
     </Select>
   );
 }

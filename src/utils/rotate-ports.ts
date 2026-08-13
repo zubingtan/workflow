@@ -44,7 +44,7 @@ export function hasTargetElement(port: WorkflowPortEntity): boolean {
 /**
  * Whether a node lives inside a sub-canvas (loop / group container).
  * Sub-canvas nodes are skipped by #190: only main-canvas ports rotate.
- * Mirrors the `FlowNodeBaseType.ROOT` gate used in `use-add-node.ts`.
+ * Mirrors the `FlowNodeBaseType.ROOT` gate used by the editor add-node action.
  */
 export function isSubCanvasNode(node: WorkflowNodeEntity): boolean {
   const parent = node.parent;

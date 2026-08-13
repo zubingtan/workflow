@@ -5,14 +5,17 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { Textarea } from '@/components/ui';
+import CodeMirror from '@uiw/react-codemirror';
+import { json } from '@codemirror/lang-json';
 
 export function JsonValueEditor({
   value,
   onChange,
+  readonly,
 }: {
   value: Record<string, unknown>;
   onChange: (value: Record<string, unknown>) => void;
+  readonly?: boolean;
 }) {
   const defaultJsonText = useMemo(() => JSON.stringify(value, null, 2), [value]);
 
@@ -23,7 +26,7 @@ export function JsonValueEditor({
   const handleJsonTextChange = (text: string) => {
     setJsonText(text);
     try {
-      const jsonValue = JSON.parse(text);
+      const jsonValue = JSON.parse(text) as Record<string, unknown>;
       onChange(jsonValue);
       changeVersion.current++;
     } catch (e) {
@@ -43,11 +46,17 @@ export function JsonValueEditor({
   }, [value]);
 
   return (
-    <Textarea
-      aria-label="JSON value"
-      className="min-h-40 resize-y font-mono text-xs"
+    <CodeMirror
+      data-json-value-editor="true"
+      className="min-h-40 overflow-hidden rounded-lg border border-input bg-background text-sm focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/40 [&_.cm-editor]:min-h-40 [&_.cm-editor]:bg-transparent [&_.cm-editor]:outline-none [&_.cm-scroller]:min-h-40 [&_.cm-scroller]:overflow-auto [&_.cm-content]:min-h-40 [&_.cm-content]:p-2.5 [&_.cm-content]:font-mono [&_.cm-content]:text-xs"
       value={jsonText}
-      onChange={(event) => handleJsonTextChange(event.target.value)}
+      theme="none"
+      basicSetup={{ foldGutter: false }}
+      extensions={[json()]}
+      editable={!readonly}
+      readOnly={readonly}
+      onCreateEditor={(view) => view.contentDOM.setAttribute('aria-label', 'JSON value')}
+      onChange={handleJsonTextChange}
     />
   );
 }
