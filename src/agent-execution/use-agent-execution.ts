@@ -15,8 +15,9 @@
  *
  * Cancellation (#54 decisions 6, 7, 8):
  *   - The controller (which holds the AbortController) is stored in a ref,
- *     NOT state. Cancel/re-run logic lives in callbacks, not effects, so
- *     React 18 StrictMode double-invoke cannot spuriously abort.
+ *     NOT state. User cancel/re-run logic lives in callbacks, not effects, so
+ *     React 18 StrictMode double-invoke cannot spuriously abort. The sole
+ *     effect cleanup is passive teardown when the owner unmounts.
  *   - `cancel()` aborts the in-flight request and the controller emits a
  *     `{type:"terminal", phase:"cancelled"}` event because signal.aborted is
  *     true. The backend MAY also emit `{type:"cancelled"}` (#76); the
@@ -30,7 +31,7 @@
  * only `{ prompt }`. The API key is stored in the DB and resolved server-side.
  */
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import * as api from '../api';
 import type {
@@ -108,8 +109,21 @@ export function useAgentExecution(input: UseAgentExecutionInput): UseAgentExecut
   }, [controller]);
 
   const cancel = useCallback(() => {
+    if (phase !== 'streaming') return;
+    // The abort signal is authoritative for the controller, but update the
+    // view immediately as well. A browser ReadableStream can take a tick to
+    // resolve reader.cancel(), and the UI must leave loading state as soon as
+    // the user asks to cancel.
+    setPhase('cancelled');
+    setError('');
     controller.cancel();
-  }, [controller]);
+  }, [controller, phase]);
+
+  // Closing the inspector or switching workflows must not leave an orphaned
+  // /agents/* SSE request. This cleanup is passive: it never starts or
+  // classifies a run, so StrictMode's effect probe cannot create a terminal
+  // transition for a user action.
+  useEffect(() => () => controller.cancel(), [controller]);
 
   return {
     phase,

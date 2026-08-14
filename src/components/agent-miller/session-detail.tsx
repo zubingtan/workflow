@@ -1,16 +1,17 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 import { X as IconClose, Play as IconPlay } from 'lucide-react';
 
 import { Button, Empty, Spin, Tag, Toast, Modal, TextArea } from '../ui/management';
+import { AgentExecutionPanel } from '../agent-execution';
 import * as api from '../../api';
 import type { AgentDef, AgentExecutionDetail } from '../../api';
+import { useAgentExecution } from '../../agent-execution/use-agent-execution';
 
 interface Props {
   agent: AgentDef;
   executionId: string;
   onClose: () => void;
-  onRerun?: (prompt: string) => void;
 }
 
 type TagColor =
@@ -31,28 +32,54 @@ const ROLE_COLOR: Record<string, TagColor> = {
   system: 'grey',
 };
 
-export function SessionDetailPanel({ agent, executionId, onClose, onRerun }: Props) {
+export function SessionDetailPanel({ agent, executionId, onClose }: Props) {
   const [detail, setDetail] = useState<AgentExecutionDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [rerunVisible, setRerunVisible] = useState(false);
   const [rerunPrompt, setRerunPrompt] = useState('');
+  const [rerunStarted, setRerunStarted] = useState(false);
+  const rerun = useAgentExecution({ agentId: agent.id, prompt: rerunPrompt });
+  const cancelRerunRef = useRef(rerun.cancel);
+  cancelRerunRef.current = rerun.cancel;
 
   useEffect(() => {
+    let cancelled = false;
+    setRerunVisible(false);
+    setRerunStarted(false);
+    setRerunPrompt('');
     setLoading(true);
     api
       .getExecutionDetail(agent.id, executionId)
       .then((d) => {
+        if (cancelled) return;
         setDetail(d);
         if (d.sessionDetail?.prompt) setRerunPrompt(d.sessionDetail.prompt);
       })
-      .catch(() => Toast.error('Failed to load session detail'))
-      .finally(() => setLoading(false));
+      .catch(() => {
+        if (!cancelled) Toast.error('Failed to load session detail');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [agent.id, executionId]);
+
+  // Selecting another execution reuses this inspector component. Stop a
+  // previous live rerun before its output can appear under the new session.
+  useEffect(
+    () => () => {
+      cancelRerunRef.current();
+    },
+    [agent.id, executionId]
+  );
 
   const handleRerun = () => {
     if (!rerunPrompt.trim()) return;
-    onRerun?.(rerunPrompt);
     setRerunVisible(false);
+    setRerunStarted(true);
+    rerun.run();
   };
 
   if (loading) {
@@ -141,6 +168,19 @@ export function SessionDetailPanel({ agent, executionId, onClose, onRerun }: Pro
               </div>
             </div>
           ))
+        )}
+        {rerunStarted && (
+          <AgentExecutionPanel
+            phase={rerun.phase}
+            content={rerun.content}
+            toolEvents={rerun.toolEvents}
+            error={rerun.error}
+            isRunning={rerun.isRunning}
+            canRun={Boolean(rerunPrompt.trim())}
+            prompt={rerunPrompt}
+            onRun={rerun.run}
+            onCancel={rerun.cancel}
+          />
         )}
       </div>
 
