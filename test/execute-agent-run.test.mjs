@@ -154,6 +154,20 @@ test('controller: multiple content_delta events concatenate', async () => {
   ]);
 });
 
+test('controller: flushes a terminal SSE frame without a trailing newline', async () => {
+  const { events, done } = collectEvents(
+    null,
+    { agentId: 'a1', prompt: 'hi' },
+    async () => sseResponse(['data: {"type":"content_delta","content":"tail"}']),
+  );
+  await done;
+  assert.deepEqual(events, [
+    { type: 'phase', phase: 'streaming' },
+    { type: 'content_delta', content: 'tail' },
+    { type: 'terminal', phase: 'succeeded' },
+  ]);
+});
+
 test('controller: HTTP non-OK response → terminal failed with status', async () => {
   const { events, done } = collectEvents(
     null,
@@ -303,22 +317,12 @@ test('controller: re-run auto-supersedes previous run (no terminal from prev)', 
   assert.equal(contentEvents[0].content, 'second');
 });
 
-test('controller: getActive() reflects run lifecycle', async () => {
+test('controller exposes only run and cancel controls', () => {
   const ctrl = createExecutionController({
-    sendRequest: async () =>
-      sseResponse([
-        'data: {"type":"content_delta","content":"x"}\n\n',
-        'data: {"type":"finish"}\n\n',
-      ]),
+    sendRequest: async () => sseResponse([]),
     onEvent: () => {},
   });
-  assert.equal(ctrl.getActive(), false);
-  ctrl.run({ agentId: 'a1', prompt: 'hi' });
-  // Microtask: the async IIFE has started but sendRequest may not have resolved
-  // yet. We can't deterministically assert true here without waiting for the
-  // phase event. So we just check it returns to false after completion.
-  await wait(50);
-  assert.equal(ctrl.getActive(), false);
+  assert.deepEqual(Object.keys(ctrl).sort(), ['cancel', 'run']);
 });
 
 test('controller: by-config input routes to sendRequest with config field', async () => {

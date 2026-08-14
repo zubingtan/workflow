@@ -101,7 +101,6 @@ export function useAgentExecution(input: UseAgentExecutionInput): UseAgentExecut
   const run = useCallback(() => {
     // Re-run auto-supersedes inside the controller: it aborts the previous
     // run silently. Reset visible state for the new run.
-    setPhase('streaming');
     setContent('');
     setToolEvents([]);
     setError('');

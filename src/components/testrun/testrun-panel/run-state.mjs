@@ -20,33 +20,18 @@ export function isTestRunTerminal(phase) {
 }
 
 /**
- * Convert a terminal result emitted by WorkflowRuntimeService into the
- * canonical workflow status used by the server and history UI.
+ * Convert the runtime service's structured terminal status into the panel
+ * phase. Terminal status is protocol data; error text remains presentation
+ * content and must not be parsed to recover lifecycle state.
  *
- * @param {{result?: unknown, errors?: unknown}} change
- * @returns {{phase: 'succeeded'|'failed'|'terminated', errors: string[]}}
+ * @param {string|undefined} status
+ * @returns {'succeeded'|'failed'|'terminated'}
  */
-export function classifyTestRunResult(change = {}) {
-  const rawErrors = Array.isArray(change.errors) ? change.errors : [];
-  const errors = rawErrors
-    .filter((error) => error !== undefined && error !== null)
-    .map((error) => String(error));
-
-  if (change.result !== undefined && errors.length === 0) {
-    return { phase: 'succeeded', errors: [] };
+export function phaseFromTerminalStatus(status) {
+  if (status === 'succeeded' || status === 'failed' || status === 'terminated') {
+    return status;
   }
-
-  // WorkflowRuntimeService uses an explicit run-level message for the
-  // canonical `terminated` state. Do not infer that state from arbitrary
-  // provider/node text such as "provider process terminated": those are
-  // ordinary task failures, not a cancellation reason.
-  const terminated = errors.some((error) =>
-    /^(?:run|workflow)\s+(?:cancel(?:led|ed)|terminated)\b/i.test(error)
-  );
-  return {
-    phase: terminated ? 'terminated' : 'failed',
-    errors: errors.length > 0 ? errors : ['Run ended without a result'],
-  };
+  return 'failed';
 }
 
 /**

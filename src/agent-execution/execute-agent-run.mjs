@@ -1,3 +1,5 @@
+import { parseSseStream } from './parse-sse-stream.mjs';
+
 /**
  * Pure Agent Execution controller — the React-free core of useAgentExecution.
  *
@@ -31,7 +33,7 @@
  *     {type:"content_delta", content}
  *     {type:"tool_start"|"tool_end", ...}
  *     {type:"terminal", phase:"succeeded"|"cancelled"|"failed", error?}
- * @returns {{run: (input: any) => void, cancel: () => void, getActive: () => boolean}}
+ * @returns {{run: (input: any) => void, cancel: () => void}}
  */
 export function createExecutionController({ sendRequest, onEvent } = {}) {
   let activeController = null;
@@ -97,8 +99,6 @@ export function createExecutionController({ sendRequest, onEvent } = {}) {
       }
 
       const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
       let terminalSeen = false;
 
       const finishWith = (terminal) => {
@@ -120,55 +120,42 @@ export function createExecutionController({ sendRequest, onEvent } = {}) {
       controller.signal.addEventListener('abort', onAbort, { once: true });
 
       try {
-        while (true) {
-          let chunk;
-          try {
-            chunk = await reader.read();
-          } catch (err) {
-            if (activeController !== controller) return; // superseded
-            if (controller.signal.aborted) {
-              emit({ type: 'terminal', phase: 'cancelled' });
-            } else {
-              emit({ type: 'terminal', phase: 'failed', error: err?.message ?? 'Stream read failed' });
-            }
-            return;
+        await parseSseStream(reader, (ev) => {
+          if (activeController !== controller) return; // superseded mid-stream
+          switch (ev.type) {
+            case 'content_delta':
+              emit({ type: 'content_delta', content: ev.content ?? '' });
+              break;
+            case 'tool_start':
+            case 'tool_end':
+              emit(ev);
+              break;
+            case 'finish':
+              finishWith({ type: 'terminal', phase: 'succeeded' });
+              break;
+            case 'cancelled':
+              finishWith({ type: 'terminal', phase: 'cancelled' });
+              break;
+            case 'error':
+              finishWith({
+                type: 'terminal',
+                phase: 'failed',
+                error: ev.message ?? 'Agent Execution failed',
+              });
+              break;
+            default:
+              // Unknown event types ignored (forward-compatible).
+              break;
           }
-          const { done, value } = chunk;
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() ?? '';
-          for (const line of lines) {
-            if (activeController !== controller) return; // superseded mid-stream
-            const ev = parseLine(line);
-            if (ev === null) continue;
-            switch (ev.type) {
-              case 'content_delta':
-                emit({ type: 'content_delta', content: ev.content ?? '' });
-                break;
-              case 'tool_start':
-              case 'tool_end':
-                emit(ev);
-                break;
-              case 'finish':
-                finishWith({ type: 'terminal', phase: 'succeeded' });
-                break;
-              case 'cancelled':
-                finishWith({ type: 'terminal', phase: 'cancelled' });
-                break;
-              case 'error':
-                finishWith({
-                  type: 'terminal',
-                  phase: 'failed',
-                  error: ev.message ?? 'Agent Execution failed',
-                });
-                break;
-              default:
-                // Unknown event types ignored (forward-compatible).
-                break;
-            }
-          }
+        });
+      } catch (err) {
+        if (activeController !== controller) return; // superseded
+        if (controller.signal.aborted) {
+          emit({ type: 'terminal', phase: 'cancelled' });
+        } else {
+          emit({ type: 'terminal', phase: 'failed', error: err?.message ?? 'Stream read failed' });
         }
+        return;
       } finally {
         controller.signal.removeEventListener('abort', onAbort);
         try {
@@ -190,20 +177,5 @@ export function createExecutionController({ sendRequest, onEvent } = {}) {
     })();
   }
 
-  function getActive() {
-    return activeController !== null;
-  }
-
-  return { run, cancel, getActive };
-}
-
-function parseLine(line) {
-  if (!line.startsWith('data: ')) return null;
-  const payload = line.slice(6).trim();
-  if (!payload) return null;
-  try {
-    return JSON.parse(payload);
-  } catch {
-    return null;
-  }
+  return { run, cancel };
 }
