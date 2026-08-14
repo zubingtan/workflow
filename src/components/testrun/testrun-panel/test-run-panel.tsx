@@ -22,9 +22,9 @@ import { useTestRunFormPanel } from '../../../plugins/panel-manager-plugin/hooks
 import { IconCancel } from '../../../assets/icon-cancel';
 import { getRunStatus } from '../../../api';
 import {
-  classifyTestRunResult,
   isTestRunActive,
   isTestRunTerminal,
+  phaseFromTerminalStatus,
   phaseFromRunStatus,
   testRunActionLabel,
   testRunStatusLabel,
@@ -224,15 +224,14 @@ export const TestRunSidePanel: FC<TestRunSidePanelProps> = () => {
   );
 
   useEffect(() => {
-    const disposer = runtimeService.onResultChanged(({ result, errors }) => {
+    const disposer = runtimeService.onResultChanged(({ status, result, errors }) => {
       if (workflowDeletedRef.current || attemptRef.current === 0) return;
-      const classified = classifyTestRunResult({ result, errors });
       terminalAttemptRef.current = attemptRef.current;
-      setPhase(classified.phase);
+      setPhase(phaseFromTerminalStatus(status));
       setQueuePosition(0);
       setResult(result);
-      if (classified.errors.length > 0) {
-        setErrors(classified.errors);
+      if (errors && errors.length > 0) {
+        setErrors(errors);
       } else {
         setErrors(undefined);
       }

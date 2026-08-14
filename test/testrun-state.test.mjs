@@ -2,38 +2,21 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  classifyTestRunResult,
   isTestRunActive,
   isTestRunTerminal,
+  phaseFromTerminalStatus,
   phaseFromRunStatus,
   testRunActionLabel,
   testRunStatusLabel,
 } from '../src/components/testrun/testrun-panel/run-state.mjs';
 
-test('Test Run result classification keeps success separate from errors', () => {
-  assert.deepEqual(classifyTestRunResult({ result: { outputs: { answer: 'ok' } } }), {
-    phase: 'succeeded',
-    errors: [],
-  });
-  assert.deepEqual(classifyTestRunResult({ errors: ['llm_main: provider failed'] }), {
-    phase: 'failed',
-    errors: ['llm_main: provider failed'],
-  });
-});
-
-test('Test Run cancellation uses canonical terminated status', () => {
-  assert.deepEqual(classifyTestRunResult({ errors: ['Run cancelled'] }), {
-    phase: 'terminated',
-    errors: ['Run cancelled'],
-  });
-  assert.deepEqual(classifyTestRunResult({ errors: ['run terminated by user'] }), {
-    phase: 'terminated',
-    errors: ['run terminated by user'],
-  });
-  assert.deepEqual(classifyTestRunResult({ errors: ['llm_main: provider process terminated'] }), {
-    phase: 'failed',
-    errors: ['llm_main: provider process terminated'],
-  });
+test('Test Run phase uses the structured terminal status, not error text', () => {
+  assert.equal(phaseFromTerminalStatus('succeeded'), 'succeeded');
+  assert.equal(phaseFromTerminalStatus('failed'), 'failed');
+  assert.equal(phaseFromTerminalStatus('terminated'), 'terminated');
+  // Provider messages are payload only; the status remains authoritative.
+  assert.equal(phaseFromTerminalStatus('failed'), 'failed');
+  assert.equal(phaseFromTerminalStatus(undefined), 'failed');
 });
 
 test('Test Run phases reflect queued/running REST status without sharing agent phases', () => {

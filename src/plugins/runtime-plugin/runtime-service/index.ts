@@ -14,7 +14,6 @@ import {
   injectable,
   inject,
   WorkflowDocument,
-  Playground,
   WorkflowLineEntity,
   WorkflowNodeEntity,
   Emitter,
@@ -30,10 +29,11 @@ const SYNC_TASK_REPORT_INTERVAL = 500;
 const SYNC_RUN_STATUS_INTERVAL = 500;
 
 interface NodeRunningStatus {
-  nodeID: string;
   status: WorkflowStatus;
   nodeResultLength: number;
 }
+
+type WorkflowRunTerminalStatus = 'succeeded' | 'failed' | 'terminated';
 
 /**
  * Phase 3 (#155): the Test Run panel now supports queued status.
@@ -50,8 +50,6 @@ interface NodeRunningStatus {
  */
 @injectable()
 export class WorkflowRuntimeService {
-  @inject(Playground) playground: Playground;
-
   @inject(WorkflowDocument) document: WorkflowDocument;
 
   @inject(WorkflowRuntimeClient) runtimeClient: WorkflowRuntimeClient;
@@ -80,7 +78,10 @@ export class WorkflowRuntimeService {
 
   private resetEmitter = new Emitter<{}>();
 
+  /** Terminal projection consumed by the Test Run panel. */
   private resultEmitter = new Emitter<{
+    /** Canonical Workflow Run terminal state; errors are payload only. */
+    status: WorkflowRunTerminalStatus;
     errors?: string[];
     result?: {
       inputs: WorkflowInputs;
@@ -165,6 +166,7 @@ export class WorkflowRuntimeService {
     const isFormValid = await this.validateForm();
     if (!isFormValid) {
       this.resultEmitter.fire({
+        status: 'failed',
         errors: ['Form validation failed'],
       });
       return;
@@ -180,6 +182,7 @@ export class WorkflowRuntimeService {
     });
     if (!validateResult?.valid) {
       this.resultEmitter.fire({
+        status: 'failed',
         errors: validateResult?.errors ?? ['Internal Server Error'],
       });
       return;
@@ -198,6 +201,7 @@ export class WorkflowRuntimeService {
       status = (output as any)?.status;
     } catch (e) {
       this.resultEmitter.fire({
+        status: 'failed',
         errors: [(e as Error)?.message],
       });
       return;
@@ -224,6 +228,7 @@ export class WorkflowRuntimeService {
     }
     if (!taskID) {
       this.resultEmitter.fire({
+        status: 'failed',
         errors: ['Task run failed'],
       });
       return;
@@ -323,6 +328,9 @@ export class WorkflowRuntimeService {
       this.emitTerminalStatus(status);
     };
 
+    // WorkflowRunEventHub owns EventSource reconnects and REST snapshot
+    // reconciliation. This subscriber only consumes the resulting snapshot;
+    // adding a second onError fetch here would race the hub's recovery path.
     subscription = workflowRunEventHub.subscribe(workflowId, {
       runID,
       onEvent: (payload: any) => {
@@ -330,7 +338,9 @@ export class WorkflowRuntimeService {
         const { type, report, status: eventStatus } = payload;
 
         if (type === 'workflow_deleted') {
-          finishRun(() => this.resultEmitter.fire({ errors: ['Workflow deleted'] }));
+          finishRun(() =>
+            this.resultEmitter.fire({ status: 'terminated', errors: ['Workflow deleted'] })
+          );
           return;
         }
 
@@ -378,38 +388,6 @@ export class WorkflowRuntimeService {
             }
           });
         }
-      },
-      onError: () => {
-        if (settled || this.runID !== runID || this.executionRevision !== revision) return;
-        // The hub keeps the native EventSource alive. Reconcile terminal state
-        // because a disconnect can happen after the server wrote the DB row but
-        // before the terminal event reached this subscriber.
-        getRunStatus(runID)
-          .then(async (res) => {
-            if (settled || this.runID !== runID || this.executionRevision !== revision) return;
-            if (
-              res.status === 'succeeded' ||
-              res.status === 'failed' ||
-              res.status === 'terminated'
-            ) {
-              try {
-                const detail = await getRun(runID);
-                if (settled || this.runID !== runID || this.executionRevision !== revision) return;
-                finishRun(() => {
-                  if (detail.report) {
-                    emitReportResult(detail.report, detail.status ?? res.status);
-                  } else {
-                    this.emitTerminalStatus(detail.status ?? res.status);
-                  }
-                });
-              } catch {
-                finishRun(() => this.emitTerminalStatus(res.status));
-              }
-            }
-          })
-          .catch(() => {
-            // Network still down — the hub's native EventSource will retry.
-          });
       },
     });
     this.eventSubscription = subscription;
@@ -507,15 +485,15 @@ export class WorkflowRuntimeService {
   private emitTerminalStatus(status?: string): void {
     const normalizedStatus = status?.toLowerCase();
     if (normalizedStatus === 'succeeded') {
-      this.resultEmitter.fire({ result: { inputs: {}, outputs: {} } });
+      this.resultEmitter.fire({ status: 'succeeded', result: { inputs: {}, outputs: {} } });
     } else if (
       normalizedStatus === 'terminated' ||
       normalizedStatus === 'cancelled' ||
       normalizedStatus === 'canceled'
     ) {
-      this.resultEmitter.fire({ errors: ['Run terminated'] });
+      this.resultEmitter.fire({ status: 'terminated', errors: ['Run terminated'] });
     } else {
-      this.resultEmitter.fire({ errors: ['Run failed'] });
+      this.resultEmitter.fire({ status: 'failed', errors: ['Run failed'] });
     }
   }
 
@@ -541,26 +519,32 @@ export class WorkflowRuntimeService {
     // still contain partial outputs in its report; those must not turn the
     // UI into a succeeded state. Preserve detailed node errors when present.
     if (terminated) {
-      this.resultEmitter.fire({ errors: ['Run terminated'] });
+      this.resultEmitter.fire({ status: 'terminated', errors: ['Run terminated'] });
       return;
     }
     if (failed) {
-      this.resultEmitter.fire({ errors: errors.length > 0 ? errors : ['Run failed'] });
+      this.resultEmitter.fire({
+        status: 'failed',
+        errors: errors.length > 0 ? errors : ['Run failed'],
+      });
       return;
     }
 
     if (outputs && Object.keys(outputs).length > 0) {
-      this.resultEmitter.fire({ result: { inputs, outputs } });
+      this.resultEmitter.fire({ status: 'succeeded', result: { inputs, outputs } });
       return;
     }
 
     if (errors && errors.length > 0) {
-      this.resultEmitter.fire({ errors });
+      this.resultEmitter.fire({ status: 'failed', errors });
       return;
     }
 
     // Successful workflows are allowed to have no output fields.
-    this.resultEmitter.fire({ result: { inputs: inputs ?? {}, outputs: outputs ?? {} } });
+    this.resultEmitter.fire({
+      status: 'succeeded',
+      result: { inputs: inputs ?? {}, outputs: outputs ?? {} },
+    });
   }
 
   /**
@@ -605,7 +589,7 @@ export class WorkflowRuntimeService {
       }
       clearInterval(this.syncRunStatusIntervalID);
       this.syncRunStatusIntervalID = undefined;
-      this.resultEmitter.fire({ errors: ['Failed to fetch run status'] });
+      this.resultEmitter.fire({ status: 'failed', errors: ['Failed to fetch run status'] });
     }
   }
 
@@ -659,7 +643,6 @@ export class WorkflowRuntimeService {
           nodeReport.snapshots.length !== runningStatus.nodeResultLength
         ) {
           this.nodeRunningStatus.set(nodeID, {
-            nodeID,
             status: nodeReport.status,
             nodeResultLength: nodeReport.snapshots.length,
           });
