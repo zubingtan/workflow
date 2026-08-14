@@ -1,13 +1,12 @@
 import { useEffect, useState, useContext } from 'react';
 
-import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Field } from '@flowgram.ai/free-layout-editor';
 import { FormRenderProps, FormMeta, ValidateTrigger } from '@flowgram.ai/free-layout-editor';
 
 import { PromptEditorWithVariables } from '@/form-semantics';
 import { provideJsonSchemaOutputs, syncVariableTitle } from '@/form-semantics';
 import type { IFlowTemplateValue } from '@/form-semantics';
-import { Button, Select } from '@/components/ui';
+import { Select } from '@/components/ui';
 
 import type { JsonSchema } from '../../typings/json-schema';
 import { FlowNodeJSON } from '../../typings';
@@ -16,9 +15,9 @@ import { FormHeader, FormContent } from '../../form-components';
 import { IsHistoryViewContext } from '../../context';
 import { NodeStatusBar } from '../../components/testrun/node-status-bar';
 import { parseAgentConfig } from '../../components/agent-miller/agent-config-store.mjs';
+import { AgentExecutionPanel } from '../../components/agent-execution';
 import * as api from '../../api';
 import { useAgentExecution } from '../../agent-execution/use-agent-execution';
-import type { ToolEvent } from '../../agent-execution/types';
 import { StructuredOutputEditor } from './structured-output-editor';
 
 /** Fetch agent list from backend via the shared HTTP client (AGENTS.md). */
@@ -79,101 +78,23 @@ function AgentSelect({
   );
 }
 
-const PHASE_BADGE: Record<string, { text: string; color: string }> = {
-  succeeded: { text: 'Succeeded', color: 'var(--app-color-success)' },
-  cancelled: { text: 'Cancelled', color: 'var(--muted-foreground)' },
-  failed: { text: 'Failed', color: 'var(--destructive)' },
-};
-
-/** Tool event row — collapsed detail by default (UX-B). */
-function ToolEventRow({ ev }: { ev: ToolEvent }) {
-  const [expanded, setExpanded] = useState(false);
-  const label = ev.type === 'tool_start' ? 'Call' : 'Return';
-  return (
-    <div style={{ marginTop: 4 }}>
-      <Button
-        size="sm"
-        variant="ghost"
-        aria-expanded={expanded}
-        onClick={() => setExpanded((v) => !v)}
-      >
-        {expanded ? <ChevronDown /> : <ChevronRight />}
-        <span className="text-xs">
-          {label} {ev.toolName}
-        </span>
-      </Button>
-      {expanded && (
-        <pre
-          style={{
-            margin: '4px 0 0 16px',
-            padding: 4,
-            background: 'var(--muted)',
-            borderRadius: 4,
-            fontSize: 11,
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-word',
-          }}
-        >
-          {ev.type === 'tool_start'
-            ? JSON.stringify(ev.args ?? null, null, 2)
-            : JSON.stringify(ev.result ?? null, null, 2)}
-        </pre>
-      )}
-    </div>
-  );
-}
-
 /** Agent Execution output display + run/cancel controls (#54). */
 function AgentOutput({ agentId, prompt }: { agentId: string; prompt: string }) {
   const exec = useAgentExecution({ agentId, prompt });
-  const canRun = !!agentId && !!prompt;
-  // Show the panel whenever there's anything to show: streaming, terminal,
-  // or any content/error/tool events.
-  const showPanel = exec.phase !== 'idle';
+  const canRun = Boolean(agentId && prompt.trim());
 
   return (
-    <div style={{ marginTop: 8 }}>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <Button size="sm" onClick={exec.run} disabled={!canRun || exec.isRunning}>
-          {exec.isRunning ? 'Running...' : 'Run Agent'}
-        </Button>
-        {exec.isRunning && (
-          <Button size="sm" variant="ghost" onClick={exec.cancel}>
-            Cancel
-          </Button>
-        )}
-        {PHASE_BADGE[exec.phase] && (
-          <span className="text-xs" style={{ color: PHASE_BADGE[exec.phase].color }}>
-            {PHASE_BADGE[exec.phase].text}
-          </span>
-        )}
-      </div>
-      {exec.error && <span className="mt-1 block text-xs text-destructive">{exec.error}</span>}
-      {showPanel && (exec.content || exec.toolEvents.length > 0) && (
-        <div
-          style={{
-            marginTop: 8,
-            padding: 8,
-            background: 'var(--muted)',
-            borderRadius: 4,
-            fontSize: 12,
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-word',
-            maxHeight: 240,
-            overflow: 'auto',
-          }}
-        >
-          {exec.content && <div>{exec.content}</div>}
-          {exec.toolEvents.length > 0 && (
-            <div style={{ marginTop: 4 }}>
-              {exec.toolEvents.map((ev, i) => (
-                <ToolEventRow key={i} ev={ev} />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
+    <AgentExecutionPanel
+      phase={exec.phase}
+      content={exec.content}
+      toolEvents={exec.toolEvents}
+      error={exec.error}
+      isRunning={exec.isRunning}
+      canRun={canRun}
+      prompt={prompt}
+      onRun={exec.run}
+      onCancel={exec.cancel}
+    />
   );
 }
 

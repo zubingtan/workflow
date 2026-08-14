@@ -64,6 +64,9 @@ export class WorkflowRuntimeService {
 
   private runID?: string;
 
+  /** Monotonically separates retries so late terminal callbacks are ignored. */
+  private executionRevision = 0;
+
   private syncTaskReportIntervalID?: ReturnType<typeof setInterval>;
 
   private syncRunStatusIntervalID?: ReturnType<typeof setInterval>;
@@ -116,8 +119,48 @@ export class WorkflowRuntimeService {
   }
 
   public async taskRun(inputs: WorkflowInputs): Promise<string | undefined> {
+    const previousRevision = this.executionRevision;
+    this.executionRevision += 1;
     if (this.taskID || this.runID) {
-      await this.taskCancel();
+      const previousRunID = this.runID;
+      const previousTaskID = this.taskID;
+      try {
+        await this.taskCancel();
+        // Cancellation has been requested successfully. Drop the old
+        // handles before validation so an invalid retry cannot retain a dead
+        // task/run whose callbacks belong to the previous revision.
+        this.clearExecutionHandles();
+      } catch (cancelError) {
+        // A user can press Retry after the server has committed termination
+        // but before the terminal SSE frame reaches this page. Treat that
+        // already-terminal handle as stale; an active run must still surface
+        // the original cancellation error.
+        let terminal = false;
+        if (previousRunID) {
+          try {
+            const status = await getRunStatus(previousRunID);
+            terminal = isTerminalStatus(status.status);
+          } catch {
+            // Keep the original cancellation error when status recovery is
+            // unavailable; the run may still be active.
+          }
+        } else if (previousTaskID) {
+          try {
+            const report = await this.runtimeClient.TaskReport({ taskID: previousTaskID });
+            terminal = Boolean(report?.workflowStatus?.terminated);
+          } catch {
+            // Keep the original cancellation error when report recovery is
+            // unavailable; the draft task may still be active.
+          }
+        }
+        if (!terminal) {
+          // Do not orphan an active execution: restore its callback revision
+          // so the existing SSE/report owner can still settle it.
+          this.executionRevision = previousRevision;
+          throw cancelError;
+        }
+        this.clearExecutionHandles();
+      }
     }
     const isFormValid = await this.validateForm();
     if (!isFormValid) {
@@ -170,7 +213,7 @@ export class WorkflowRuntimeService {
       // Draft runs (no workflowId) fall through to the taskID polling path.
       const workflowId = this.getWorkflowId();
       if (workflowId) {
-        this.subscribeToRunEvents(runID, workflowId);
+        this.subscribeToRunEvents(runID, workflowId, this.executionRevision);
       } else {
         // Tech-debt: draft runs can't use SSE (no workflow to subscribe to).
         this.syncRunStatusIntervalID = setInterval(() => {
@@ -195,15 +238,21 @@ export class WorkflowRuntimeService {
   public async taskCancel(): Promise<void> {
     if (this.runID) {
       // Saved-workflow run (queued or running) — use the unified cancel endpoint.
-      await cancelRun(this.runID);
+      const response = await cancelRun(this.runID);
+      if (response.success === false && response.status !== 'terminated') {
+        throw new Error(response.error ?? 'Run cancellation was not accepted');
+      }
       return;
     }
     if (!this.taskID) {
       return;
     }
-    await this.runtimeClient.TaskCancel({
+    const response = await this.runtimeClient.TaskCancel({
       taskID: this.taskID,
     });
+    if (response?.success === false) {
+      throw new Error('Task cancellation was not accepted');
+    }
   }
 
   /**
@@ -237,7 +286,7 @@ export class WorkflowRuntimeService {
    * The Test Run panel subscribes to the page-level hub. Draft runs (no
    * workflowId) keep the polling path as tech-debt (#179).
    */
-  private subscribeToRunEvents(runID: string, workflowId: string): void {
+  private subscribeToRunEvents(runID: string, workflowId: string, revision: number): void {
     let settled = false;
     let subscription: (() => void) | undefined;
 
@@ -252,40 +301,32 @@ export class WorkflowRuntimeService {
     };
 
     const finishRun = (notify: () => void) => {
-      if (settled || this.runID !== runID) return;
+      if (settled || this.runID !== runID || this.executionRevision !== revision) return;
       settled = true;
       notify();
       removeSubscription();
-      this.runID = undefined;
-      this.taskID = undefined;
+      this.clearExecutionHandles();
     };
 
-    const emitReportResult = (report: any) => {
-      const { outputs, inputs, messages } = report;
-      if (outputs && Object.keys(outputs).length > 0) {
-        this.resultEmitter.fire({ result: { inputs, outputs } });
-      } else {
-        this.resultEmitter.fire({
-          errors: messages?.error?.map((message: any) =>
-            message.nodeID ? `${message.nodeID}: ${message.message}` : message.message
-          ),
-        });
+    const emitReportResult = (report: any, status?: string) => {
+      if (report?.reports) {
+        this.updateReport(report);
       }
+      this.emitTerminalReport(report, status);
     };
 
     const emitSnapshotResult = (status: string, report: any) => {
       if (report) {
-        emitReportResult(report);
+        emitReportResult(report, status);
         return;
       }
-      this.resultEmitter.fire({
-        errors: [status === 'terminated' ? 'Run cancelled' : 'Run ended with no report'],
-      });
+      this.emitTerminalStatus(status);
     };
 
     subscription = workflowRunEventHub.subscribe(workflowId, {
       runID,
       onEvent: (payload: any) => {
+        if (this.executionRevision !== revision) return;
         const { type, report, status: eventStatus } = payload;
 
         if (type === 'workflow_deleted') {
@@ -307,7 +348,7 @@ export class WorkflowRuntimeService {
           if (snapshot && isTerminalStatus(snapshot.status)) {
             getRun(runID)
               .then((detail) => {
-                if (settled || this.runID !== runID) return;
+                if (settled || this.runID !== runID || this.executionRevision !== revision) return;
                 finishRun(() => emitSnapshotResult(detail.status, detail.report));
               })
               .catch(() => {
@@ -323,7 +364,7 @@ export class WorkflowRuntimeService {
         }
 
         if (type === 'run_status' && eventStatus === 'terminated') {
-          finishRun(() => this.resultEmitter.fire({ errors: ['Run cancelled'] }));
+          finishRun(() => this.emitTerminalStatus(eventStatus));
           return;
         }
 
@@ -331,42 +372,39 @@ export class WorkflowRuntimeService {
           const terminalReport = report;
           finishRun(() => {
             if (terminalReport) {
-              const { outputs, inputs, messages } = terminalReport;
-              if (outputs && Object.keys(outputs).length > 0) {
-                this.resultEmitter.fire({ result: { inputs, outputs } });
-              } else {
-                this.resultEmitter.fire({
-                  errors: messages?.error?.map((message: any) =>
-                    message.nodeID ? `${message.nodeID}: ${message.message}` : message.message
-                  ),
-                });
-              }
+              emitReportResult(terminalReport, eventStatus);
             } else {
-              this.resultEmitter.fire({ errors: ['Run ended with no report'] });
+              this.emitTerminalStatus(eventStatus);
             }
           });
         }
       },
       onError: () => {
-        if (settled || this.runID !== runID) return;
+        if (settled || this.runID !== runID || this.executionRevision !== revision) return;
         // The hub keeps the native EventSource alive. Reconcile terminal state
         // because a disconnect can happen after the server wrote the DB row but
         // before the terminal event reached this subscriber.
         getRunStatus(runID)
-          .then((res) => {
-            if (settled || this.runID !== runID) return;
+          .then(async (res) => {
+            if (settled || this.runID !== runID || this.executionRevision !== revision) return;
             if (
               res.status === 'succeeded' ||
               res.status === 'failed' ||
               res.status === 'terminated'
             ) {
-              finishRun(() =>
-                this.resultEmitter.fire(
-                  res.status === 'succeeded'
-                    ? { result: { inputs: {}, outputs: {} } }
-                    : { errors: [res.status === 'terminated' ? 'Run cancelled' : 'Run failed'] }
-                )
-              );
+              try {
+                const detail = await getRun(runID);
+                if (settled || this.runID !== runID || this.executionRevision !== revision) return;
+                finishRun(() => {
+                  if (detail.report) {
+                    emitReportResult(detail.report, detail.status ?? res.status);
+                  } else {
+                    this.emitTerminalStatus(detail.status ?? res.status);
+                  }
+                });
+              } catch {
+                finishRun(() => this.emitTerminalStatus(res.status));
+              }
             }
           })
           .catch(() => {
@@ -387,19 +425,142 @@ export class WorkflowRuntimeService {
   }
 
   private reset(): void {
-    this.taskID = undefined;
-    this.runID = undefined;
+    this.clearExecutionHandles();
     this.nodeRunningStatus = new Map();
     this.runningNodes = [];
+    this.resetEmitter.fire({});
+  }
+
+  /**
+   * Drop all handles owned by an active execution without resetting the
+   * editor's node state. Terminal reconciliation uses this path so a retry
+   * cannot accidentally cancel the previous run/task after its terminal
+   * report has already been observed.
+   */
+  private clearExecutionHandles(): void {
+    this.taskID = undefined;
+    this.runID = undefined;
     if (this.syncTaskReportIntervalID) {
       clearInterval(this.syncTaskReportIntervalID);
+      this.syncTaskReportIntervalID = undefined;
     }
     if (this.syncRunStatusIntervalID) {
       clearInterval(this.syncRunStatusIntervalID);
+      this.syncRunStatusIntervalID = undefined;
     }
     this.eventSubscription?.();
     this.eventSubscription = undefined;
-    this.resetEmitter.fire({});
+  }
+
+  /**
+   * Reconcile a terminal execution discovered by REST polling (or by a
+   * caller that missed the SSE terminal event). The handle must still be the
+   * currently active runID/taskID; stale callbacks are ignored so a retry
+   * cannot be clobbered by the previous run's final poll.
+   */
+  public async reconcileTerminal(
+    handle: string,
+    status?: string,
+    report?: IReport | null
+  ): Promise<void> {
+    if (handle !== this.runID && handle !== this.taskID) {
+      return;
+    }
+    const revision = this.executionRevision;
+
+    let terminalStatus = status;
+    let terminalReport = report;
+    if (report === undefined) {
+      try {
+        const detail = await getRun(handle);
+        if (
+          revision !== this.executionRevision ||
+          (handle !== this.runID && handle !== this.taskID)
+        ) {
+          return;
+        }
+        terminalStatus = detail.status ?? status;
+        terminalReport = detail.report;
+      } catch {
+        // The terminal status is still authoritative even if the report
+        // endpoint is temporarily unavailable.
+        terminalReport = null;
+      }
+    }
+
+    if (revision !== this.executionRevision || (handle !== this.runID && handle !== this.taskID)) {
+      return;
+    }
+    if (terminalReport?.reports) {
+      this.updateReport(terminalReport);
+    }
+    this.clearExecutionHandles();
+
+    if (terminalReport) {
+      this.emitTerminalReport(terminalReport, terminalStatus);
+      return;
+    }
+
+    this.emitTerminalStatus(terminalStatus);
+  }
+
+  private emitTerminalStatus(status?: string): void {
+    const normalizedStatus = status?.toLowerCase();
+    if (normalizedStatus === 'succeeded') {
+      this.resultEmitter.fire({ result: { inputs: {}, outputs: {} } });
+    } else if (
+      normalizedStatus === 'terminated' ||
+      normalizedStatus === 'cancelled' ||
+      normalizedStatus === 'canceled'
+    ) {
+      this.resultEmitter.fire({ errors: ['Run terminated'] });
+    } else {
+      this.resultEmitter.fire({ errors: ['Run failed'] });
+    }
+  }
+
+  private emitTerminalReport(report: IReport, status?: string): void {
+    const { outputs, inputs, messages } = report;
+    const normalizedStatus = status?.toLowerCase();
+    const reportStatus = report.workflowStatus?.status;
+    const errors = Array.isArray(messages?.error)
+      ? messages.error
+          .map((message) =>
+            message.nodeID ? `${message.nodeID}: ${message.message}` : message.message
+          )
+          .filter(Boolean)
+      : [];
+    const terminated =
+      normalizedStatus === 'terminated' ||
+      normalizedStatus === 'cancelled' ||
+      normalizedStatus === 'canceled' ||
+      reportStatus === WorkflowStatus.Cancelled;
+    const failed = normalizedStatus === 'failed' || reportStatus === WorkflowStatus.Failed;
+
+    // Terminal status/reason is authoritative. A cancelled or failed run can
+    // still contain partial outputs in its report; those must not turn the
+    // UI into a succeeded state. Preserve detailed node errors when present.
+    if (terminated) {
+      this.resultEmitter.fire({ errors: ['Run terminated'] });
+      return;
+    }
+    if (failed) {
+      this.resultEmitter.fire({ errors: errors.length > 0 ? errors : ['Run failed'] });
+      return;
+    }
+
+    if (outputs && Object.keys(outputs).length > 0) {
+      this.resultEmitter.fire({ result: { inputs, outputs } });
+      return;
+    }
+
+    if (errors && errors.length > 0) {
+      this.resultEmitter.fire({ errors });
+      return;
+    }
+
+    // Successful workflows are allowed to have no output fields.
+    this.resultEmitter.fire({ result: { inputs: inputs ?? {}, outputs: outputs ?? {} } });
   }
 
   /**
@@ -407,12 +568,17 @@ export class WorkflowRuntimeService {
    * (status='running' + task_id present), switch to TaskReport polling.
    */
   private async syncRunStatus(): Promise<void> {
-    if (!this.runID) {
+    const runID = this.runID;
+    const revision = this.executionRevision;
+    if (!runID) {
       return;
     }
     let status;
     try {
-      const res = await getRunStatus(this.runID);
+      const res = await getRunStatus(runID);
+      if (this.runID !== runID || this.executionRevision !== revision) {
+        return;
+      }
       status = res.status;
       if (status === 'running' && res.task_id) {
         // Dequeued — switch to TaskReport polling.
@@ -429,15 +595,14 @@ export class WorkflowRuntimeService {
         // wall-clock zombie — though the latter only affects running runs).
         clearInterval(this.syncRunStatusIntervalID);
         this.syncRunStatusIntervalID = undefined;
-        if (status === 'terminated') {
-          this.resultEmitter.fire({ errors: ['Run cancelled'] });
-        } else if (status === 'failed') {
-          this.resultEmitter.fire({ errors: ['Run failed'] });
-        } else {
-          this.resultEmitter.fire({ result: { inputs: {}, outputs: {} } });
-        }
+        // The reconciliation helper owns the full-row fetch so queue polling,
+        // SSE recovery, and the panel's fallback share one terminal path.
+        void this.reconcileTerminal(runID, status);
       }
     } catch {
+      if (this.runID !== runID || this.executionRevision !== revision) {
+        return;
+      }
       clearInterval(this.syncRunStatusIntervalID);
       this.syncRunStatusIntervalID = undefined;
       this.resultEmitter.fire({ errors: ['Failed to fetch run status'] });
@@ -448,26 +613,21 @@ export class WorkflowRuntimeService {
     if (!this.taskID) {
       return;
     }
-    const report = await this.runtimeClient.TaskReport({
-      taskID: this.taskID,
-    });
+    const taskID = this.taskID;
+    const revision = this.executionRevision;
+    const report = await this.runtimeClient.TaskReport({ taskID });
+    if (this.taskID !== taskID || this.executionRevision !== revision) {
+      return;
+    }
     if (!report) {
-      clearInterval(this.syncTaskReportIntervalID);
+      void this.reconcileTerminal(taskID, 'failed');
       console.error('Sync task report failed');
       return;
     }
-    const { workflowStatus, inputs, outputs, messages } = report;
+    const { workflowStatus } = report;
     if (workflowStatus.terminated) {
-      clearInterval(this.syncTaskReportIntervalID);
-      if (Object.keys(outputs).length > 0) {
-        this.resultEmitter.fire({ result: { inputs, outputs } });
-      } else {
-        this.resultEmitter.fire({
-          errors: messages?.error?.map((message) =>
-            message.nodeID ? `${message.nodeID}: ${message.message}` : message.message
-          ),
-        });
-      }
+      void this.reconcileTerminal(taskID, workflowStatus.status, report);
+      return;
     }
     this.updateReport(report);
   }

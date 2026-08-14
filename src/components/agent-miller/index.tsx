@@ -424,16 +424,6 @@ export function AgentMillerColumns() {
     }
   };
 
-  const handleRerun = useCallback(
-    (prompt: string) => {
-      if (!selectedAgent) return;
-      api.runAgentById(selectedAgent.id, prompt).catch(() => Toast.error('Re-run failed'));
-      Toast.success('Re-run started');
-      setSelectedExecutionId(null);
-    },
-    [selectedAgent]
-  );
-
   if (!selectedAgent) {
     return (
       <div
@@ -732,7 +722,6 @@ export function AgentMillerColumns() {
             agent={selectedAgent}
             executionId={selectedExecutionId}
             onClose={() => setSelectedExecutionId(null)}
-            onRerun={handleRerun}
           />
         </div>
       )}

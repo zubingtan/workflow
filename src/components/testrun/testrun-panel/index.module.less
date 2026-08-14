@@ -81,6 +81,31 @@
   }
 }
 
+.status {
+  align-self: flex-start;
+  border-radius: var(--app-radius-full, 999px);
+  font-size: var(--app-font-size-sm, 12px);
+  font-weight: var(--app-font-weight-medium, 500);
+  padding: 4px 9px;
+  background: var(--app-color-fill-1);
+  color: var(--app-color-text-2);
+}
+
+.status-succeeded {
+  background: color-mix(in srgb, var(--app-color-success) 14%, transparent);
+  color: var(--app-color-success);
+}
+
+.status-failed {
+  background: color-mix(in srgb, var(--app-color-danger) 14%, transparent);
+  color: var(--app-color-danger);
+}
+
+.status-terminated {
+  background: var(--app-color-fill-1);
+  color: var(--app-color-text-2);
+}
+
 .testrun-panel-container {
   background: var(--app-color-surface);
   backdrop-filter: blur(16px);

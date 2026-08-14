@@ -1,0 +1,118 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-3);
+  margin-top: var(--app-space-3);
+  padding: var(--app-space-3);
+  border: 1px solid var(--app-color-border);
+  border-radius: var(--app-radius-md);
+  background: var(--app-color-surface);
+  color: var(--app-color-text-1);
+}
+
+.header,
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--app-space-2);
+}
+
+.header {
+  justify-content: space-between;
+}
+
+.title {
+  font-size: var(--app-font-size-md);
+  font-weight: var(--app-font-weight-strong);
+}
+
+.status {
+  border-radius: var(--app-radius-full);
+  padding: 3px 8px;
+  font-size: var(--app-font-size-sm);
+  font-weight: var(--app-font-weight-medium);
+  background: var(--app-color-fill-1);
+  color: var(--app-color-text-2);
+}
+
+.statusStreaming {
+  background: color-mix(in srgb, var(--app-color-primary) 14%, transparent);
+  color: var(--app-color-primary);
+}
+
+.statusSucceeded {
+  background: color-mix(in srgb, var(--app-color-success) 14%, transparent);
+  color: var(--app-color-success);
+}
+
+.statusFailed {
+  background: color-mix(in srgb, var(--app-color-danger) 14%, transparent);
+  color: var(--app-color-danger);
+}
+
+.prompt {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--app-space-2);
+  border-radius: var(--app-radius-sm);
+  background: var(--app-color-fill-1);
+}
+
+.label {
+  color: var(--app-color-text-3);
+  font-size: var(--app-font-size-sm);
+  font-weight: var(--app-font-weight-medium);
+}
+
+.promptText,
+.content {
+  margin: 0;
+  font-size: var(--app-font-size-sm);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.content {
+  max-height: 240px;
+  overflow: auto;
+  padding: var(--app-space-3);
+  border: 1px solid var(--app-color-border);
+  border-radius: var(--app-radius-sm);
+  background: var(--app-color-canvas);
+}
+
+.emptyOutput {
+  color: var(--app-color-text-3);
+  font-size: var(--app-font-size-sm);
+  font-style: italic;
+}
+
+.error {
+  color: var(--app-color-danger);
+  font-size: var(--app-font-size-sm);
+}
+
+.toolEvents {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.toolEvent {
+  border-top: 1px solid var(--app-color-border);
+  padding-top: 4px;
+}
+
+.toolEventDetails {
+  margin: 4px 0 0 16px;
+  max-height: 160px;
+  overflow: auto;
+  padding: var(--app-space-2);
+  border-radius: var(--app-radius-sm);
+  background: var(--app-color-fill-1);
+  font-size: 11px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
