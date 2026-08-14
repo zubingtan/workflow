@@ -260,13 +260,20 @@ body[theme-mode='dark'] [data-ui='editor-surface'] {
   --app-color-node-border: oklch(1 0 0 / 14%);
 }
 
-/* FlowGram's right panels start at the editor viewport edges. Leave room for
- * the floating header, bottom canvas tools, and the outer editor gutter so
- * settings and test-run panels read as separate floating surfaces. */
-[data-ui='editor-surface'] .gedit-flow-panel-layer-wrap-floating .gedit-flow-panel-right-area,
-[data-ui='editor-surface'] .gedit-flow-panel-layer-wrap-docked .gedit-flow-panel-right-area {
+/* FlowGram's floating right panels start at the editor viewport edges. Leave
+ * room for the floating header, bottom canvas tools, and the outer editor
+ * gutter so settings panels read as separate floating surfaces. */
+[data-ui='editor-surface'] .gedit-flow-panel-layer-wrap-floating .gedit-flow-panel-right-area {
   box-sizing: border-box;
   padding: 60px 8px 68px 0;
+}
+
+/* Docked panels own the full right edge. Keeping the canvas-tool bottom
+ * gutter here exposes the page background as a large, empty dark block below
+ * Test Run, making it look like a second surface behind the panel. */
+[data-ui='editor-surface'] .gedit-flow-panel-layer-wrap-docked .gedit-flow-panel-right-area {
+  box-sizing: border-box;
+  padding: 60px 8px 0;
 }
 
 [data-row-interactive] {
