@@ -63,6 +63,7 @@ import {
 import { createSseEventQueue } from './runs-events.mjs';
 import { FeishuEventError, parseFeishuEventBody } from './feishu-events.mjs';
 import { handleFeishuReceiveMessage } from './feishu-trigger-handler.mjs';
+import { findDefaultAgentId, migrateWorkflowData } from './workflow-migrations.mjs';
 import {
   SkillError,
   listSkills,
@@ -413,11 +414,15 @@ export function createApp({
     }
     if (!body || typeof body !== 'object' || !body.name)
       return c.json({ error: 'name is required' }, 400);
+    let data = body.data ?? {};
+    if (body.name === 'Default Workflow') {
+      data = migrateWorkflowData(data, findDefaultAgentId(db)).data;
+    }
     const id = nanoid(10);
     db.prepare('INSERT INTO workflows (id, name, data) VALUES (?, ?, ?)').run(
       id,
       body.name,
-      JSON.stringify(body.data ?? {})
+      JSON.stringify(data)
     );
     await refreshFeishuLongConnections();
     const row = db.prepare('SELECT * FROM workflows WHERE id = ?').get(id);

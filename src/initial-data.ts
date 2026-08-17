@@ -11,8 +11,9 @@ import { FlowDocumentJSON } from './typings';
  *   - A code aggregator merging whichever branch ran
  *   - End node consuming the aggregated result
  *
- * `agentId` is empty on purpose: every dev worktree has its own agent
- * database, so the user picks an agent per node before running.
+ * `agentId` is filled by the server's Default Workflow migration when the
+ * document is created. Keeping the template value empty lets the migration
+ * choose the local fake/default agent without hard-coding an environment id.
  */
 export const initialData: FlowDocumentJSON = {
   nodes: [
