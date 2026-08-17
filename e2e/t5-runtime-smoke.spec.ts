@@ -27,7 +27,12 @@ test.describe('T5 runtime interaction smoke', () => {
 
     const panel = page.locator('.gedit-flow-panel-wrap', { hasText: 'Input Form' });
     await expect(panel).toBeVisible({ timeout: 10_000 });
+    const firstRun = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' && response.url().includes('/api/task/run')
+    );
     await panel.getByRole('button', { name: 'Test Run', exact: true }).click();
+    await firstRun;
 
     await expect(panel.locator('[data-testid="testrun-status"]')).toHaveAttribute(
       'data-run-phase',
@@ -43,7 +48,12 @@ test.describe('T5 runtime interaction smoke', () => {
 
     // A terminal run can be retried without cancelling a stale runtime
     // handle; keep the legacy Test Run action name for successful reruns.
+    const retryRun = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' && response.url().includes('/api/task/run')
+    );
     await panel.getByRole('button', { name: 'Test Run', exact: true }).click();
+    await retryRun;
     await expect(panel.locator('[data-testid="testrun-status"]')).toHaveAttribute(
       'data-run-phase',
       'succeeded',
@@ -66,7 +76,12 @@ test.describe('T5 runtime interaction smoke', () => {
     await page.locator('[data-node-id="llm_main"]').click({ position: { x: 12, y: 12 } });
     const liveSession = page.getByTestId('agent-live-session');
     await expect(liveSession).toBeVisible({ timeout: 10_000 });
+    const firstAgentRun = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' && /\/agents\/[^/]+\/run$/.test(response.url())
+    );
     await liveSession.getByRole('button', { name: 'Run Agent' }).click();
+    await firstAgentRun;
     await expect(liveSession.getByTestId('agent-response-content')).toContainText(
       'Fake provider response',
       { timeout: 20_000 }
@@ -74,7 +89,12 @@ test.describe('T5 runtime interaction smoke', () => {
     await expect(liveSession).toHaveAttribute('data-agent-phase', 'succeeded', {
       timeout: 5_000,
     });
+    const retryAgentRun = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' && /\/agents\/[^/]+\/run$/.test(response.url())
+    );
     await liveSession.getByRole('button', { name: 'Retry' }).click();
+    await retryAgentRun;
     await expect(liveSession).toHaveAttribute('data-agent-phase', 'succeeded', {
       timeout: 20_000,
     });

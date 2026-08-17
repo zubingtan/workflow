@@ -24,6 +24,7 @@ import { GetGlobalVariableSchema } from '../../variable-panel-plugin';
 import { isTerminalStatus, workflowRunEventHub } from '../../../workflow-run-event-hub.mjs';
 import { WorkflowNodeType } from '../../../nodes';
 import { cancelRun, getRun, getRunStatus } from '../../../api';
+import type { RunStatus } from '../../../api';
 
 const SYNC_TASK_REPORT_INTERVAL = 500;
 const SYNC_RUN_STATUS_INTERVAL = 500;
@@ -33,7 +34,7 @@ interface NodeRunningStatus {
   nodeResultLength: number;
 }
 
-type WorkflowRunTerminalStatus = 'succeeded' | 'failed' | 'terminated';
+type WorkflowRunTerminalStatus = Extract<RunStatus, 'succeeded' | 'failed' | 'terminated'>;
 
 /**
  * Phase 3 (#155): the Test Run panel now supports queued status.
@@ -117,6 +118,11 @@ export class WorkflowRuntimeService {
    */
   public getCurrentRunID(): string | undefined {
     return this.runID;
+  }
+
+  /** Return the handle for either a saved or draft execution. */
+  public getCurrentExecutionID(): string | undefined {
+    return this.runID ?? this.taskID;
   }
 
   public async taskRun(inputs: WorkflowInputs): Promise<string | undefined> {
@@ -581,7 +587,7 @@ export class WorkflowRuntimeService {
         this.syncRunStatusIntervalID = undefined;
         // The reconciliation helper owns the full-row fetch so queue polling,
         // SSE recovery, and the panel's fallback share one terminal path.
-        void this.reconcileTerminal(runID, status);
+        void this.reconcileTerminal(runID, status, res.report);
       }
     } catch {
       if (this.runID !== runID || this.executionRevision !== revision) {

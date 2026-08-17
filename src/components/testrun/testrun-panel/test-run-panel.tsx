@@ -21,6 +21,7 @@ import { WorkflowRuntimeService } from '../../../plugins/runtime-plugin/runtime-
 import { useTestRunFormPanel } from '../../../plugins/panel-manager-plugin/hooks';
 import { IconCancel } from '../../../assets/icon-cancel';
 import { getRunStatus } from '../../../api';
+import type { RunStatus } from '../../../api';
 import {
   isTestRunActive,
   isTestRunTerminal,
@@ -34,14 +35,7 @@ import styles from './index.module.less';
 
 export interface TestRunSidePanelProps {}
 
-type TestRunPhase =
-  | 'idle'
-  | 'starting'
-  | 'queued'
-  | 'running'
-  | 'succeeded'
-  | 'failed'
-  | 'terminated';
+type TestRunPhase = RunStatus | 'idle' | 'starting';
 
 export const TestRunSidePanel: FC<TestRunSidePanelProps> = () => {
   const runtimeService = useService(WorkflowRuntimeService);
@@ -116,7 +110,22 @@ export const TestRunSidePanel: FC<TestRunSidePanelProps> = () => {
     setPhase('starting');
     try {
       const id = await runtimeService.taskRun(values);
-      if (attemptRef.current !== attempt) return;
+      const currentAttempt = attemptRef.current === attempt;
+      // Closing or switching workflows can happen while validation is still
+      // in flight. If TaskRun allocates a handle after that cleanup, cancel
+      // only that exact execution so it cannot become an orphan or cancel a
+      // newer retry.
+      if (!currentAttempt && id) {
+        if (runtimeService.getCurrentExecutionID?.() === id) {
+          try {
+            await runtimeService.taskCancel();
+          } catch {
+            // Best effort: the server may have already reached a terminal
+            // state while the panel was closing.
+          }
+        }
+      }
+      if (!currentAttempt) return;
       if (cancelRequestedRef.current) {
         // Cancellation may be clicked during validation, before the runtime
         // has assigned a task/run id. Once taskRun resolves, make one best
@@ -278,7 +287,7 @@ export const TestRunSidePanel: FC<TestRunSidePanelProps> = () => {
   // Phase 3: while queued, poll GET /api/runs/:runID for queue position.
   // runtimeService exposes the current runID (if any) via a getter.
   useEffect(() => {
-    if (!isRunning) {
+    if (phase !== 'queued') {
       setQueuePosition(0);
       return;
     }
@@ -313,7 +322,7 @@ export const TestRunSidePanel: FC<TestRunSidePanelProps> = () => {
           // terminal event was missed. The runtime service owns the full-row
           // fetch and clears its handle only when this attempt is still live.
           if (!cancelled && attemptRef.current === attempt) {
-            void runtimeService.reconcileTerminal(runID, res.status);
+            void runtimeService.reconcileTerminal(runID, res.status, res.report);
           }
         } else {
           // Unknown status — stop showing queue position and let the runtime
@@ -330,7 +339,7 @@ export const TestRunSidePanel: FC<TestRunSidePanelProps> = () => {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [isRunning, runtimeService]);
+  }, [phase, runtimeService]);
 
   useEffect(
     () => () => {
