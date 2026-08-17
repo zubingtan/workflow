@@ -4,21 +4,23 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 
 import { Button } from '@/components/ui';
 
-import type { ExecutionPhase, ToolEvent } from '../../agent-execution/types';
+import type {
+  ExecutionPhase,
+  ToolEvent,
+  UseAgentExecutionResult,
+} from '../../agent-execution/types';
 
 import styles from './index.module.less';
 
-interface AgentExecutionPanelProps {
-  phase: ExecutionPhase;
-  content: string;
-  toolEvents: ToolEvent[];
-  error: string;
-  isRunning: boolean;
+type AgentExecutionPanelProps = Pick<
+  UseAgentExecutionResult,
+  'phase' | 'content' | 'toolEvents' | 'error' | 'isRunning'
+> & {
   canRun: boolean;
   prompt: string;
-  onRun: () => void;
-  onCancel: () => void;
-}
+  onRun: UseAgentExecutionResult['run'];
+  onCancel: UseAgentExecutionResult['cancel'];
+};
 
 const PHASE_LABEL: Record<ExecutionPhase, string> = {
   idle: 'Ready',
@@ -89,7 +91,9 @@ export function AgentExecutionPanel({
     : phase === 'succeeded' || phase === 'failed' || phase === 'cancelled'
     ? 'Retry'
     : 'Run Agent';
-  const hasContent = content.trim().length > 0;
+  // Avoid rescanning the accumulated response on every streaming delta. Only
+  // terminal empty-output recovery needs to distinguish whitespace from text.
+  const hasContent = phase === 'streaming' ? content.length > 0 : content.trim().length > 0;
   const hasOutput = hasContent || toolEvents.length > 0;
 
   return (

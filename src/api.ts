@@ -8,6 +8,8 @@
 // defined" in the browser because rsbuild's prod build doesn't polyfill it.)
 // #297: BASE_PATH is injected at build time via rsbuild source.define (empty
 // for root-path builds, e.g. '/workflow' for the sub-path nginx mount).
+import type { IReport } from '@flowgram.ai/runtime-interface';
+
 export const SERVER_URL = process.env.BASE_PATH ?? '';
 
 export interface AgentConfig {
@@ -328,6 +330,10 @@ export interface RunStatusResponse {
   started_at: string | null;
   ended_at: string | null;
   queuePosition: number; // 1-based for queued runs; 0 for running/terminal/missing
+  // GET /api/runs/:runID returns the full row. Keep the report optional so
+  // callers that only need queue status can continue using this shape while
+  // terminal reconciliation can reuse the already-fetched report.
+  report?: IReport | null;
 }
 
 export interface RunCancelResponse {
