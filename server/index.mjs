@@ -15,6 +15,7 @@ import { createQueueAdapter } from './queue-adapter.mjs';
 import { createRunsEventBus } from './runs-events.mjs';
 import { getNodeTimeoutDefaultMs } from './settings.mjs';
 import { maybeStartFeishuLongConnectionManager } from './feishu-long-connection.mjs';
+import { findDefaultAgentId, migrateDefaultWorkflow } from './workflow-migrations.mjs';
 
 // --- Config ---
 // PORT (cloud-native standard) replaces SERVER_PORT. The legacy name is
@@ -102,6 +103,14 @@ const seeded = seedAgentIfEmpty(db, {
   },
 });
 if (seeded) console.log(`  seeded fake-provider agent (port ${fakeProviderPort})`);
+
+// Persisted workspaces can predate the agent-id LLM node contract. Migrate
+// only the built-in Default Workflow; user-authored workflows keep their
+// explicit configuration and remain subject to normal validation.
+const migratedDefaultWorkflow = migrateDefaultWorkflow(db, findDefaultAgentId(db));
+if (migratedDefaultWorkflow.changed) {
+  console.log(`  migrated Default Workflow (${migratedDefaultWorkflow.workflowId})`);
+}
 
 // --- Init runtime (register AgentExecutor to replace built-in LLMExecutor) ---
 // Phase 9 (#161): pass a settingsProvider so AgentExecutor.resolveTimeoutMs
