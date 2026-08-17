@@ -25,7 +25,10 @@ export const useTestRunFormPanel = () => {
   const panelManager = usePanelManager();
 
   const open = () => {
-    panelManager.open(PanelType.TestRunFormPanel, 'docked-right');
+    // Test Run is an execution surface over the canvas, not a permanent
+    // editor column.  The floating area keeps the workflow graph visible
+    // underneath while preserving the panel-manager's normal close behavior.
+    panelManager.open(PanelType.TestRunFormPanel, 'right');
   };
   const close = () => panelManager.close(PanelType.TestRunFormPanel);
 
