@@ -27,6 +27,20 @@ test.describe('T5 runtime interaction smoke', () => {
 
     const panel = page.locator('.gedit-flow-panel-wrap', { hasText: 'Input Form' });
     await expect(panel).toBeVisible({ timeout: 10_000 });
+    // Test Run is a transient execution surface and must float over the
+    // canvas instead of reserving a docked right-hand editor column.
+    await expect(
+      page.locator('.gedit-flow-panel-layer-wrap-floating').getByText('Input Form', {
+        exact: true,
+      })
+    ).toBeVisible();
+    await expect(
+      page
+        .locator(
+          '.gedit-flow-panel-layer-wrap-docked > .gedit-flow-panel-right-area .gedit-flow-panel-wrap:visible'
+        )
+        .getByText('Input Form', { exact: true })
+    ).toHaveCount(0);
     const firstRun = page.waitForResponse(
       (response) =>
         response.request().method() === 'POST' && response.url().includes('/api/task/run')
