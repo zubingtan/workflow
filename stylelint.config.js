@@ -2,7 +2,7 @@
  * Stylelint configuration — design token enforcement (D8 / issue #79).
  *
  * Enforces the 3 lintable constraint categories from D5 (#73):
- *   1. Token consumption — forbid hardcoded hex colors (use var(--app-*) / Semi tokens)
+ *   1. Token consumption — forbid hardcoded hex colors (use var(--app-*) tokens)
  *   2. !important        — forbid by default; allow via line-level disable comment
  *   3. z-index scale     — see note below; NOT enforced here (D4 defined no z-index tokens)
  *
@@ -31,8 +31,8 @@
  *
  *  - custom-property-pattern (--app-* prefix): spec marked this "optional, new vars only".
  *    stylelint's `custom-property-pattern` applies to ALL custom property definitions in
- *    linted files, including legitimate non-app vars (--g-workflow-*, --semi-color-*).
- *    Enforcing `^--app-` would false-positive on FlowGram/Semi bridges. NOT enabled.
+ *    linted files, including legitimate FlowGram vars (--g-workflow-*).
+ *    Enforcing `^--app-` would false-positive on FlowGram bridge. NOT enabled.
  *    Token namespace is enforced by code review + the src/theme/ directory convention.
  *
  *  - pnpm lint merge: `lint:style` is a SEPARATE script, NOT merged into `pnpm lint`.
@@ -47,12 +47,12 @@ module.exports = {
 
   rules: {
     // === Category 1: token consumption — no hardcoded hex colors ===
-    // Catches #fff, #4d53e8, #4e40e5, etc. Use var(--app-color-*) or Semi --semi-color-*.
+    // Catches #fff, #4d53e8, #4e40e5, etc. Use var(--app-color-*) tokens.
     'color-no-hex': true,
 
     // === Category 2: !important — forbidden by default ===
     // Per-line exemption: `/* stylelint-disable-next-line declaration-no-important */`
-    // (used where overriding Semi's own !important is unavoidable, e.g. testrun buttons).
+    // (used for third-party editor defaults and the FlowGram canvas where unavoidable).
     'declaration-no-important': true,
 
     // CSS Modules :global(...) is valid in .module.less — allow it.
@@ -79,7 +79,7 @@ module.exports = {
       // directory is to own the hex values that other files consume via
       // var(--app-*). `color-no-hex` would defeat the purpose here. The
       // namespace convention (--app-*) is enforced by code review, per the
-      // stylelint config comment above. Semi bridge tokens (--semi-color-*)
+      // stylelint config comment above. app token definitions
       // are also defined here as hex overrides.
       files: ['src/theme/*.css'],
       rules: {

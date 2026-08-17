@@ -53,6 +53,16 @@ body,
   }
 }
 
+@keyframes workflow-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.65;
+  }
+}
+
 .node-running {
   border: 1px dashed rgb(78, 64, 229) !important;
   border-radius: 8px;
@@ -225,7 +235,7 @@ body[theme-mode='dark'] [data-editor-shell='true'] {
   --input: oklch(1 0 0 / 17%);
 }
 
-/* Keep the shell's outer background opaque over legacy Semi layers. The
+/* Keep the shell's outer background opaque over editor overlay layers. The
  * semantic surface values themselves come from the global shadcn `.dark`
  * palette in tokens.css. */
 body[theme-mode='dark'] [data-testid='app-shell'] {

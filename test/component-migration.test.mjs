@@ -24,7 +24,7 @@ const ROOT = path.resolve(__dirname, '..');
 const MIGRATED_INLINE_FILES = [
   // problem-panel: per spec AC — migrated from rgb(251,251,251) / #999 / rgba(82,100,154,0.13)
   'src/components/problem-panel/problem-panel.tsx',
-  // app.tsx sidebar + editor header: per spec AC — migrated from var(--semi-color-*) to var(--app-*)
+  // app.tsx sidebar + editor header: migrated to app semantic tokens
   'src/app.tsx',
   // sidebar-node-renderer: migrated from rgb(251,251,251) / rgba(82,100,154,0.13)
   'src/components/sidebar/sidebar-node-renderer.tsx',
@@ -39,7 +39,7 @@ const MIGRATED_INLINE_FILES = [
 ];
 
 // Match literal hex (#fff, #ffffff, #1f1f2e) or rgb()/rgba() color values,
-// but NOT `var(--app-color-*)` or `var(--semi-color-*)` references.
+// but NOT `var(--app-color-*)` references.
 const HARDCODED_COLOR_RE = /(['"`])(#(?:[0-9a-fA-F]{3,4}){1,2}|rgba?\(\s*\d)/;
 
 test('Layer 5: migrated inline-style files contain no hardcoded hex/rgb/rgba colors', () => {
@@ -100,7 +100,7 @@ test('Layer 4: migrated style files exist on disk', () => {
   }
 });
 
-test('Layer 4: migrated style files use --app-* / --semi-color-* tokens (not raw hex in declarations)', () => {
+test('Layer 4: migrated style files use app tokens (not raw hex in declarations)', () => {
   // For each migrated file, parse declarations and assert no bare hex/rgb
   // values appear OUTSIDE of stylelint-disable-next-line allowances.
   // This is a coarse guard — stylelint is the authoritative gate.

@@ -4,6 +4,7 @@ import { Check, LoaderCircle, X } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 
+import { subscribeToasts, type ToastItem } from './toast';
 import {
   Dialog as BaseDialog,
   DialogContent,
@@ -13,6 +14,8 @@ import {
   DialogTitle,
 } from './dialog';
 import { Button as BaseButton } from './button';
+
+export { Toast } from './toast';
 
 type InputChange = (value: string) => void;
 
@@ -249,28 +252,6 @@ export function Tag({
   );
 }
 
-type ToastKind = 'success' | 'error' | 'warning' | 'info';
-type ToastItem = { id: number; kind: ToastKind; message: string };
-let nextToastId = 0;
-const toastListenersKey = '__workflowManagementToastListeners';
-const toastListeners = ((
-  globalThis as typeof globalThis & {
-    __workflowManagementToastListeners?: Set<(item: ToastItem) => void>;
-  }
-)[toastListenersKey] ??= new Set<(item: ToastItem) => void>());
-
-function emitToast(kind: ToastKind, message: string) {
-  const item = { id: ++nextToastId, kind, message } satisfies ToastItem;
-  toastListeners.forEach((listener) => listener(item));
-}
-
-export const Toast = {
-  success: (message: string) => emitToast('success', message),
-  error: (message: string) => emitToast('error', message),
-  warning: (message: string) => emitToast('warning', message),
-  info: (message: string) => emitToast('info', message),
-};
-
 export function ToastViewport() {
   const [items, setItems] = React.useState<ToastItem[]>([]);
   React.useEffect(() => {
@@ -281,10 +262,7 @@ export function ToastViewport() {
         4200
       );
     };
-    toastListeners.add(onToast);
-    return () => {
-      toastListeners.delete(onToast);
-    };
+    return subscribeToasts(onToast);
   }, []);
 
   return (

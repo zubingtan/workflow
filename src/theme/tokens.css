@@ -1,19 +1,10 @@
 /**
- * Design tokens — canonical Tailwind v4 semantic layer plus the legacy app
- * compatibility layer used by the pages that have not migrated yet.
+ * Canonical design tokens for the Base UI/shadcn layer and FlowGram canvas.
  *
- * Legacy two-layer model (ADR-0002):
- *  - Primitives (spacing/radius/font/shadow) live on `:root` and never carry
- *    app meaning. They don't flip with theme.
- *  - Legacy semantics (color wrappers) live on `body` because they reference Semi's
- *    `--semi-color-*` variables, which Semi mounts on `body` (D6 pitfall 2 —
- *    defining on `:root` yields empty values because `:root` cannot see `body`
- *    variables). Legacy dark overrides hang off `body[theme-mode="dark"]`;
- *    the canonical component layer uses `html.dark` below.
- *
- * Loading order (in app.tsx, see ADR-0002):
- *   semi.min.css → semi-bridge.css → tokens.css → theme-dark.css
- *   → flowgram-bridge.css → styles/index.css
+ * App-owned names (`--app-*`) remain the editor's small semantic vocabulary.
+ * Surface/status aliases resolve from the canonical palette below while the
+ * established editor brand aliases stay locked in the theme blocks. Nothing
+ * depends on a component library.
  */
 
 @import 'tailwindcss/theme.css';
@@ -23,7 +14,6 @@
 @source '../';
 @custom-variant dark (&:is(.dark *));
 
-/* The new component layer reads these semantic names directly. */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -77,7 +67,7 @@
   --sidebar: oklch(0.975 0.004 260);
   --sidebar-foreground: oklch(0.19 0.014 260);
 
-  /* ---- Spacing (4px base × 10 tiers) ---- */
+  /* Small layout scale used by the FlowGram editor surfaces. */
   --app-space-0: 0;
   --app-space-1: 4px;
   --app-space-2: 8px;
@@ -89,52 +79,31 @@
   --app-space-10: 40px;
   --app-space-12: 48px;
 
-  /* ---- Radius (4 tiers; do NOT override Semi defaults) ---- */
   --app-radius-sm: 4px;
   --app-radius-md: 8px;
   --app-radius-lg: 12px;
   --app-radius-xl: 16px;
   --app-radius-full: 9999px;
 
-  /* ---- Font size (5 tiers) + font weight (3 tiers) ---- */
   --app-font-size-xs: 12px;
   --app-font-size-sm: 13px;
   --app-font-size-md: 14px;
   --app-font-size-lg: 16px;
   --app-font-size-xl: 20px;
-
   --app-font-weight-regular: 400;
   --app-font-weight-medium: 500;
   --app-font-weight-strong: 600;
 
-  /* ---- Shadow (3 tiers light; dark variants in theme-dark.css) ---- */
   --app-shadow-sm: 0 1px 2px rgba(0, 0, 0, 4%);
   --app-shadow-md: 0 2px 8px rgba(0, 0, 0, 8%);
   --app-shadow-lg: 0 6px 16px rgba(0, 0, 0, 12%);
-
-  /* ---- Primary family (light, locked by D4) ----
-   * These are app-layer semantic wrappers — the Semi bridge in semi-bridge.css
-   * pushes these same values into Semi's `--semi-color-primary-*` so Semi
-   * components follow the brand automatically. */
-  --app-color-primary: #4d53e8;
-  --app-color-primary-hover: #6366f1;
-  --app-color-primary-active: #4338ca;
-  --app-color-primary-disabled: #c7c9f5;
-  --app-color-primary-light-default: rgba(77, 83, 232, 0.08);
-  --app-color-primary-light-hover: rgba(77, 83, 232, 0.12);
-  --app-color-primary-light-active: rgba(77, 83, 232, 0.16);
-  --app-color-focus: rgba(77, 83, 232, 0.5);
 }
 
-/* html[data-theme]/.dark are the canonical shadcn markers (ADR-0004). Keep
- * the synchronized body attribute in the same block for FlowGram and legacy
- * Semi surfaces during the migration. */
+/* The class and data attribute are the canonical theme markers. The body
+ * attribute remains synchronized for FlowGram's existing selector contract. */
 .dark,
 html[data-theme='dark'],
 body[theme-mode='dark'] {
-  /* Keep every shadcn surface neutral in dark mode. The editor, management
-   * shell, and active navigation all consume these semantic tokens, so a
-   * single global palette prevents legacy blue/red casts between routes. */
   --background: oklch(0.18 0 0);
   --foreground: oklch(0.95 0 0);
   --card: oklch(0.23 0 0);
@@ -158,58 +127,48 @@ body[theme-mode='dark'] {
   --sidebar-foreground: oklch(0.95 0 0);
 }
 
-/**
- * Semantic color wrappers — defined on `body` (NOT `:root`) per D6 pitfall 2.
- * They reference Semi's `--semi-color-*` variables, which Semi mounts on body.
- *
- * Note: the `--app-color-primary-*` family is defined on `:root` (above) and
- * cascades through to `body` automatically — NOT re-declared here. Only
- * wrappers that route through Semi's body-mounted vars live on `body`.
- */
 body {
-  /* Grayscale wrappers — route through Semi's body-mounted color scale. */
-  --app-color-canvas: var(--semi-color-bg-1);
-  --app-color-surface: var(--semi-color-bg-2);
-  --app-color-overlay: var(--semi-color-bg-3);
-  --app-color-panel: var(--semi-color-bg-4);
-  --app-color-text-1: var(--semi-color-text-0);
-  --app-color-text-2: var(--semi-color-text-1);
-  --app-color-text-3: var(--semi-color-text-2);
-  --app-color-text-disabled: var(--semi-color-text-3);
-  --app-color-border: var(--semi-color-border);
-  --app-color-divider: var(--semi-color-border);
-  --app-color-fill-0: var(--semi-color-fill-0);
-  --app-color-fill-1: var(--semi-color-fill-1);
-  --app-color-fill-2: var(--semi-color-fill-2);
+  /* Semantic aliases are scoped to body so var() resolves against the active
+   * light/dark palette on this element rather than being frozen at :root. */
+  /* Keep the established editor brand while removing the old component
+   * library. These values were locked by the original design-token decision. */
+  --app-color-primary: #4d53e8;
+  --app-color-primary-hover: #6366f1;
+  --app-color-primary-active: #4338ca;
+  --app-color-primary-disabled: #c7c9f5;
+  --app-color-primary-light-default: rgba(77, 83, 232, 0.08);
+  --app-color-primary-light-hover: rgba(77, 83, 232, 0.12);
+  --app-color-primary-light-active: rgba(77, 83, 232, 0.16);
+  --app-color-focus: rgba(77, 83, 232, 0.5);
 
-  /* Semantic status — route through Semi (auto-flips in dark mode). */
-  --app-color-success: var(--semi-color-success);
-  --app-color-warning: var(--semi-color-warning);
-  --app-color-danger: var(--semi-color-danger);
-  --app-color-info: var(--semi-color-info);
+  --app-color-canvas: var(--background);
+  --app-color-surface: var(--card);
+  --app-color-overlay: var(--popover);
+  --app-color-panel: var(--card);
+  --app-color-text-1: var(--foreground);
+  --app-color-text-2: var(--muted-foreground);
+  --app-color-text-3: color-mix(in oklch, var(--muted-foreground) 72%, transparent);
+  --app-color-text-disabled: var(--muted-foreground);
+  --app-color-border: var(--border);
+  --app-color-divider: var(--border);
+  --app-color-fill-0: var(--card);
+  --app-color-fill-1: var(--muted);
+  --app-color-fill-2: var(--accent);
+  --app-color-success: oklch(0.62 0.16 150);
+  --app-color-warning: oklch(0.72 0.16 75);
+  --app-color-danger: var(--destructive);
+  --app-color-info: var(--primary);
 
-  /* Syntax-highlight palette (for Test Run JSON viewer). Light values follow
-   * GitHub Primer light; dark overrides in theme-dark.css. Hex is intentional
-   * at the token-definition layer (same pattern as the primary family above). */
   --app-color-syntax-key: #0969da;
   --app-color-syntax-string: #032f62;
   --app-color-syntax-number: #005cc5;
   --app-color-syntax-boolean: #e36209;
   --app-color-syntax-null: #6a737d;
 
-  /* Node card (light) — D4 §2 self-invented. */
-  --app-color-node-bg: var(--semi-color-bg-2);
-  --app-color-node-border: var(--semi-color-border);
-
-  /* Node header gradient — light mode keeps the soft primary-light tint; dark
-   * mode overrides this to a neutral fill (see theme-dark.css) so the header
-   * doesn't carry a purple cast on dark surfaces. */
+  --app-color-node-bg: var(--card);
+  --app-color-node-border: var(--border);
   --app-color-node-header-from: var(--app-color-primary-light-default);
 
-  /* D6 pitfalls 3 + 4: page background + body margin reset.
-   * Semi doesn't set a page background-color, so dark mode showed white
-   * patches behind transparent containers. Browser default body margin (8px)
-   * was never cleared and caused accidental page scroll. */
   background-color: var(--app-color-canvas);
   color: var(--app-color-text-1);
   margin: 0;

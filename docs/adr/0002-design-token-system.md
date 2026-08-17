@@ -1,9 +1,15 @@
 # ADR-0002: Design token system
 
 Date: 2026-07-25
-Status: Accepted
+Status: Superseded by ADR-0004 and the UI stack cleanup in issue #289
 Supersedes: —
 Referenced by: Issue #91 (Ticket A — token layer skeleton), Issue #90 (Spec — unified design language)
+
+> **Historical record.** The decisions below describe the pre-#289 Semi-backed
+> implementation. The current implementation keeps the app token names and
+> established brand palette, resolves surface/status aliases from the canonical
+> palette, and no longer imports Semi or its compatibility bridge. See ADR-0004
+> for the active foundation.
 
 ## Context
 

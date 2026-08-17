@@ -1,21 +1,15 @@
 /**
- * FlowGram bridge — map the project's `--g-workflow-*` variables onto the
- * `--app-*` token layer so port/line colors follow light/dark theme.
+ * FlowGram bridge — map the editor's `--g-workflow-*` variables onto the
+ * app semantic token layer so port/line colors follow light/dark theme.
  *
  * The `--g-workflow-port-color-*` and `--g-workflow-line-color-*` variables
  * are consumed by FlowGram's editor (see `src/hooks/use-editor-props.tsx`).
- * Originally they were defined with hardcoded hex values in
+ * Originally they were defined with hardcoded values in
  * `src/styles/index.css`; this bridge overrides them on `body` so they route
- * through `--app-color-primary` / `--app-color-primary-hover` / etc. instead,
- * which in turn flip with `body[theme-mode]`.
+ * through the canonical app palette instead.
  *
- * Defined on `body` (NOT `:root`) for two reasons (D6 pitfall 2):
- *   1. The semantic `--app-color-*` wrappers themselves live on `body` (they
- *      route through Semi's `--semi-color-*`, which Semi mounts on `body`).
- *      Defining these on `:root` would resolve the var() reference to the
- *      empty string because `:root` cannot see `body` variables.
- *   2. Higher specificity than the `:root` definitions in `styles/index.css`,
- *      so we win regardless of CSS load order.
+ * Defined on `body` so the variables are available to FlowGram's descendants
+ * and override the defaults in `styles/index.css` regardless of load order.
  *
  * Scope (spec AC #5): the `--g-workflow-*` family PLUS `--g-editor-background`
  * (FlowGram's canvas root `.gedit-playground` reads this var). Originally
@@ -49,10 +43,7 @@ body {
 }
 
 body[theme-mode='dark'] {
-  /* In dark mode the primary family already flips via theme-dark.css, so the
-   * `var(--app-color-*)` references above re-resolve automatically. Re-stating
-   * the block here keeps the dark variant explicit per spec AC #5 and gives a
-   * single place to override line/port colors for dark mode if needed later. */
+  /* Keep the dark variant explicit without remounting the editor. */
   --g-workflow-port-color-primary: var(--app-color-primary);
   --g-workflow-port-color-secondary: var(--app-color-primary-hover);
   --g-workflow-port-color-background: var(--app-color-canvas);

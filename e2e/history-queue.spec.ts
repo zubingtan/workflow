@@ -61,7 +61,7 @@ test.describe('History + serial queue', () => {
     await expect(page.getByText('Run History').first()).toBeVisible({ timeout: 5_000 });
 
     // --- Assert status badges present (at least one of the 5) ---
-    // Semi's Tag renders with role/structure that doesn't always match `span`;
+    // The local Tag renders with role/structure that doesn't always match `span`;
     // use getByText which is element-type agnostic.
     const badgeTexts = ['Queued', 'Running', 'Succeeded', 'Failed', 'Cancelled'];
     const anyBadge = page.getByText(new RegExp(badgeTexts.join('|'))).first();

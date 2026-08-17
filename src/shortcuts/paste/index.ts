@@ -21,11 +21,11 @@ import {
   WorkflowSelectService,
   Playground,
 } from '@flowgram.ai/free-layout-editor';
-import { Toast } from '@douyinfe/semi-ui';
 
 import { WorkflowClipboardData, WorkflowClipboardRect } from '../type';
 import { FlowCommandId, WorkflowClipboardDataID } from '../constants';
 import { canContainNode } from '../../utils';
+import { Toast } from '../../components/ui/toast';
 import { generateUniqueWorkflow } from './unique-workflow';
 
 export class PasteShortcut implements ShortcutsHandler {
@@ -77,10 +77,7 @@ export class PasteShortcut implements ShortcutsHandler {
     }
     const nodes = this.apply(data);
     if (nodes.length > 0) {
-      Toast.success({
-        content: 'Copy successfully',
-        showClose: false,
-      });
+      Toast.success('Copy successfully');
       // wait for nodes to render
       await this.nextTick();
       // scroll to visible area
@@ -123,16 +120,12 @@ export class PasteShortcut implements ShortcutsHandler {
 
   private isValidData(data?: WorkflowClipboardData): boolean {
     if (data?.type !== WorkflowClipboardDataID) {
-      Toast.error({
-        content: 'Invalid clipboard data',
-      });
+      Toast.error('Invalid clipboard data');
       return false;
     }
     // Cross-domain means different environments with different installed plugins, so paste is not allowed
     if (data.source.host !== window.location.host) {
-      Toast.error({
-        content: 'Cannot paste nodes from different host',
-      });
+      Toast.error('Cannot paste nodes from different host');
       return false;
     }
     // Check container
@@ -144,9 +137,7 @@ export class PasteShortcut implements ShortcutsHandler {
         dropNode: parent,
       });
       if (!res.allowDrop) {
-        Toast.error({
-          content: res.message ?? 'Cannot paste nodes to invalid container',
-        });
+        Toast.error(res.message ?? 'Cannot paste nodes to invalid container');
         return false;
       }
     }

@@ -19,7 +19,6 @@ import {
   WorkflowNodeMeta,
   WorkflowSelectService,
 } from '@flowgram.ai/free-layout-editor';
-import { Toast } from '@douyinfe/semi-ui';
 
 import type {
   WorkflowClipboardRect,
@@ -28,6 +27,7 @@ import type {
 } from '../type';
 import { FlowCommandId, WorkflowClipboardDataID } from '../constants';
 import { WorkflowNodeType } from '../../nodes';
+import { Toast } from '../../components/ui/toast';
 
 export class CopyShortcut implements ShortcutsHandler {
   public commandId = FlowCommandId.COPY;
@@ -92,9 +92,7 @@ export class CopyShortcut implements ShortcutsHandler {
       return false;
     }
     await navigator.clipboard.writeText(window.getSelection()?.toString() ?? '');
-    Toast.success({
-      content: 'Text copied',
-    });
+    Toast.success('Text copied');
     return true;
   }
 
@@ -112,9 +110,7 @@ export class CopyShortcut implements ShortcutsHandler {
    */
   private isValid(nodes: WorkflowNodeEntity[]): boolean {
     if (nodes.length === 0) {
-      Toast.warning({
-        content: 'No nodes selected',
-      });
+      Toast.warning('No nodes selected');
       return false;
     }
     return true;
@@ -258,17 +254,12 @@ export class CopyShortcut implements ShortcutsHandler {
         startEndNodeTypes.includes(node.flowNodeType as WorkflowNodeType)
       )
     ) {
-      Toast.warning({
-        content:
-          'The Start/End node cannot be duplicated, other nodes have been copied to the clipboard',
-        showClose: false,
-      });
+      Toast.warning(
+        'The Start/End node cannot be duplicated, other nodes have been copied to the clipboard'
+      );
       return;
     }
-    Toast.success({
-      content: 'Nodes have been copied to the clipboard',
-      showClose: false,
-    });
+    Toast.success('Nodes have been copied to the clipboard');
     return;
   }
 }
