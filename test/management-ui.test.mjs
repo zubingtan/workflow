@@ -20,17 +20,14 @@ const MANAGEMENT_SURFACES = [
     .map((name) => `src/components/agent-miller/sections/${name}`),
 ];
 
-test('management surfaces use the local UI layer instead of Semi UI', () => {
+test('management surfaces use the local UI layer', () => {
   for (const relativePath of MANAGEMENT_SURFACES) {
-    const source = fs
-      .readFileSync(path.join(ROOT, relativePath), 'utf8')
-      // The editor still needs Semi's stylesheet as a compatibility bridge;
-      // management surfaces must not import its component or icon packages.
-      .replace(/import ['"]@douyinfe\/semi-ui\/dist\/css\/semi\.min\.css['"];?/g, '');
+    const source = fs.readFileSync(path.join(ROOT, relativePath), 'utf8');
+    // Management surfaces must not import a removed third-party UI package.
     assert.doesNotMatch(
       source,
       /@douyinfe\/semi(?:-ui|-icons)/,
-      `${relativePath} must not expose a Semi UI entry point`
+      `${relativePath} must not expose a removed UI entry point`
     );
     assert.doesNotMatch(
       source,

@@ -14,18 +14,7 @@ interface Props {
   onClose: () => void;
 }
 
-type TagColor =
-  | 'blue'
-  | 'green'
-  | 'grey'
-  | 'red'
-  | 'orange'
-  | 'cyan'
-  | 'purple'
-  | 'pink'
-  | 'violet'
-  | 'white'
-  | 'yellow';
+type TagColor = 'blue' | 'green' | 'grey' | 'red' | 'orange';
 const ROLE_COLOR: Record<string, TagColor> = {
   user: 'blue',
   assistant: 'green',

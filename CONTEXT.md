@@ -53,7 +53,7 @@ The irreversible final state of a Run, merged to three values: `succeeded`, `fai
 _Avoid_: final state, done, completed, finished; especially avoid treating `cancelled` / `interrupted` as standalone states
 
 **History Modal**:
-A centralized Semi Modal (70% width) listing all Runs of one Workflow. REST pulls a lightweight list on open, then an EventSource receives incremental `run_status` / `run_terminal` / `workflow_deleted` events. Row actions: view detail / cancel / delete (terminal only). Hosts the HistoryViewer overlay.
+A centralized management dialog (70% width) listing all Runs of one Workflow. REST pulls a lightweight list on open, then an EventSource receives incremental `run_status` / `run_terminal` / `workflow_deleted` events. Row actions: view detail / cancel / delete (terminal only). Hosts the HistoryViewer overlay.
 _Avoid_: runs modal, run list, history dialog, runs panel
 
 **HistoryViewer**:

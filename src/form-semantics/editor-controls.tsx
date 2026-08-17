@@ -213,7 +213,7 @@ function parseConstant(value: string, schema?: IJsonSchema): unknown {
   }
 }
 
-/** Keep the selector contract used by form-materials: number refs accept
+/** Keep the selector contract used by the former form editor: number refs accept
  * integer variables, while every other declared schema is a weak match. */
 function includeSchemaForVariablePicker(
   schema?: IJsonSchema

@@ -20,7 +20,7 @@ function makeEnv({ stored = null, prefersDark = false } = {}) {
     media: '(prefers-color-scheme: dark)',
     addEventListener: (_evt, fn) => listeners.add(fn),
     removeEventListener: (_evt, fn) => listeners.delete(fn),
-    // Semi + spec use addListener/removeListener legacy API; provide both.
+    // Keep the legacy matchMedia API in the test double for browser compatibility.
     addListener: (fn) => listeners.add(fn),
     removeListener: (fn) => listeners.delete(fn),
   };

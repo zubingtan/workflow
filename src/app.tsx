@@ -19,14 +19,8 @@ import {
 
 import { preserveWorkflowDocumentFields } from '@/form-semantics';
 
-// Semi CSS must load before semi-bridge.css so the bridge overrides win.
-// D6 pitfall 1: the Semi stylesheet is resolved from the package's physical
-// file because the package exports do not expose this CSS entry point.
-import '@douyinfe/semi-ui/dist/css/semi.min.css';
-
-// Theme CSS files — order matters (ADR-0002):
-//   semi.min.css → semi-bridge.css → tokens.css → theme-dark.css → flowgram-bridge.css → styles/index.css
-import './theme/semi-bridge.css';
+// Theme CSS files — tokens establish the canonical palette before the
+// FlowGram bridge and editor styles consume it.
 import './theme/tokens.css';
 import './theme/theme-dark.css';
 import './theme/flowgram-bridge.css';

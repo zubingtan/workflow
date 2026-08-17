@@ -26,8 +26,6 @@
     "@coze-editor/code-language-typescript": "0.1.0-alpha.868621",
     "@coze-editor/extensions": "0.1.0-alpha.868621",
     "@coze-editor/preset-code": "0.1.0-alpha.868621",
-    "@douyinfe/semi-icons": "^2.80.0",
-    "@douyinfe/semi-ui": "^2.80.0",
     "@earendil-works/pi-agent-core": "^0.81.0",
     "@earendil-works/pi-ai": "^0.81.0",
     "@earendil-works/pi-coding-agent": "^0.81.0",

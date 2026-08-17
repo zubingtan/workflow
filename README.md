@@ -37,8 +37,8 @@ Fresh clones don't need this — both dirs start empty.
 
 - **Frontend framework**: React 18 + TypeScript
 - **Build tool**: Rsbuild (a modern build tool based on Rspack)
-- **Styling**: Less + Styled Components + CSS Variables
-- **UI library**: Semi Design (@douyinfe/semi-ui)
+- **Styling**: Tailwind CSS + Less + Styled Components + CSS Variables
+- **UI primitives**: Base UI + local shadcn-compatible components + Lucide
 - **State management**: Flowgram’s in-house editor framework
 - **Dependency injection**: Inversify
 
@@ -52,7 +52,6 @@ Fresh clones don't need this — both dirs start empty.
 - **@flowgram.ai/export-plugin**: Download/export plugin
 - **@flowgram.ai/free-container-plugin**: Sub-canvas plugin
 - **@flowgram.ai/free-group-plugin**: Grouping plugin
-- **@flowgram.ai/form-materials**: Form materials
 - **@flowgram.ai/runtime-interface**: Runtime interfaces
 - **@flowgram.ai/runtime-js**: JS runtime module
 - **@flowgram.ai/panel-manager-plugin**: Sidebar panel management

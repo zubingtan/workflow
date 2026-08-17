@@ -45,15 +45,6 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),
-      // D6 pitfall 1: @douyinfe/semi-ui 2.101.1's `exports` field doesn't
-      // expose `./dist/css/semi.min.css`, but the prebuilt CSS file physically
-      // exists at that path. Mapping the bare specifier to the absolute file
-      // path bypasses the exports-field check. Remove if Semi later adds the
-      // export (or switch to per-component CSS imports).
-      '@douyinfe/semi-ui/dist/css/semi.min.css': resolve(
-        __dirname,
-        'node_modules/@douyinfe/semi-ui/dist/css/semi.min.css'
-      ),
     },
   },
   html: {

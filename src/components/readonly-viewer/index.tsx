@@ -29,8 +29,8 @@ import * as api from '../../api';
  * A top bar with a Back button restores the History Modal (Phase 7 preserves
  * its scroll position because the Modal stays mounted underneath the overlay).
  *
- * The overlay is `position: fixed` at z-index above the Semi Modal (which is
- * ~1000 by default). Semi Modals render at z-index 1000+; we use 1100.
+ * The overlay is `position: fixed` above the management dialog layer (z-index
+ * 1000+) so the read-only viewer remains interactive.
  */
 export function ReadonlyViewer({
   runID,

@@ -11,27 +11,9 @@ import type { RunMeta, RunStatus } from '../../api';
 // The table row shape is exactly the REST list payload (RunMeta).
 export type RunRow = RunMeta;
 
-// Semi's Tag `color` prop accepts a fixed union; we mirror the relevant subset
-// here rather than reaching into the package's deep `lib/es/...` path (which
-// the Semi BEST_PRACTICES guide warns is fragile across version bumps).
-type TagColor =
-  | 'amber'
-  | 'blue'
-  | 'cyan'
-  | 'green'
-  | 'grey'
-  | 'indigo'
-  | 'light-blue'
-  | 'light-green'
-  | 'lime'
-  | 'orange'
-  | 'pink'
-  | 'purple'
-  | 'red'
-  | 'teal'
-  | 'violet'
-  | 'yellow'
-  | 'white';
+// Keep status colors constrained to the palette understood by the local Tag
+// wrapper so status rows remain consistent across management surfaces.
+type TagColor = 'blue' | 'green' | 'grey' | 'orange' | 'red';
 
 const STATUS_BADGE: Record<RunStatus, { text: string; color: TagColor; pulse?: boolean }> = {
   queued: { text: 'Queued', color: 'grey' },
@@ -100,7 +82,9 @@ export function RunsTable({
                 color={badge.color}
                 size="large"
                 style={
-                  badge.pulse ? { animation: 'semi-pulse 1.5s ease-in-out infinite' } : undefined
+                  badge.pulse
+                    ? { animation: 'workflow-pulse 1.5s ease-in-out infinite' }
+                    : undefined
                 }
               >
                 {badge.text}

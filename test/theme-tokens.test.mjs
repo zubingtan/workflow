@@ -24,10 +24,9 @@ function collectVars(css) {
   return out;
 }
 
-test('Layer 1: src/theme/ contains the 7 mandated files', () => {
+test('Layer 1: src/theme/ contains the canonical theme files', () => {
   const expected = [
     'tokens.css',
-    'semi-bridge.css',
     'flowgram-bridge.css',
     'theme-dark.css',
     'index.ts',
@@ -72,13 +71,11 @@ test('Layer 1: tokens.css defines 3 shadow tiers', () => {
   }
 });
 
-test('Layer 1: tokens.css defines primary family (light, on :root)', () => {
+test('Layer 1: tokens.css defines the established primary family', () => {
   const css = readCss('tokens.css');
   const vars = collectVars(css);
-  // 8 primary family + focus, light values. These are PRIMITIVE tokens (raw
-  // hex, not routing through Semi vars), so they live on `:root` and cascade
-  // through to `body`. Dark overrides live in theme-dark.css on
-  // `body[theme-mode="dark"]` (higher specificity wins).
+  // The app aliases live on body so light/dark values can be overridden on the
+  // same element without depending on the removed component library.
   for (const v of [
     '--app-color-primary',
     '--app-color-primary-hover',
@@ -91,18 +88,11 @@ test('Layer 1: tokens.css defines primary family (light, on :root)', () => {
   ]) {
     assert.ok(vars.has(v), `missing ${v}`);
   }
-  // Light primary must be #4d53e8 (per D4 locked values).
   assert.match(css, /--app-color-primary\s*:\s*#4d53e8/i);
-  // Primary family must NOT be duplicated on `body` (would be a smell — :root
-  // already cascades through).
-  assert.doesNotMatch(
-    css,
-    /body\s*\{[^}]*--app-color-primary(?!-)/s,
-    'primary family must not be re-declared on body — :root cascades'
-  );
+  assert.match(css, /body\s*\{[^}]*--app-color-primary(?!-)/s);
 });
 
-test('Layer 1: tokens.css defines grayscale semantic wrappers routing through Semi', () => {
+test('Layer 1: tokens.css defines grayscale semantic wrappers from canonical tokens', () => {
   const vars = collectVars(readCss('tokens.css'));
   for (const v of [
     '--app-color-canvas',
@@ -121,9 +111,19 @@ test('Layer 1: tokens.css defines grayscale semantic wrappers routing through Se
   ]) {
     assert.ok(vars.has(v), `missing ${v}`);
   }
+  const css = readCss('tokens.css');
+  for (const [name, token] of [
+    ['--app-color-canvas', '--background'],
+    ['--app-color-surface', '--card'],
+    ['--app-color-overlay', '--popover'],
+    ['--app-color-text-1', '--foreground'],
+    ['--app-color-border', '--border'],
+  ]) {
+    assert.match(css, new RegExp(`${name}\\s*:\\s*var\\(${token}\\)`));
+  }
 });
 
-test('Layer 1: tokens.css defines semantic status wrappers (route through Semi)', () => {
+test('Layer 1: tokens.css defines semantic status wrappers', () => {
   const vars = collectVars(readCss('tokens.css'));
   for (const v of [
     '--app-color-success',
@@ -155,7 +155,7 @@ test('Layer 1: tokens.css applies global body reset (background-color + color + 
 // `body[theme-mode="dark"]`.
 const DARK_SELECTOR = /body\[theme-mode=['"]dark['"]\]/;
 
-test('Layer 1: theme-dark.css defines dark primary #8a8cff + node-bg #252530 + node-border #3a3a4a', () => {
+test('Layer 1: theme-dark.css preserves the established dark palette', () => {
   const css = readCss('theme-dark.css');
   assert.match(css, /--app-color-primary\s*:\s*#8a8cff/i);
   assert.match(css, /--app-color-node-bg\s*:\s*#252530/i);
@@ -166,30 +166,7 @@ test('Layer 1: theme-dark.css defines dark primary #8a8cff + node-bg #252530 + n
   assert.match(css, DARK_SELECTOR);
 });
 
-test('Layer 1: semi-bridge.css overrides Semi primary family (8 + focus) on :root body + dark', () => {
-  const css = readCss('semi-bridge.css');
-  const vars = collectVars(css);
-  for (const v of [
-    '--semi-color-primary',
-    '--semi-color-primary-hover',
-    '--semi-color-primary-active',
-    '--semi-color-primary-disabled',
-    '--semi-color-primary-light-default',
-    '--semi-color-primary-light-hover',
-    '--semi-color-primary-light-active',
-    '--semi-color-focus',
-  ]) {
-    assert.ok(vars.has(v), `missing Semi bridge var: ${v}`);
-  }
-  // Light override on `:root body` (D2 + D6 pitfall 2: must be body, not :root).
-  assert.match(css, /:root\s+body\s*\{/);
-  // Dark override on `body[theme-mode=dark]`.
-  assert.match(css, DARK_SELECTOR);
-  // Light primary must be #4d53e8.
-  assert.match(css, /--semi-color-primary\s*:\s*#4d53e8/i);
-});
-
-test('Layer 1: flowgram-bridge.css bridges FlowGram --g-workflow-* + --g-editor-background vars to --app-* tokens', () => {
+test('Layer 1: flowgram-bridge.css bridges FlowGram variables to app tokens', () => {
   const css = readCss('flowgram-bridge.css');
   // Spec AC #5: bridge the --g-workflow-* family consumed by
   // src/hooks/use-editor-props.tsx (port + line colors). These are the real
@@ -205,33 +182,31 @@ test('Layer 1: flowgram-bridge.css bridges FlowGram --g-workflow-* + --g-editor-
   assert.match(css, /var\(--app-color-primary\)/, 'bridge must use --app-color-primary');
   // --g-editor-background must be bridged so the canvas follows the theme
   // (without this, dark mode left the canvas on FlowGram's default #f2f3f5).
-  assert.match(css, /--g-editor-background\s*:\s*var\(--app-color-canvas\)/, 'must bridge --g-editor-background to --app-color-canvas');
+  assert.match(
+    css,
+    /--g-editor-background\s*:\s*var\(--app-color-canvas\)/,
+    'must bridge --g-editor-background to --app-color-canvas'
+  );
   // Dark variant must exist (spec AC #5).
   assert.match(css, DARK_SELECTOR);
 });
 
-test('Layer 1: app.tsx imports theme CSS files in the mandated order', () => {
+test('Layer 1: app.tsx imports theme CSS files in the canonical order', () => {
   const appPath = path.resolve(__dirname, '..', 'src', 'app.tsx');
   const app = fs.readFileSync(appPath, 'utf8');
   const lines = app.split('\n');
   // Collect import lines (top of file).
   const imports = lines.filter((l) => /^\s*import\s/.test(l));
   const idx = (needle) => imports.findIndex((l) => l.includes(needle));
-  const semiCss = idx('semi.min.css');
-  const semiBridge = idx('theme/semi-bridge.css');
   const tokens = idx('theme/tokens.css');
   const dark = idx('theme/theme-dark.css');
   const flowgram = idx('theme/flowgram-bridge.css');
   const stylesCss = idx('styles/index.css');
-  assert.ok(semiCss >= 0, 'semi.min.css not imported');
-  assert.ok(semiBridge >= 0, 'semi-bridge.css not imported');
   assert.ok(tokens >= 0, 'tokens.css not imported');
   assert.ok(dark >= 0, 'theme-dark.css not imported');
   assert.ok(flowgram >= 0, 'flowgram-bridge.css not imported');
   assert.ok(stylesCss >= 0, 'styles/index.css not imported');
-  // Order: semi.min.css < semi-bridge.css < tokens.css < theme-dark.css < flowgram-bridge.css < styles/index.css
-  assert.ok(semiCss < semiBridge, 'semi.min.css must come before semi-bridge.css');
-  assert.ok(semiBridge < tokens, 'semi-bridge.css must come before tokens.css');
+  // Order: tokens.css < theme-dark.css < flowgram-bridge.css < styles/index.css
   assert.ok(tokens < dark, 'tokens.css must come before theme-dark.css');
   assert.ok(dark < flowgram, 'theme-dark.css must come before flowgram-bridge.css');
   assert.ok(flowgram < stylesCss, 'flowgram-bridge.css must come before styles/index.css');

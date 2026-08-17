@@ -13,8 +13,8 @@ npx @flowgram.ai/create-app@latest free-layout
 ### 核心技术栈
 - **前端框架**: React 18 + TypeScript
 - **构建工具**: Rsbuild (基于 Rspack 的现代构建工具)
-- **样式方案**: Less + Styled Components + CSS Variables
-- **UI 组件库**: Semi Design (@douyinfe/semi-ui)
+- **样式方案**: Tailwind CSS + Less + Styled Components + CSS Variables
+- **UI 组件基础**: Base UI + 本地 shadcn 兼容组件 + Lucide
 - **状态管理**: 基于 Flowgram 自研的编辑器框架
 - **依赖注入**: Inversify
 
@@ -28,10 +28,9 @@ npx @flowgram.ai/create-app@latest free-layout
 - **@flowgram.ai/export-plugin**: 下载导出插件
 - **@flowgram.ai/free-container-plugin**: 子画布插件
 - **@flowgram.ai/free-group-plugin**: 分组插件
-- **@flowgram.ai/form-materials**: 表单物料
 - **@flowgram.ai/runtime-interface**: 运行时接口
 - **@flowgram.ai/runtime-js**: js 运行时模块
-- **@flowgram.ai/panel-manager-plugin**:  侧边栏面板管理
+- **@flowgram.ai/panel-manager-plugin**: 侧边栏面板管理
 
 ## 代码说明
 

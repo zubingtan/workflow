@@ -58,7 +58,7 @@ test.describe('Node timeout', () => {
     const beforeRes = await fetch('http://localhost:4099/api/settings');
     const before = await beforeRes.json();
 
-    // Set a new value via the UI. Semi InputNumber renders an <input>.
+    // Set a new value via the UI. The local number input renders an <input>.
     const newValue = 123_000;
     const input = page.getByRole('spinbutton').first();
     await input.fill(String(newValue));

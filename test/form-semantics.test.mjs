@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import { test, describe } from 'node:test';
 import { JsonSchemaUtils } from '@flowgram.ai/json-schema';
 
@@ -280,24 +280,4 @@ test('document save preserves unknown top-level fields while canonical fields wi
     ),
     { nodes: ['new'], futureField: { preserved: true }, globalVariable: { new: true } }
   );
-});
-
-test('legacy form-materials access is removed from the editor', () => {
-  const root = join(process.cwd(), 'src');
-  const files = [];
-
-  function visit(directory) {
-    for (const entry of readdirSync(directory)) {
-      const path = join(directory, entry);
-      if (statSync(path).isDirectory()) visit(path);
-      else if (/\.(mjs|ts|tsx)$/.test(entry)) files.push(path);
-    }
-  }
-
-  visit(root);
-  const imports = files
-    .filter((path) => readFileSync(path, 'utf8').includes('@flowgram.ai/form-materials'))
-    .map((path) => relative(process.cwd(), path));
-
-  assert.deepEqual(imports, []);
 });

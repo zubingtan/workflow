@@ -14,11 +14,11 @@ import {
   HistoryService,
   PlaygroundConfigEntity,
 } from '@flowgram.ai/free-layout-editor';
-import { Toast } from '@douyinfe/semi-ui';
 
 import { FlowCommandId } from '../constants';
 import { canRemoveEndNodes } from '../../utils/end-node.mjs';
 import { WorkflowNodeType } from '../../nodes';
+import { Toast } from '../../components/ui/toast';
 
 export class DeleteShortcut implements ShortcutsHandler {
   public commandId = FlowCommandId.DELETE;
@@ -95,10 +95,7 @@ export class DeleteShortcut implements ShortcutsHandler {
       (n) => (n.flowNodeType as WorkflowNodeType) === WorkflowNodeType.Start
     );
     if (hasStart) {
-      Toast.error({
-        content: 'Start node cannot be deleted',
-        showClose: false,
-      });
+      Toast.error('Start node cannot be deleted');
       return false;
     }
     const selectedEndCount = nodes.filter(
@@ -109,10 +106,7 @@ export class DeleteShortcut implements ShortcutsHandler {
         .getAllNodes()
         .filter((n) => (n.flowNodeType as WorkflowNodeType) === WorkflowNodeType.End).length;
       if (!canRemoveEndNodes(totalEndCount, selectedEndCount)) {
-        Toast.error({
-          content: 'At least one End node must remain',
-          showClose: false,
-        });
+        Toast.error('At least one End node must remain');
         return false;
       }
     }
