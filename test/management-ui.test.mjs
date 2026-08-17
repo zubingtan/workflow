@@ -41,6 +41,11 @@ test('the application shell mounts the shared management feedback surface', () =
   const source = fs.readFileSync(path.join(ROOT, 'src/app.tsx'), 'utf8');
   assert.match(source, /ToastViewport/);
   assert.match(source, /data-testid="app-shell"/);
+  assert.match(
+    source,
+    /className="w-40 p-1"[\s\S]*positionerClassName="isolate z-\[1200\]"/,
+    'theme menu must stay above editor controls'
+  );
 });
 
 test('management surfaces expose the prototype-aligned collection and detail seams', () => {

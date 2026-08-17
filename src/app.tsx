@@ -437,7 +437,11 @@ function App() {
                 </Button>
               }
             />
-            <PopoverContent align="start" className="w-40 p-1">
+            <PopoverContent
+              align="start"
+              className="w-40 p-1"
+              positionerClassName="isolate z-[1200]"
+            >
               <PopoverTitle className="sr-only">Theme</PopoverTitle>
               <div className="flex flex-col gap-1">
                 {[
